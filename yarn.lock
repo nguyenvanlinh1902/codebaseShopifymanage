@@ -240,11 +240,11 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@avada/core@npm:3.3.16-alpha.8":
-  version: 3.3.16-alpha.8
-  resolution: "@avada/core@npm:3.3.16-alpha.8"
+"@avada/core@npm:3.3.19":
+  version: 3.3.19
+  resolution: "@avada/core@npm:3.3.19"
   dependencies:
-    "@avada/shopify-api": "npm:1.0.0"
+    "@avada/shopify-api": "npm:1.0.1"
     "@shopify/koa-shopify-webhooks": "npm:5.0.6"
     camelcase-keys: "npm:^6.1.2"
     crypto-js: "npm:^4.0.0"
@@ -256,10 +256,11 @@ __metadata:
     normalize-url: "npm:^5.0.0"
     safe-compare: "npm:^1.1.4"
     uuid: "npm:^8.3.2"
+    xss: "npm:^1.0.15"
   peerDependencies:
     "@google-cloud/firestore": ^6.7.0
     shopify-api-node: ^3.8.2
-  checksum: 10c0/4591cbdf0aa8ca9eba1eac28ce07bc28d2834dd52fb5ec1393f967a1ab5f202939b04c8c5d6fb1453dd1242d9ea029f9fde154c23d4a7bf5d886ae48ca7d9ff6
+  checksum: 10c0/34b54cf1f8a7c14749b21135665fe815ce27d72fbe31e382d7df7ee3c2702e55b1126c60fb561cc0318d04c33d1f6bdc56159212107195a2a3426f3cbf5ddfe5
   languageName: node
   linkType: hard
 
@@ -280,7 +281,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@avada/functions@workspace:packages/functions"
   dependencies:
-    "@avada/core": "npm:3.3.16-alpha.8"
+    "@avada/core": "npm:3.3.19"
     "@avada/firestore-utils": "npm:0.0.3"
     "@avada/utils": "npm:^2.0.3"
     "@babel/cli": "npm:^7.6.0"
@@ -333,9 +334,9 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@avada/shopify-api@npm:1.0.0":
-  version: 1.0.0
-  resolution: "@avada/shopify-api@npm:1.0.0"
+"@avada/shopify-api@npm:1.0.1":
+  version: 1.0.1
+  resolution: "@avada/shopify-api@npm:1.0.1"
   dependencies:
     "@shopify/network": "npm:^1.5.1"
     "@types/jsonwebtoken": "npm:^8.5.0"
@@ -346,7 +347,7 @@ __metadata:
     node-fetch: "npm:^2.6.1"
     tslib: "npm:^2.0.3"
     uuid: "npm:^8.3.1"
-  checksum: 10c0/2c3ad5592606005bd46e2b779af8b9d4fab6071d0706312756ac6c75292c1d854ad4502e898a29673bfa360e5b5d263b394649a843aba7bb7ded6b14c234e2f4
+  checksum: 10c0/504e37bf5a9d4295b8a8146c2afdd64cc02d6aaa368c51cb2cc142cd613247cb53ad0370e114ca7717db518cec283ae58a908a74546e1236477f43d01496ee73
   languageName: node
   linkType: hard
 
@@ -8079,7 +8080,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"commander@npm:^2.20.0, commander@npm:^2.8.1":
+"commander@npm:^2.20.0, commander@npm:^2.20.3, commander@npm:^2.8.1":
   version: 2.20.3
   resolution: "commander@npm:2.20.3"
   checksum: 10c0/74c781a5248c2402a0a3e966a0a2bba3c054aad144f5c023364be83265e796b20565aa9feff624132ff629aa64e16999fa40a743c10c12f7c61e96a794b99288
@@ -8559,6 +8560,13 @@ __metadata:
   bin:
     cssesc: bin/cssesc
   checksum: 10c0/6bcfd898662671be15ae7827120472c5667afb3d7429f1f917737f3bf84c4176003228131b643ae74543f17a394446247df090c597bb9a728cce298606ed0aa7
+  languageName: node
+  linkType: hard
+
+"cssfilter@npm:0.0.10":
+  version: 0.0.10
+  resolution: "cssfilter@npm:0.0.10"
+  checksum: 10c0/478a227a616fb6e9bb338eb95f690df141b86231ec737cbea574484f31a09a51db894b4921afc4987459dae08d584355fd689ff2a7a7c7a74de4bb4c072ce553
   languageName: node
   linkType: hard
 
@@ -22104,6 +22112,18 @@ __metadata:
   version: 2.0.4
   resolution: "xmlcreate@npm:2.0.4"
   checksum: 10c0/fc4234e2d1942877d761d4f3d64410b54633d2ec60b13a5d56a6a06545aba39a0df8ed7ded10785a302f632eb4f0a4fedbf4bf10e17892e11d5075244b9e5705
+  languageName: node
+  linkType: hard
+
+"xss@npm:^1.0.15":
+  version: 1.0.15
+  resolution: "xss@npm:1.0.15"
+  dependencies:
+    commander: "npm:^2.20.3"
+    cssfilter: "npm:0.0.10"
+  bin:
+    xss: bin/xss
+  checksum: 10c0/9b31bee62a208f78e2b7bc8154e3ee87d980f4661dc4ab850ce6f4de7bc50eb152f0bdc13fa759ff8ab6d9bfdf8c0d79cf9f6f86249872b92181912309bccd08
   languageName: node
   linkType: hard
 

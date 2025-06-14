@@ -1,5 +1,5 @@
 (function() {
-  const BASE_URL = 'https://localhost:3458/scripttag';
+  const BASE_URL = 'https://milton-performed-fans-degrees.trycloudflare.com/scripttag';
 
   const scriptElement = document.createElement('script');
   scriptElement.type = 'text/javascript';

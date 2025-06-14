@@ -11,7 +11,7 @@
     "shell": "./node_modules/.bin/firebase functions:shell",
     "start": "avada app:serve",
     "logs": "./node_modules/.bin/firebase functions:log",
-    "emulators": "npx kill-port 8085 &&  ./node_modules/.bin/firebase emulators:start --only hosting,functions,pubsub",
+    "emulators": "npx kill-port 8085 && GOOGLE_APPLICATION_CREDENTIALS=./serviceAccount.development.json ./node_modules/.bin/firebase emulators:start --only hosting,functions,pubsub",
     "predeploy": "yarn workspace @avada/assets run production && yarn workspace @avada/functions run production",
     "eslint-fix": "npm --prefix packages/assets/ run eslint-fix && npm --prefix packages/functions/ run eslint-fix",
     "start-dev-embed": "concurrently \"yarn workspace @avada/functions run watch\"",

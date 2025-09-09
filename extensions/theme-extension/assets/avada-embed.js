@@ -1,5 +1,5 @@
 (function() {
-  const BASE_URL = 'https://milton-performed-fans-degrees.trycloudflare.com/scripttag';
+  const BASE_URL = 'https://infrastructure-subjects-fail-literary.trycloudflare.com/scripttag';
 
   const scriptElement = document.createElement('script');
   scriptElement.type = 'text/javascript';

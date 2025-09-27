@@ -12,7 +12,7 @@
     "eslint-fix": "./node_modules/.bin/eslint --fix ."
   },
   "dependencies": {
-    "@avada/core": "4.0.0-alpha.19",
+    "@avada/core": "4.0.0",
     "@avada/firestore-utils": "0.0.3",
     "@avada/utils": "^2.0.3",
     "@google-cloud/firestore": "^6.6.1",

@@ -131,7 +131,7 @@ __metadata:
   resolution: "@avada/app@workspace:."
   dependencies:
     "@avada/console": "npm:1.0.0"
-    "@shopify/cli": "npm:3.84.1-alpha.1"
+    "@shopify/cli": "npm:3.85.2"
     babel-jest: "npm:^24.9.0"
     concurrently: "npm:^7.6.0"
     delay-cli: "npm:2.0.0"
@@ -240,16 +240,16 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@avada/core@npm:4.0.0-alpha.2":
-  version: 4.0.0-alpha.2
-  resolution: "@avada/core@npm:4.0.0-alpha.2"
+"@avada/core@npm:4.0.0-alpha.19":
+  version: 4.0.0-alpha.19
+  resolution: "@avada/core@npm:4.0.0-alpha.19"
   dependencies:
     "@avada/shopify-api": "npm:1.0.1"
-    "@shopify/koa-shopify-webhooks": "npm:5.0.6"
+    "@shopify/koa-shopify-webhooks": "npm:^5.1.1"
     camelcase-keys: "npm:^6.1.2"
     crypto-js: "npm:^4.0.0"
     firebase-admin: "npm:^11.5.0"
-    koa: "npm:^2.13.4"
+    koa: "npm:^2.16.2"
     koa-router: "npm:^7.4.0"
     node-fetch: "npm:2.6.7"
     nonce: "npm:^1.0.4"
@@ -260,7 +260,7 @@ __metadata:
   peerDependencies:
     "@google-cloud/firestore": ^6.7.0
     shopify-api-node: ^3.8.2
-  checksum: 10c0/4d0b73e4241f70df19f631916b682795378cfc1dfabcb5238cd4e7a409a5e5a0784b70dcaea24159a81a0c0c1bba35d1f2bb0ca5d7352368f16904e8c5e7ca4e
+  checksum: 10c0/07e49c6dc0e256ca043709391d397208dc057de07fb09d4c4bc1707cb75d885d0b7166fdc5cfe6a4a47e2d3b67ffa93ebd637bad18bca7ae95472c88c5a9617c
   languageName: node
   linkType: hard
 
@@ -281,7 +281,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@avada/functions@workspace:packages/functions"
   dependencies:
-    "@avada/core": "npm:4.0.0-alpha.2"
+    "@avada/core": "npm:4.0.0-alpha.19"
     "@avada/firestore-utils": "npm:0.0.3"
     "@avada/utils": "npm:^2.0.3"
     "@babel/cli": "npm:^7.6.0"
@@ -292,12 +292,13 @@ __metadata:
     "@babel/preset-react": "npm:^7.0.0"
     "@google-cloud/firestore": "npm:^6.6.1"
     "@google-cloud/pubsub": "npm:^3.7.1"
-    axios: "npm:^0.27.2"
+    "@shopify/shopify-api": "npm:^12.0.0"
+    axios: "npm:^1.12.2"
     firebase-admin: "npm:11.10.0"
     firebase-functions: "npm:4.4.1"
     graphql-tag: "npm:^2.12.6"
     isomorphic-fetch: "npm:^2.2.1"
-    koa: "npm:^2.8.1"
+    koa: "npm:^2.16.2"
     koa-ejs: "npm:^4.2.0"
     koa-router: "npm:^7.4.0"
     qs: "npm:^6.11.0"
@@ -5001,6 +5002,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@shopify/admin-api-client@npm:^1.1.1":
+  version: 1.1.1
+  resolution: "@shopify/admin-api-client@npm:1.1.1"
+  dependencies:
+    "@shopify/graphql-client": "npm:^1.4.1"
+  checksum: 10c0/cf515eed5b4fe4bf14b709325ff5e6539fff2c867610d6bfcb26449e92c610cce760164e8f0845f73f8e093e8a386c1d82e6baf0522b23691dc0e5233b5546df
+  languageName: node
+  linkType: hard
+
 "@shopify/app-bridge-core@npm:1.1.1":
   version: 1.1.1
   resolution: "@shopify/app-bridge-core@npm:1.1.1"
@@ -5047,25 +5057,32 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@shopify/cli@npm:3.84.1-alpha.1":
-  version: 3.84.1-alpha.1
-  resolution: "@shopify/cli@npm:3.84.1-alpha.1"
+"@shopify/cli@npm:3.85.2":
+  version: 3.85.2
+  resolution: "@shopify/cli@npm:3.85.2"
   dependencies:
     "@ast-grep/napi": "npm:0.33.0"
     esbuild: "npm:0.25.5"
     global-agent: "npm:3.0.0"
   bin:
     shopify: bin/run.js
-  checksum: 10c0/2274a2e1dce5bddf9bbb9d6f72e1edf7b31de083e5d93495ff04a65ab26e6788eb0cfd3c675c9e02c099ae3aab67e204cac0c61e9fabad9381b847dcd8f078e5
+  checksum: 10c0/fe975102602d230def40d9c72fd6178a34695c86403f168bfb427b514293fa2dca365d609b92364129b2a4eb141d1666b30bc9cf452667411483de5709cde3fd
   conditions: (os=darwin | os=linux | os=win32)
   languageName: node
   linkType: hard
 
-"@shopify/koa-shopify-webhooks@npm:5.0.6":
-  version: 5.0.6
-  resolution: "@shopify/koa-shopify-webhooks@npm:5.0.6"
+"@shopify/graphql-client@npm:^1.4.1":
+  version: 1.4.1
+  resolution: "@shopify/graphql-client@npm:1.4.1"
+  checksum: 10c0/1b35609ac95be45567b24f3eaa09dae2f4ca13834aab93afe2fbff1b9a7261d9fb8cf089dd0948cac85ed911458d7d14168332b2869ce8d745a395792af71a44
+  languageName: node
+  linkType: hard
+
+"@shopify/koa-shopify-webhooks@npm:^5.1.1":
+  version: 5.1.1
+  resolution: "@shopify/koa-shopify-webhooks@npm:5.1.1"
   dependencies:
-    "@shopify/network": "npm:^3.2.1"
+    "@shopify/network": "npm:^3.3.0"
     "@types/koa": "npm:^2.0.0"
     koa-bodyparser: "npm:>=4.0.0 <5.0.0"
     koa-compose: "npm:>=4.0.0 <5.0.0"
@@ -5073,7 +5090,7 @@ __metadata:
     safe-compare: "npm:^1.1.3"
   peerDependencies:
     koa: ">=2.0.0"
-  checksum: 10c0/3e76cdaaafd8a08a7129e1c0fcefe10d1835a86c7df58ec8187b7476c9e76423cecb4a384d3d95b96c90c1aaa4ffd14ebf35f3df29cf95a685b360b857b46526
+  checksum: 10c0/73e766da7809bccf09e66ea44f82a104b983453af682a8353da4ec0668b347eabc51e2922c24a5eb2ede6839d53b3ae1bd8a57aff74009fa69808893d19509b0
   languageName: node
   linkType: hard
 
@@ -5084,7 +5101,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@shopify/network@npm:^3.2.1":
+"@shopify/network@npm:^3.3.0":
   version: 3.3.0
   resolution: "@shopify/network@npm:3.3.0"
   checksum: 10c0/59afcd54271eb63d8eb289b9f1d309f2d5f2bcf1b6d70cc04ddc20f156a723cb1b6e9a98f5df7c0c07501e8ec33f830623f76ee3223d3c535f20a8db46e1a2e5
@@ -5133,6 +5150,31 @@ __metadata:
     react: ^18.0.0
     react-dom: ^18.0.0
   checksum: 10c0/13edf04660e773d08d103a5441de7582abf9994a3e3da3561507f7ab67f1d62aed433982b40f87fdd20ca99e81cfa08373e216b8d8b4c6e0562402213d4ffa61
+  languageName: node
+  linkType: hard
+
+"@shopify/shopify-api@npm:^12.0.0":
+  version: 12.0.0
+  resolution: "@shopify/shopify-api@npm:12.0.0"
+  dependencies:
+    "@shopify/admin-api-client": "npm:^1.1.1"
+    "@shopify/graphql-client": "npm:^1.4.1"
+    "@shopify/storefront-api-client": "npm:^1.0.9"
+    compare-versions: "npm:^6.1.1"
+    isbot: "npm:^5.1.26"
+    jose: "npm:^5.9.6"
+    lossless-json: "npm:^4.2.0"
+    tslib: "npm:^2.8.1"
+  checksum: 10c0/cfd881f628a4381a8c9cb09f880a99b9bb8ea19e5eab6ea03edcaba5402bb38df0afdc1ce5049d20996a81c51ea70b48c97e667acc4b74f61565801e9c48283b
+  languageName: node
+  linkType: hard
+
+"@shopify/storefront-api-client@npm:^1.0.9":
+  version: 1.0.9
+  resolution: "@shopify/storefront-api-client@npm:1.0.9"
+  dependencies:
+    "@shopify/graphql-client": "npm:^1.4.1"
+  checksum: 10c0/5381e24a173fc904a2a12c2db1cc85d066250596139cf48c2b254bd1323bc0a554f05c191aca22eaacc4af7ab2fbb50a275087d93fe53b6ee2f8701484c4c6a8
   languageName: node
   linkType: hard
 
@@ -6670,6 +6712,17 @@ __metadata:
     follow-redirects: "npm:^1.14.9"
     form-data: "npm:^4.0.0"
   checksum: 10c0/76d673d2a90629944b44d6f345f01e58e9174690f635115d5ffd4aca495d99bcd8f95c590d5ccb473513f5ebc1d1a6e8934580d0c57cdd0498c3a101313ef771
+  languageName: node
+  linkType: hard
+
+"axios@npm:^1.12.2":
+  version: 1.12.2
+  resolution: "axios@npm:1.12.2"
+  dependencies:
+    follow-redirects: "npm:^1.15.6"
+    form-data: "npm:^4.0.4"
+    proxy-from-env: "npm:^1.1.0"
+  checksum: 10c0/80b063e318cf05cd33a4d991cea0162f3573481946f9129efb7766f38fde4c061c34f41a93a9f9521f02b7c9565ccbc197c099b0186543ac84a24580017adfed
   languageName: node
   linkType: hard
 
@@ -8703,6 +8756,13 @@ __metadata:
   version: 1.0.1
   resolution: "commondir@npm:1.0.1"
   checksum: 10c0/33a124960e471c25ee19280c9ce31ccc19574b566dc514fe4f4ca4c34fa8b0b57cf437671f5de380e11353ea9426213fca17687dd2ef03134fea2dbc53809fd6
+  languageName: node
+  linkType: hard
+
+"compare-versions@npm:^6.1.1":
+  version: 6.1.1
+  resolution: "compare-versions@npm:6.1.1"
+  checksum: 10c0/415205c7627f9e4f358f571266422980c9fe2d99086be0c9a48008ef7c771f32b0fbe8e97a441ffedc3910872f917a0675fe0fe3c3b6d331cda6d8690be06338
   languageName: node
   linkType: hard
 
@@ -11530,6 +11590,19 @@ __metadata:
   languageName: node
   linkType: hard
 
+"form-data@npm:^4.0.4":
+  version: 4.0.4
+  resolution: "form-data@npm:4.0.4"
+  dependencies:
+    asynckit: "npm:^0.4.0"
+    combined-stream: "npm:^1.0.8"
+    es-set-tostringtag: "npm:^2.1.0"
+    hasown: "npm:^2.0.2"
+    mime-types: "npm:^2.1.12"
+  checksum: 10c0/373525a9a034b9d57073e55eab79e501a714ffac02e7a9b01be1c820780652b16e4101819785e1e18f8d98f0aee866cc654d660a435c378e16a72f2e7cac9695
+  languageName: node
+  linkType: hard
+
 "form-data@npm:~2.3.2":
   version: 2.3.3
   resolution: "form-data@npm:2.3.3"
@@ -13733,6 +13806,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"isbot@npm:^5.1.26":
+  version: 5.1.31
+  resolution: "isbot@npm:5.1.31"
+  checksum: 10c0/e78d3d50a90443e1870cb0ec44e34443d5f2beedc32301fe85cba310252e69d6105ac802e6109a1878c5a489a0a632d35bc2c6d31c1f4f4d639f8017064adea2
+  languageName: node
+  linkType: hard
+
 "isexe@npm:^2.0.0":
   version: 2.0.0
   resolution: "isexe@npm:2.0.0"
@@ -14364,6 +14444,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"jose@npm:^5.9.6":
+  version: 5.10.0
+  resolution: "jose@npm:5.10.0"
+  checksum: 10c0/e20d9fc58d7e402f2e5f04e824b8897d5579aae60e64cb88ebdea1395311c24537bf4892f7de413fab1acf11e922797fb1b42269bc8fc65089a3749265ccb7b0
+  languageName: node
+  linkType: hard
+
 "jpeg-js@npm:^0.1.1":
   version: 0.1.2
   resolution: "jpeg-js@npm:0.1.2"
@@ -14962,9 +15049,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"koa@npm:^2.13.4, koa@npm:^2.8.1":
-  version: 2.16.1
-  resolution: "koa@npm:2.16.1"
+"koa@npm:^2.16.2":
+  version: 2.16.2
+  resolution: "koa@npm:2.16.2"
   dependencies:
     accepts: "npm:^1.3.5"
     cache-content-type: "npm:^1.0.0"
@@ -14989,7 +15076,7 @@ __metadata:
     statuses: "npm:^1.5.0"
     type-is: "npm:^1.6.16"
     vary: "npm:^1.1.2"
-  checksum: 10c0/66beb2e4d7968e1081341ea9a9c1f7f3fad4aaa0475c813f1be79ed84c345d9d45de9e34eeee3cdd790fc81ee5efbde2223d49fd5da571e29b0b3bed6baafb8e
+  checksum: 10c0/42bc74e5283bd9251ad8fe67d65af52c68c23a1000fc66e9015b830da6dae55c88da9bdd2402de849ca30066e8b5b55a5f2820159261044aea460c1f25ef5250
   languageName: node
   linkType: hard
 
@@ -15456,6 +15543,13 @@ __metadata:
   bin:
     loose-envify: cli.js
   checksum: 10c0/655d110220983c1a4b9c0c679a2e8016d4b67f6e9c7b5435ff5979ecdb20d0813f4dec0a08674fcbdd4846a3f07edbb50a36811fd37930b94aaa0d9daceb017e
+  languageName: node
+  linkType: hard
+
+"lossless-json@npm:^4.2.0":
+  version: 4.2.0
+  resolution: "lossless-json@npm:4.2.0"
+  checksum: 10c0/e937f69f832b0ec68811145eb7b9a2dc7ed41e03158ef7a8cd1638b2006ea5a154279b019da6fecd61b7725ea013138be361c25f43ac64de6e3b70bf9c98df2a
   languageName: node
   linkType: hard
 
@@ -21926,7 +22020,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"tslib@npm:^2.0.0, tslib@npm:^2.0.1, tslib@npm:^2.0.3, tslib@npm:^2.1.0, tslib@npm:^2.4.0":
+"tslib@npm:^2.0.0, tslib@npm:^2.0.1, tslib@npm:^2.0.3, tslib@npm:^2.1.0, tslib@npm:^2.4.0, tslib@npm:^2.8.1":
   version: 2.8.1
   resolution: "tslib@npm:2.8.1"
   checksum: 10c0/9c4759110a19c53f992d9aae23aac5ced636e99887b51b9e61def52611732872ff7668757d4e4c61f19691e36f4da981cd9485e869b4a7408d689f6bf1f14e62

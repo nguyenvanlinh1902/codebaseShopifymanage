@@ -50,13 +50,6 @@ function createEmbedApp() {
  */
 function createApi() {
   const prefix = getApiPrefix(isEmbeddedAppEnv);
-  getSessionToken(embedApp).then(token => {
-    console.log('token session', token);
-  });
-  shopify.scopes.query().then(scope => {
-    console.log('scope', scope);
-  });
-
   if (isEmbeddedAppEnv) {
     const fetchFunction = fetch;
     return async (uri, options = {}) => {

@@ -1,4 +1,4 @@
-import {getCurrentShop} from '@functions/helpers/auth';
+import {getCurrentShopData} from '@functions/helpers/auth';
 
 /**
  * @param {*} err
@@ -6,5 +6,10 @@ import {getCurrentShop} from '@functions/helpers/auth';
  * @return {Promise<void>}
  */
 export function handleError(err, ctx) {
-  console.error('Handle error here koa', err);
+  const user = getCurrentShopData(ctx);
+  if (user) {
+    console.error('handle error ===', user.shopID, '===', user.shop?.shopifyDomain, '===', err);
+  } else {
+    console.error('Unauthenticated', err);
+  }
 }

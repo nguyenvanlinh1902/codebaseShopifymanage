@@ -51,8 +51,6 @@ app.use(
         success: true
       });
     },
-    afterLogin: ctx => {},
-    afterInstall: ctx => {},
     optionalScopes: shopifyOptionalScopes
   }).routes()
 );

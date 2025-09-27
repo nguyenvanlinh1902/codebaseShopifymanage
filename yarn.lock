@@ -292,7 +292,6 @@ __metadata:
     "@babel/preset-react": "npm:^7.0.0"
     "@google-cloud/firestore": "npm:^6.6.1"
     "@google-cloud/pubsub": "npm:^3.7.1"
-    "@shopify/shopify-api": "npm:^12.0.0"
     axios: "npm:^1.12.2"
     firebase-admin: "npm:11.10.0"
     firebase-functions: "npm:4.4.1"
@@ -5002,15 +5001,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@shopify/admin-api-client@npm:^1.1.1":
-  version: 1.1.1
-  resolution: "@shopify/admin-api-client@npm:1.1.1"
-  dependencies:
-    "@shopify/graphql-client": "npm:^1.4.1"
-  checksum: 10c0/cf515eed5b4fe4bf14b709325ff5e6539fff2c867610d6bfcb26449e92c610cce760164e8f0845f73f8e093e8a386c1d82e6baf0522b23691dc0e5233b5546df
-  languageName: node
-  linkType: hard
-
 "@shopify/app-bridge-core@npm:1.1.1":
   version: 1.1.1
   resolution: "@shopify/app-bridge-core@npm:1.1.1"
@@ -5068,13 +5058,6 @@ __metadata:
     shopify: bin/run.js
   checksum: 10c0/fe975102602d230def40d9c72fd6178a34695c86403f168bfb427b514293fa2dca365d609b92364129b2a4eb141d1666b30bc9cf452667411483de5709cde3fd
   conditions: (os=darwin | os=linux | os=win32)
-  languageName: node
-  linkType: hard
-
-"@shopify/graphql-client@npm:^1.4.1":
-  version: 1.4.1
-  resolution: "@shopify/graphql-client@npm:1.4.1"
-  checksum: 10c0/1b35609ac95be45567b24f3eaa09dae2f4ca13834aab93afe2fbff1b9a7261d9fb8cf089dd0948cac85ed911458d7d14168332b2869ce8d745a395792af71a44
   languageName: node
   linkType: hard
 
@@ -5150,31 +5133,6 @@ __metadata:
     react: ^18.0.0
     react-dom: ^18.0.0
   checksum: 10c0/13edf04660e773d08d103a5441de7582abf9994a3e3da3561507f7ab67f1d62aed433982b40f87fdd20ca99e81cfa08373e216b8d8b4c6e0562402213d4ffa61
-  languageName: node
-  linkType: hard
-
-"@shopify/shopify-api@npm:^12.0.0":
-  version: 12.0.0
-  resolution: "@shopify/shopify-api@npm:12.0.0"
-  dependencies:
-    "@shopify/admin-api-client": "npm:^1.1.1"
-    "@shopify/graphql-client": "npm:^1.4.1"
-    "@shopify/storefront-api-client": "npm:^1.0.9"
-    compare-versions: "npm:^6.1.1"
-    isbot: "npm:^5.1.26"
-    jose: "npm:^5.9.6"
-    lossless-json: "npm:^4.2.0"
-    tslib: "npm:^2.8.1"
-  checksum: 10c0/cfd881f628a4381a8c9cb09f880a99b9bb8ea19e5eab6ea03edcaba5402bb38df0afdc1ce5049d20996a81c51ea70b48c97e667acc4b74f61565801e9c48283b
-  languageName: node
-  linkType: hard
-
-"@shopify/storefront-api-client@npm:^1.0.9":
-  version: 1.0.9
-  resolution: "@shopify/storefront-api-client@npm:1.0.9"
-  dependencies:
-    "@shopify/graphql-client": "npm:^1.4.1"
-  checksum: 10c0/5381e24a173fc904a2a12c2db1cc85d066250596139cf48c2b254bd1323bc0a554f05c191aca22eaacc4af7ab2fbb50a275087d93fe53b6ee2f8701484c4c6a8
   languageName: node
   linkType: hard
 
@@ -8756,13 +8714,6 @@ __metadata:
   version: 1.0.1
   resolution: "commondir@npm:1.0.1"
   checksum: 10c0/33a124960e471c25ee19280c9ce31ccc19574b566dc514fe4f4ca4c34fa8b0b57cf437671f5de380e11353ea9426213fca17687dd2ef03134fea2dbc53809fd6
-  languageName: node
-  linkType: hard
-
-"compare-versions@npm:^6.1.1":
-  version: 6.1.1
-  resolution: "compare-versions@npm:6.1.1"
-  checksum: 10c0/415205c7627f9e4f358f571266422980c9fe2d99086be0c9a48008ef7c771f32b0fbe8e97a441ffedc3910872f917a0675fe0fe3c3b6d331cda6d8690be06338
   languageName: node
   linkType: hard
 
@@ -13806,13 +13757,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"isbot@npm:^5.1.26":
-  version: 5.1.31
-  resolution: "isbot@npm:5.1.31"
-  checksum: 10c0/e78d3d50a90443e1870cb0ec44e34443d5f2beedc32301fe85cba310252e69d6105ac802e6109a1878c5a489a0a632d35bc2c6d31c1f4f4d639f8017064adea2
-  languageName: node
-  linkType: hard
-
 "isexe@npm:^2.0.0":
   version: 2.0.0
   resolution: "isexe@npm:2.0.0"
@@ -14441,13 +14385,6 @@ __metadata:
   version: 4.15.9
   resolution: "jose@npm:4.15.9"
   checksum: 10c0/4ed4ddf4a029db04bd167f2215f65d7245e4dc5f36d7ac3c0126aab38d66309a9e692f52df88975d99429e357e5fd8bab340ff20baab544d17684dd1d940a0f4
-  languageName: node
-  linkType: hard
-
-"jose@npm:^5.9.6":
-  version: 5.10.0
-  resolution: "jose@npm:5.10.0"
-  checksum: 10c0/e20d9fc58d7e402f2e5f04e824b8897d5579aae60e64cb88ebdea1395311c24537bf4892f7de413fab1acf11e922797fb1b42269bc8fc65089a3749265ccb7b0
   languageName: node
   linkType: hard
 
@@ -15543,13 +15480,6 @@ __metadata:
   bin:
     loose-envify: cli.js
   checksum: 10c0/655d110220983c1a4b9c0c679a2e8016d4b67f6e9c7b5435ff5979ecdb20d0813f4dec0a08674fcbdd4846a3f07edbb50a36811fd37930b94aaa0d9daceb017e
-  languageName: node
-  linkType: hard
-
-"lossless-json@npm:^4.2.0":
-  version: 4.2.0
-  resolution: "lossless-json@npm:4.2.0"
-  checksum: 10c0/e937f69f832b0ec68811145eb7b9a2dc7ed41e03158ef7a8cd1638b2006ea5a154279b019da6fecd61b7725ea013138be361c25f43ac64de6e3b70bf9c98df2a
   languageName: node
   linkType: hard
 
@@ -22020,7 +21950,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"tslib@npm:^2.0.0, tslib@npm:^2.0.1, tslib@npm:^2.0.3, tslib@npm:^2.1.0, tslib@npm:^2.4.0, tslib@npm:^2.8.1":
+"tslib@npm:^2.0.0, tslib@npm:^2.0.1, tslib@npm:^2.0.3, tslib@npm:^2.1.0, tslib@npm:^2.4.0":
   version: 2.8.1
   resolution: "tslib@npm:2.8.1"
   checksum: 10c0/9c4759110a19c53f992d9aae23aac5ced636e99887b51b9e61def52611732872ff7668757d4e4c61f19691e36f4da981cd9485e869b4a7408d689f6bf1f14e62

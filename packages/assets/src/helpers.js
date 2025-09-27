@@ -5,7 +5,6 @@ import {initializeApp} from 'firebase/app';
 import {getAuth} from 'firebase/auth';
 import {getApiPrefix} from '@functions/const/app';
 import isEmbeddedAppEnv from '@assets/helpers/isEmbeddedAppEnv';
-import {getSessionToken} from '@shopify/app-bridge-utils';
 
 const app = initializeApp({
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
@@ -50,6 +49,7 @@ function createEmbedApp() {
  */
 function createApi() {
   const prefix = getApiPrefix(isEmbeddedAppEnv);
+
   if (isEmbeddedAppEnv) {
     const fetchFunction = fetch;
     return async (uri, options = {}) => {

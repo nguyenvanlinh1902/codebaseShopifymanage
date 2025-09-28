@@ -240,9 +240,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@avada/core@npm:4.0.0":
-  version: 4.0.0
-  resolution: "@avada/core@npm:4.0.0"
+"@avada/core@npm:4.0.1":
+  version: 4.0.1
+  resolution: "@avada/core@npm:4.0.1"
   dependencies:
     "@avada/shopify-api": "npm:1.0.1"
     "@shopify/koa-shopify-webhooks": "npm:^5.1.1"
@@ -260,7 +260,7 @@ __metadata:
   peerDependencies:
     "@google-cloud/firestore": ^6.7.0
     shopify-api-node: ^3.8.2
-  checksum: 10c0/ee36debaaf9e912941327d16bb9594d177a21d9d853081bb1b888a1859ee945fef01b792c8330d0f35e4b94912c2c9982c6c94137c2a5816dfd0f7b6f3932f5c
+  checksum: 10c0/c323405f7b40728e26d9293cebbb135bcd9acdfdd94c02caea9ecdd368cd466493c0d2795dbd74104bb6abcb1493912f3a1a87da685531a615acdf6519941256
   languageName: node
   linkType: hard
 
@@ -281,7 +281,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@avada/functions@workspace:packages/functions"
   dependencies:
-    "@avada/core": "npm:4.0.0"
+    "@avada/core": "npm:4.0.1"
     "@avada/firestore-utils": "npm:0.0.3"
     "@avada/utils": "npm:^2.0.3"
     "@babel/cli": "npm:^7.6.0"

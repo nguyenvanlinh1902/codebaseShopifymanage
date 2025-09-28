@@ -1,4 +1,4 @@
-import {getCurrentUser} from '@functions/helpers/auth';
+import {getCurrentShopData} from '@functions/helpers/auth';
 
 /**
  * @param {*} err
@@ -6,7 +6,7 @@ import {getCurrentUser} from '@functions/helpers/auth';
  * @return {Promise<void>}
  */
 export function handleError(err, ctx) {
-  const user = getCurrentUser(ctx);
+  const user = getCurrentShopData(ctx);
   if (user) {
     console.error('handle error ===', user.shopID, '===', user.shop?.shopifyDomain, '===', err);
   } else {

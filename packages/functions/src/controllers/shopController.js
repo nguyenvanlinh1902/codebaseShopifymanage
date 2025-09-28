@@ -7,8 +7,13 @@ import {getShopById} from '@functions/repositories/shopRepository';
  * @returns {Promise<{shop, shopInfo: *}>}
  */
 export async function getUserShops(ctx) {
-  const shopId = getCurrentShop(ctx);
-  const [shop, shopInfo] = await Promise.all([getShopById(shopId), getShopInfoByShopId(shopId)]);
+  try {
+    const shopId = getCurrentShop(ctx);
+    const [shop, shopInfo] = await Promise.all([getShopById(shopId), getShopInfoByShopId(shopId)]);
 
-  ctx.body = {shop, shopInfo};
+    ctx.body = {shop, shopInfo};
+  } catch (e) {
+    console.error(e);
+    ctx.body = {shop: null, shopInfo: null};
+  }
 }

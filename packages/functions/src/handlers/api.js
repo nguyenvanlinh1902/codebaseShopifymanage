@@ -12,15 +12,7 @@ import shopifyOptionalScopes from '@functions/config/shopifyOptionalScopes';
 // Initialize all demand configuration for an application
 const api = new App();
 api.proxy = true;
-const verifyEmbedConfig = {
-  returnHeader: true,
-  apiKey: shopifyConfig.apiKey,
-  scopes: shopifyConfig.scopes,
-  secret: shopifyConfig.secret,
-  hostName: appConfig.baseUrl,
-  isEmbeddedApp: true,
-  optionalScopes: shopifyOptionalScopes
-};
+
 render(api, {
   cache: true,
   debug: false,
@@ -29,8 +21,29 @@ render(api, {
   viewExt: 'html'
 });
 api.use(createErrorHandler());
-api.use(verifyEmbedRequest(verifyEmbedConfig));
-
+api.use(
+  verifyEmbedRequest({
+    returnHeader: true,
+    apiKey: shopifyConfig.apiKey,
+    scopes: shopifyConfig.scopes,
+    secret: shopifyConfig.secret,
+    hostName: appConfig.baseUrl,
+    isEmbeddedApp: true,
+    optionalScopes: shopifyOptionalScopes,
+    accessTokenKey: shopifyConfig.accessTokenKey,
+    afterLogin: ctx => {},
+    afterInstall: ctx => {
+      console.log('This is the after install');
+    },
+    initialPlan: {
+      id: 'free',
+      name: 'Free',
+      price: 0,
+      trialDays: 0,
+      features: {}
+    }
+  })
+);
 const router = apiRouter(true);
 // Register all routes for the application
 api.use(router.allowedMethods());

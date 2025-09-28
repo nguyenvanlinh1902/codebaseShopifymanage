@@ -1,0 +1,53 @@
+image: registry.gitlab.com/anhnt34/avada-docker-image-cicd:latest
+
+stages: # List of stages for jobs and their order of execution
+  - deploy
+
+# Cache modules in between jobs
+cache:
+  paths:
+    - .yarn-cache/
+    - packages/*/.yarn-cache/
+
+before_script:
+  - corepack enable
+  - corepack prepare yarn@4.9.1 --activate
+  - yarn --version # (optional, for debugging)
+
+# Production environment, deploy a new version for application
+# Run only when release a new version with a new tag from Gitlab
+production:
+  stage: deploy
+
+  environment:
+    name: production
+
+  artifacts:
+    paths:
+      - 'static/'
+
+  only:
+    - update/s-cli-new-auth
+
+  except:
+    variables:
+      - $CI_COMMIT_TITLE =~ /\[deploy-only]/
+
+  script:
+    - yarn install
+    - echo VITE_APP_DEPLOYED_BRANCH=$CI_COMMIT_REF_NAME >> packages/assets/.env.production
+    - echo "VITE_DEPLOY_TIME=$(TZ='Asia/Ho_Chi_Minh' date +'%Y-%m-%d %H:%M:%S')" >> packages/assets/.env.production
+    - echo VITE_DEPLOYED_BY=$GITLAB_USER_NAME >> packages/assets/.env.production
+    # Export all variables to /asset/.env.production
+    - echo VITE_SHOPIFY_API_KEY=$PROD_SHOPIFY_API_KEY >> packages/assets/.env.production
+    - echo VITE_FIREBASE_API_KEY=$PROD_FIREBASE_API_KEY >> packages/assets/.env.production
+    - echo VITE_FIREBASE_AUTH_DOMAIN=$PROD_FIREBASE_AUTH_DOMAIN >> packages/assets/.env.production
+    - echo VITE_FIREBASE_PROJECT_ID=$PROD_FIREBASE_PROJECT_ID >> packages/assets/.env.production
+    - echo VITE_FIREBASE_STORAGE_BUCKET=$PROD_FIREBASE_STORAGE_BUCKET >> packages/assets/.env.production
+    - echo VITE_FIREBASE_APP_ID=$PROD_FIREBASE_APP_ID >> packages/assets/.env.production
+    - echo VITE_FIREBASE_MEASUREMENT_ID=$PROD_FIREBASE_MEASUREMENT_ID >> packages/assets/.env.production
+    - yarn predeploy
+    - npm install -g firebase-tools@13.15.2
+    - echo $FIREBASE_DEPLOY_KEY
+    - ./node_modules/.bin/firebase use --token $FIREBASE_DEPLOY_KEY thomas-app-base-template
+    - ./node_modules/.bin/firebase deploy -m "Pipeline $CI_PIPELINE_ID, build $CI_BUILD_ID" --non-interactive --token $FIREBASE_DEPLOY_KEY --force

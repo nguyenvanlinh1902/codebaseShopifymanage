@@ -14,7 +14,7 @@ const environmentPath = !process.env.ENVIRONMENT ? '.env' : `.env.${process.env.
 require('dotenv').config({path: path.resolve(__dirname, environmentPath)}); // read file .env.development
 const host = process.env.HOST ? process.env.HOST.replace(/https?:\/\//, '') : localhost;
 const isEmbed = process.env.IS_EMBEDDED_APP === 'yes';
-const templateOutFile = isEmbed ? 'embed.html' : 'standalone.html';
+const templateOutFile = isEmbed ? 'embed-template.html' : 'standalone.html';
 const fePort = process.env.FRONTEND_PORT || 3000 + APP_PORT; // vite server port
 const bePort = process.env.BACKEND_PORT || 5000 + APP_PORT; // hosting/API port
 
@@ -119,6 +119,7 @@ function updateEnvFile(file, data) {
 /** @type {ProxyOptions} */
 const proxyConfig = {
   '^/api(/|(\\?.*)?$)': proxyOptions,
+  '^/embed(/|(\\?.*)?$)': proxyOptions,
   '^/authSa(/|(\\?.*)?$)': proxyOptions,
   '^/auth(/|(\\?.*)?$)': proxyOptions,
   '^/apiSa(/|(\\?.*)?$)': proxyOptions,

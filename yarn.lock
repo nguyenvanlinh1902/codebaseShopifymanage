@@ -131,7 +131,7 @@ __metadata:
   resolution: "@avada/app@workspace:."
   dependencies:
     "@avada/console": "npm:1.0.0"
-    "@shopify/cli": "npm:3.85.2"
+    "@shopify/cli": "npm:3.85.5"
     babel-jest: "npm:^24.9.0"
     concurrently: "npm:^7.6.0"
     delay-cli: "npm:2.0.0"
@@ -300,6 +300,7 @@ __metadata:
     koa: "npm:^2.16.2"
     koa-ejs: "npm:^4.2.0"
     koa-router: "npm:^7.4.0"
+    node-fetch: "npm:^2.6.7"
     qs: "npm:^6.11.0"
     shopify-api-node: "npm:3.11.0"
   languageName: unknown
@@ -5047,16 +5048,16 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@shopify/cli@npm:3.85.2":
-  version: 3.85.2
-  resolution: "@shopify/cli@npm:3.85.2"
+"@shopify/cli@npm:3.85.5":
+  version: 3.85.5
+  resolution: "@shopify/cli@npm:3.85.5"
   dependencies:
     "@ast-grep/napi": "npm:0.33.0"
     esbuild: "npm:0.25.5"
     global-agent: "npm:3.0.0"
   bin:
     shopify: bin/run.js
-  checksum: 10c0/fe975102602d230def40d9c72fd6178a34695c86403f168bfb427b514293fa2dca365d609b92364129b2a4eb141d1666b30bc9cf452667411483de5709cde3fd
+  checksum: 10c0/c9097fd625f6c92bfc4ae57b934e850b99722754d773437b103bb14447405fb3824483d5ff0176c38a0a15d05696aacf78e8934c7a02667ef268c6f7f7948c9a
   conditions: (os=darwin | os=linux | os=win32)
   languageName: node
   linkType: hard

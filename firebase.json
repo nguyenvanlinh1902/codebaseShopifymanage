@@ -58,8 +58,16 @@
         "function": "authSa"
       },
       {
+        "source": "/embed.html",
+        "function": "embedApp"
+      },
+      {
         "source": "/embed/**",
-        "destination": "/embed.html"
+        "function": "embedApp"
+      },
+      {
+        "source": "/embed",
+        "function": "embedApp"
       },
       {
         "source": "**",
@@ -67,6 +75,15 @@
       }
     ],
     "headers": [
+      {
+        "source": "embed.html",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache, no-store, must-revalidate"
+          }
+        ]
+      },
       {
         "source": "sw.js",
         "headers": [

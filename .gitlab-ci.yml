@@ -1,4 +1,4 @@
-image: registry.gitlab.com/anhnt34/avada-docker-image-cicd:latest
+image: registry.gitlab.com/anhnt34/avada-docker-image-cicd:wasm2-node-20-19-5
 
 stages: # List of stages for jobs and their order of execution
   - deploy

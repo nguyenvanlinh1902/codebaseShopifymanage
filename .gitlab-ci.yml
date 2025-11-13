@@ -27,7 +27,7 @@ production:
       - 'static/'
 
   only:
-    - update/s-cli-new-auth
+    - update/vite7
 
   except:
     variables:

@@ -6,9 +6,9 @@
     "node": "20"
   },
   "scripts": {
-    "production": "babel src --out-dir lib --copy-files --include-dotfiles",
-    "development": "babel src --out-dir lib --copy-files --source-maps --include-dotfiles",
-    "watch": "babel src --out-dir lib --copy-files --source-maps --include-dotfiles --watch --verbose",
+    "production": "node esbuild.config.js --production",
+    "development": "node esbuild.config.js",
+    "watch": "node esbuild.config.js --watch",
     "eslint-fix": "./node_modules/.bin/eslint --fix ."
   },
   "dependencies": {
@@ -30,11 +30,9 @@
     "shopify-api-node": "3.11.0"
   },
   "devDependencies": {
-    "@babel/cli": "^7.6.0",
-    "@babel/core": "^7.6.0",
-    "@babel/plugin-proposal-object-rest-spread": "^7.20.7",
-    "@babel/plugin-proposal-optional-chaining": "^7.21.0",
-    "@babel/preset-env": "^7.6.0",
-    "@babel/preset-react": "^7.0.0"
+    "chokidar": "^3.5.3",
+    "esbuild": "^0.20.0",
+    "fs-extra": "^11.2.0",
+    "glob": "^10.3.10"
   }
 }

@@ -13,7 +13,7 @@ export default function Home() {
   const {openFullscreen} = useContext(MaxModalContext);
 
   return (
-    <Page title="Dashboard">
+    <Page title="Dashboard 1234">
       <Layout>
         <Layout.Section>
           <BlockStack gap="400">

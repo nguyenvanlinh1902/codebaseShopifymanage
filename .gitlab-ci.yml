@@ -27,7 +27,7 @@ production:
       - 'static/'
 
   only:
-    - update/vite7
+    - node-22
 
   except:
     variables:

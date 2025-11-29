@@ -10,7 +10,9 @@ import {logger} from 'firebase-functions/v2';
 export async function getUserShops(ctx) {
   try {
     const shopId = getCurrentShop(ctx);
+    logger.info('Get user shops', shopId);
     const [shop, shopInfo] = await Promise.all([getShopById(shopId), getShopInfoByShopId(shopId)]);
+    logger.info('Got shop info', shopInfo);
 
     ctx.body = {shop, shopInfo};
   } catch (e) {

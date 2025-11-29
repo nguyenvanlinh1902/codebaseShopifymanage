@@ -140,7 +140,7 @@ __metadata:
     eslint-config-prettier: "npm:^6.2.0"
     eslint-plugin-prettier: "npm:^3.1.0"
     eslint-plugin-react: "npm:^7.16.0"
-    firebase-tools: "npm:^13.29.1"
+    firebase-tools: "npm:^13.35.1"
     jest: "npm:^24.9.0"
     prettier: "npm:^1.18.2"
   languageName: unknown
@@ -11742,7 +11742,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"firebase-tools@npm:^13.29.1":
+"firebase-tools@npm:^13.35.1":
   version: 13.35.1
   resolution: "firebase-tools@npm:13.35.1"
   dependencies:

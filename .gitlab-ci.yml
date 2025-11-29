@@ -49,5 +49,6 @@ production:
     - yarn predeploy
     - npm install -g firebase-tools@13.15.2
     - echo $FIREBASE_DEPLOY_KEY
+    - echo "$STAGING_ENV_FILE" >> packages/functions/.env
     - ./node_modules/.bin/firebase use --token $FIREBASE_DEPLOY_KEY thomas-app-base-template
     - ./node_modules/.bin/firebase deploy -m "Pipeline $CI_PIPELINE_ID, build $CI_BUILD_ID" --non-interactive --token $FIREBASE_DEPLOY_KEY --force

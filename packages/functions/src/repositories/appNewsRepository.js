@@ -1,6 +1,7 @@
 import {api} from '@functions/helpers/api';
 import cleanEmptyField from '@functions/helpers/utils/cleanEmptyField';
 import qs from 'qs';
+import {logger} from 'firebase-functions/v2';
 
 const BASE_URL = 'https://blog-admin.avada.io/articles';
 
@@ -16,7 +17,7 @@ export async function getAppNewsList(query) {
     );
     return await paginateStrapi({...query, where});
   } catch (e) {
-    console.error(e);
+    logger.error(e);
     return {data: [], count: 0, hasPre: false, hasNext: true, error: e.message};
   }
 }

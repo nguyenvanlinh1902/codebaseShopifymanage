@@ -1,5 +1,5 @@
 (function() {
-  const BASE_URL = 'https://laser-containers-sources-texture.trycloudflare.com/scripttag';
+  const BASE_URL = 'https://portable-beijing-acquisitions-plugin.trycloudflare.com/scripttag';
 
   const scriptElement = document.createElement('script');
   scriptElement.type = 'text/javascript';

@@ -8,6 +8,7 @@ import createErrorHandler from '@functions/middleware/errorHandler';
 import firebase from 'firebase-admin';
 import appConfig from '@functions/config/app';
 import shopifyOptionalScopes from '@functions/config/shopifyOptionalScopes';
+import {logger} from 'firebase-functions/v2';
 
 if (firebase.apps.length === 0) {
   firebase.initializeApp();
@@ -57,7 +58,7 @@ app.use(
 
 // Handling all errors
 app.on('error', err => {
-  console.error(err);
+  logger.error(err);
 });
 
 export default app;

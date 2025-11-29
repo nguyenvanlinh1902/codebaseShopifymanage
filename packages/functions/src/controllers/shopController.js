@@ -1,6 +1,7 @@
 import {getCurrentShop} from '../helpers/auth';
 import {getShopInfoByShopId} from '@functions/repositories/shopInfoRepository';
 import {getShopById} from '@functions/repositories/shopRepository';
+import {logger} from 'firebase-functions/v2';
 
 /**
  * @param ctx
@@ -13,7 +14,7 @@ export async function getUserShops(ctx) {
 
     ctx.body = {shop, shopInfo};
   } catch (e) {
-    console.error(e);
+    logger.error(e);
     ctx.body = {shop: null, shopInfo: null};
   }
 }

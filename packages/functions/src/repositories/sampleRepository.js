@@ -1,4 +1,5 @@
 import {Firestore} from '@google-cloud/firestore';
+import {logger} from 'firebase-functions/v2';
 
 /**
  * @documentation
@@ -22,7 +23,7 @@ export async function getSampleRepoById(id) {
     }
     return {id: doc.id, ...doc.data()};
   } catch (e) {
-    console.error(e);
+    logger.error(e);
     return null;
   }
 }

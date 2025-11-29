@@ -9,6 +9,7 @@ const Shopify = require('shopify-api-node');
 const fs = require('fs');
 const {formatDateFields} = require('@avada/firestore-utils');
 const {prepareShopData} = require('@avada/core');
+const {logger} = require('firebase-functions/v2');
 const FieldValue = admin.firestore.FieldValue;
 const FieldPath = admin.firestore.FieldPath;
 const db = admin.firestore();
@@ -28,7 +29,7 @@ const shopRef = db.collection('shops');
     const shop = formatDateFields(doc.data());
     const shopData = prepareShopData(doc.id, shop, 'avada-apps-access-token');
 
-    console.log(`Initializing Shopify client for shop: ${shopData.shopifyDomain}`);
+    logger.info(`Initializing Shopify client for shop: ${shopData.shopifyDomain}`);
     const shopify = new Shopify({
       accessToken: shopData.accessToken,
       shopName: shopData.shopifyDomain,
@@ -37,17 +38,17 @@ const shopRef = db.collection('shops');
     });
 
     const data = await shopify.accessScope.list();
-    console.log(data);
+    logger.info(data);
 
     const customers = await shopify.customer.list();
-    console.log(customers);
+    logger.info(customers);
   } catch (e) {
-    console.error(e);
+    logger.error(e);
   }
 })();
 
 function writeLog(name, ...string) {
-  console.log(string.join(' '));
+  logger.info(string.join(' '));
   fs.appendFileSync(`./log/${name}.log`, string.join(',') + '\n');
 }
 

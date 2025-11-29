@@ -1,4 +1,5 @@
 import {getCurrentShopData} from '@functions/helpers/auth';
+import {logger} from 'firebase-functions/v2';
 
 /**
  * @param {*} err
@@ -8,8 +9,8 @@ import {getCurrentShopData} from '@functions/helpers/auth';
 export function handleError(err, ctx) {
   const user = getCurrentShopData(ctx);
   if (user) {
-    console.error('handle error ===', user.shopID, '===', user.shop?.shopifyDomain, '===', err);
+    logger.error('handle error ===', user.shopID, '===', user.shop?.shopifyDomain, '===', err);
   } else {
-    console.error('Unauthenticated', err);
+    logger.error('Unauthenticated', err);
   }
 }

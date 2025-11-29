@@ -51,25 +51,12 @@ const shopifyApiSecret = process.env.SHOPIFY_API_SECRET;
 if (!isProduction && shopifyApiKey) {
   try {
     const baseUrl = process.env.HOST.replace('https://', '');
-    const runtimeFile = '../functions/.runtimeconfig.json';
-    fs.readFile(runtimeFile, 'utf8', (err, data) => {
-      if (err) {
-        console.error(err);
-        return;
-      }
-      const configData = JSON.parse(data);
-      if (
-        configData.app.base_url === baseUrl &&
-        configData.shopify.api_key === shopifyApiKey &&
-        configData.shopify.secret === shopifyApiSecret
-      ) {
-        return;
-      }
 
-      configData.app.base_url = baseUrl;
-      configData.shopify.api_key = shopifyApiKey;
-      configData.shopify.secret = shopifyApiSecret;
-      fs.writeFileSync(runtimeFile, JSON.stringify(configData, null, 4));
+    // Update functions .env file
+    updateEnvFile('../functions/.env', {
+      APP_BASE_URL: baseUrl,
+      SHOPIFY_API_KEY: shopifyApiKey,
+      SHOPIFY_SECRET: shopifyApiSecret
     });
 
     updateThemeAppExtFile('../../extensions/theme-extension/assets/avada-embed.js');

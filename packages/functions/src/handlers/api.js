@@ -32,9 +32,7 @@ api.use(
     optionalScopes: shopifyOptionalScopes,
     accessTokenKey: shopifyConfig.accessTokenKey,
     afterLogin: ctx => {},
-    afterInstall: ctx => {
-      console.log('This is the after install');
-    },
+    afterInstall: ctx => {},
     initialPlan: {
       id: 'free',
       name: 'Free',

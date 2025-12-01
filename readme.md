@@ -20,19 +20,19 @@
 firebase use --add
 ```
 
-* Configure all settings for Firebase development environment by create a new file `.runtimeconfig.json` inside the `packages/functions`
+* Configure all settings for Firebase development environment by creating a new file `.env` inside the `packages/functions` (copy from `.env.example`)
 
-```json
-{
-  "shopify": {
-    "api_key": "<Shopify API Key>",
-    "secret": "<Shopify Secret>",
-    "firebase_api_key": "<Firebase API Key>"
-  },
-  "app": {
-    "base_url": ""
-  }
-}
+```dotenv
+# Shopify Configuration
+SHOPIFY_API_KEY=<Shopify API Key>
+SHOPIFY_SECRET=<Shopify Secret>
+SHOPIFY_FIREBASE_API_KEY=<Firebase API Key>
+SHOPIFY_SCOPES=read_themes
+SHOPIFY_ACCESS_TOKEN_KEY=avada-apps-access-token
+
+# App Configuration
+APP_ENV=development
+APP_BASE_URL=<Your app base URL>
 ```
 
 * Create a file `.env.development` with content in [packages/assets](/packages/assets)

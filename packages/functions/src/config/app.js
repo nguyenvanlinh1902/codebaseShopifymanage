@@ -1,8 +1,6 @@
-import * as functions from 'firebase-functions';
-
-const {app} = functions.config();
+import 'dotenv/config';
 
 export default {
-  isProduction: app.env === 'production',
-  baseUrl: app.base_url
+  isProduction: process.env.APP_ENV === 'production',
+  baseUrl: process.env.APP_BASE_URL || ''
 };

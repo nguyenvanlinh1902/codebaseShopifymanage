@@ -1,7 +1,7 @@
 import {getCurrentShop} from '../helpers/auth';
 import {getShopInfoByShopId} from '@functions/repositories/shopInfoRepository';
 import {getShopById} from '@functions/repositories/shopRepository';
-import {logger} from 'firebase-functions/v2';
+// import {logger} from 'firebase-functions/v2';
 
 /**
  * @param ctx
@@ -10,9 +10,12 @@ import {logger} from 'firebase-functions/v2';
 export async function getUserShops(ctx) {
   try {
     const shopId = getCurrentShop(ctx);
-    logger.info('Get user shops', shopId);
+    console.log('Get user shops', shopId);
+    // logger.info('Get user shops', shopId);
     const [shop, shopInfo] = await Promise.all([getShopById(shopId), getShopInfoByShopId(shopId)]);
-    logger.info('Got shop info', shopInfo);
+
+    console.log('Got shop info', shopInfo);
+    // logger.info('Got shop info', shopInfo);
 
     ctx.body = {shop, shopInfo};
   } catch (e) {

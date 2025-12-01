@@ -6,7 +6,6 @@ import {
   getSubscriptions,
   updateSubscription
 } from '@functions/repositories/subscriptionsRepository';
-import {logger} from 'firebase-functions/v2';
 
 /**
  * Get current subscription of a shop
@@ -29,7 +28,7 @@ export async function getList(ctx) {
     const query = ctx.query;
     return (ctx.body = await getSubscriptions(shopId, query));
   } catch (e) {
-    logger.error(e);
+    console.error(e);
     return (ctx.body = {data: [], error: e.message});
   }
 }
@@ -45,7 +44,7 @@ export async function createOne(ctx) {
     await addSubscription(shopId, data);
     return (ctx.body = {success: true});
   } catch (e) {
-    logger.error(e);
+    console.error(e);
     return (ctx.body = {error: e.message});
   }
 }
@@ -60,7 +59,7 @@ export async function updateOne(ctx) {
     await updateSubscription(id, data);
     return (ctx.body = {success: true});
   } catch (e) {
-    logger.error(e);
+    console.error(e);
     return (ctx.body = {error: e.message});
   }
 }
@@ -75,7 +74,7 @@ export async function deleteOne(ctx) {
     await deleteSubscription(id);
     return (ctx.body = {success: true});
   } catch (e) {
-    logger.error(e);
+    console.error(e);
     return (ctx.body = {error: e.message});
   }
 }

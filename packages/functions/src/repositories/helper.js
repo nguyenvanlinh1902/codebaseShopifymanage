@@ -1,7 +1,6 @@
 import {chunk, flatten} from '@avada/utils';
 import {formatDateFields} from '@avada/firestore-utils';
 import {FieldPath} from '@google-cloud/firestore/build/src';
-import {logger} from 'firebase-functions/v2';
 
 const BATCH_SIZE = 500;
 
@@ -183,7 +182,7 @@ export async function getByIds({
 
     return selectDoc ? allDocs : allDocs.map(doc => prepareDoc({doc}));
   } catch (e) {
-    logger.error(e);
+    console.error(e);
     return [];
   }
 }

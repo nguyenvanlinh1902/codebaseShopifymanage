@@ -5,9 +5,8 @@ import appConfig from '../config/app';
 import render from 'koa-ejs';
 import path from 'path';
 import fetch from 'node-fetch';
-import {logger} from 'firebase-functions/v2';
 
-logger.info('NODE_ENV', process.env.NODE_ENV);
+console.log('NODE_ENV', process.env.NODE_ENV);
 
 if (process.env.NODE_ENV === 'development') {
   process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';

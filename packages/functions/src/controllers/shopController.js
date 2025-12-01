@@ -1,7 +1,6 @@
 import {getCurrentShop} from '../helpers/auth';
 import {getShopInfoByShopId} from '@functions/repositories/shopInfoRepository';
 import {getShopById} from '@functions/repositories/shopRepository';
-// import {logger} from 'firebase-functions/v2';
 
 /**
  * @param ctx
@@ -11,15 +10,13 @@ export async function getUserShops(ctx) {
   try {
     const shopId = getCurrentShop(ctx);
     console.log('Get user shops', shopId);
-    // logger.info('Get user shops', shopId);
     const [shop, shopInfo] = await Promise.all([getShopById(shopId), getShopInfoByShopId(shopId)]);
 
     console.log('Got shop info', shopInfo);
-    // logger.info('Got shop info', shopInfo);
 
     ctx.body = {shop, shopInfo};
   } catch (e) {
-    logger.error(e);
+    console.error(e);
     ctx.body = {shop: null, shopInfo: null};
   }
 }

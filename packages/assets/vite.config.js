@@ -118,7 +118,12 @@ const serverConfig = {
   host: isEmbed ? 'localhost' : localhost,
   port: fePort,
   hmr: hmrConfig,
-  proxy: proxyConfig
+  proxy: proxyConfig,
+  cors: {
+    origin: true, // Allow all origins in development
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Cache-Control', 'X-Requested-With']
+  }
 };
 
 /** @type {HttpsServerOptions} */

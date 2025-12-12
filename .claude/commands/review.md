@@ -1,12 +1,20 @@
 Review the code I'm discussing or the files I specify as a Senior Fullstack Developer following Avada Development standards.
 
+## Reference Skills
+- `.claude/skills/avada-architecture.md`
+- `.claude/skills/firestore.md`
+- `.claude/skills/backend.md`
+
 ## Review Focus Areas
 
 ### Code Quality & Standards
 - **Naming**: camelCase (variables/functions), PascalCase (classes/components), UPPER_SNAKE_CASE (constants)
 - **Functions**: Start with verbs, use object params + destructuring for >3 params
 - **Booleans**: Prefix with `is/has`
-- **Patterns**: Prefer `const`, `===`, async/await, arrow functions, early returns
+- **Patterns**: Prefer `const`, `===`, async/await, arrow functions
+- **Early Return**: Avoid else/else-if, use guard clauses
+- **Small Functions**: Single responsibility, one function does one thing
+- **JSDoc**: Required for public service/handler functions, types in `functions.d.ts`
 
 ### Architecture (Backend - Node.js/Firebase)
 ```

@@ -84,3 +84,5 @@ serviceAccount.*.json
 shopify.**.toml
 .yarn/
 .shopify/
+
+claudekit-engineer-main/**

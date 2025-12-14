@@ -1,3 +1,8 @@
+---
+name: storefront-widget
+description: Use this skill when the user asks about "storefront widget", "scripttag", "customer-facing", "Preact", "bundle size", "lazy loading", "performance optimization", or any storefront frontend work. Provides Preact patterns for lightweight storefront widgets.
+---
+
 # Scripttag Development (Storefront Widget)
 
 ## Overview
@@ -39,20 +44,6 @@ packages/scripttag/
 └── rspack.config.js          # Build configuration
 ```
 
-### Multiple Entry Points
-
-Each feature should be a **separate bundle** with its own chunk loader:
-
-```javascript
-// rspack.config.js
-const entries = {
-  min: './src/loader.js',           // Tiny loader (~2KB)
-  main: './src/index.js',           // Main widget
-  'feature-a': './feature-a/index.js',
-  'feature-b': './feature-b/index.js'
-};
-```
-
 ---
 
 ## Performance Rules (CRITICAL)
@@ -79,60 +70,29 @@ if (document.readyState === 'complete') {
 ### 2. Lazy Loading Components
 
 ```javascript
-// Using preact-lazy
 import lazy from 'preact-lazy';
 
 const HeavyComponent = lazy(() => import('./HeavyComponent'));
-
-// Using React.lazy with Suspense
-import {lazy, Suspense} from 'react';
-
-const ListReward = lazy(() => import('./ListReward'));
-
-function Dashboard() {
-  return (
-    <Suspense fallback={<Skeleton />}>
-      <ListReward />
-    </Suspense>
-  );
-}
 ```
 
-### 3. Dynamic Imports
+### 3. Tree Shaking
 
 ```javascript
-// Import only when needed
-async function loadFeature() {
-  if (shouldShowFeature) {
-    const {FeatureComponent} = await import('./FeatureComponent');
-    render(<FeatureComponent />, container);
-  }
-}
-
-// Conditional module loading
-if (settings.enableFeatureX) {
-  await import('./features/featureX');
-}
-```
-
-### 4. Tree Shaking
-
-```javascript
-// ❌ BAD: Import entire library
+// BAD: Import entire library
 import * as utils from '@avada/utils';
 
-// ✅ GOOD: Import only what you need
+// GOOD: Import only what you need
 import {isEmpty} from '@avada/utils/lib/isEmpty';
 
-// ❌ BAD: Barrel imports
+// BAD: Barrel imports
 import {formatDate, formatCurrency} from '../helpers';
 
-// ✅ GOOD: Direct path imports
+// GOOD: Direct path imports
 import formatDate from '../helpers/formatDate';
 import formatCurrency from '../helpers/formatCurrency';
 ```
 
-### 5. Bundle Size Limits
+### 4. Bundle Size Limits
 
 | Component | Target Size |
 |-----------|-------------|
@@ -140,11 +100,6 @@ import formatCurrency from '../helpers/formatCurrency';
 | Main bundle | < 50KB gzipped |
 | Feature chunk | < 30KB gzipped |
 | Initial load total | < 60KB gzipped |
-
-```bash
-# Analyze bundle size
-npm run build:analyze
-```
 
 ---
 
@@ -211,7 +166,6 @@ function Widget() {
 ### CSS Variables for Theming
 
 ```scss
-// Dynamic theming with CSS variables
 :root {
   --primary-color: #{$primaryColor};
   --text-color: #{$textColor};
@@ -222,18 +176,6 @@ function Widget() {
   background: var(--bg-color);
   color: var(--text-color);
 }
-```
-
-### Inline Styles (For Dynamic Values Only)
-
-```javascript
-// Only use for truly dynamic styles
-const dynamicStyles = {
-  backgroundColor: settings.backgroundColor,
-  color: settings.textColor
-};
-
-<div style={dynamicStyles}>...</div>
 ```
 
 ---
@@ -248,117 +190,10 @@ const {
   customer,       // Current customer data
   settings,       // Widget settings
   translation,    // i18n translations
-  // ... other data
 } = window.APP_DATA || {};
 
 // Always destructure with defaults
 const {items = [], config = {}} = settings || {};
-```
-
----
-
-## Initialization Pattern
-
-### Retry with Exponential Backoff
-
-```javascript
-function initializeWidget(retryCount = 0, maxRetries = 10, retryDelay = 200) {
-  const appData = window.APP_DATA;
-
-  if (!appData || !appData.shopId) {
-    if (retryCount < maxRetries) {
-      const nextDelay = retryDelay * Math.min(Math.pow(1.5, retryCount), 4);
-      setTimeout(() => {
-        initializeWidget(retryCount + 1, maxRetries, retryDelay);
-      }, nextDelay);
-    }
-    return;
-  }
-
-  // Initialize when data is ready
-  new Widget().initialize();
-}
-```
-
-### Document Ready Pattern
-
-```javascript
-(function(funcName = 'widgetReady', baseObj = window) {
-  let readyFired = false;
-  const readyList = [];
-
-  function ready() {
-    if (readyFired) return;
-    readyFired = true;
-    readyList.forEach(({fn, ctx}) => fn.call(window, ctx));
-  }
-
-  baseObj[funcName] = function(callback, context) {
-    if (readyFired) {
-      setTimeout(() => callback(context), 1);
-    } else {
-      readyList.push({fn: callback, ctx: context});
-    }
-
-    if (document.readyState === 'complete') {
-      setTimeout(ready, 1);
-    } else {
-      document.addEventListener('DOMContentLoaded', ready, false);
-      window.addEventListener('load', ready, false);
-    }
-  };
-})();
-
-// Usage
-window.widgetReady(() => {
-  initializeWidget();
-});
-```
-
----
-
-## Performance Tracking
-
-```javascript
-// Track load times for monitoring
-if (!window.widgetTracking) window.widgetTracking = {};
-
-window.widgetTracking.scriptLoaded = performance.now();
-window.widgetTracking.initialized = performance.now();
-window.widgetTracking.rendered = performance.now();
-
-// Calculate metrics
-const loadTime = widgetTracking.initialized - widgetTracking.scriptLoaded;
-console.debug(`Widget initialized in ${loadTime}ms`);
-```
-
----
-
-## API Manager Pattern
-
-```javascript
-class ApiManager {
-  #baseUrl;
-
-  constructor(baseUrl) {
-    this.#baseUrl = baseUrl;
-  }
-
-  async get(path, options = {}) {
-    const response = await fetch(`${this.#baseUrl}${path}`, options);
-    return response.json();
-  }
-
-  async post(path, data, options = {}) {
-    const response = await fetch(`${this.#baseUrl}${path}`, {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(data),
-      ...options
-    });
-    return response.json();
-  }
-}
 ```
 
 ---
@@ -386,31 +221,31 @@ npm run build:dev
 ### Before Commit
 
 ```
-□ No barrel imports (use direct paths)
-□ Heavy components lazy loaded
-□ Dynamic imports for conditional features
-□ Tree-shaking friendly imports
-□ No console.log in production
-□ Custom SCSS with BEM naming
-□ No UI library dependencies
+- No barrel imports (use direct paths)
+- Heavy components lazy loaded
+- Dynamic imports for conditional features
+- Tree-shaking friendly imports
+- No console.log in production
+- Custom SCSS with BEM naming
+- No UI library dependencies
 ```
 
 ### Bundle Size Check
 
 ```
-□ Run build:analyze
-□ Loader < 3KB gzipped
-□ No unexpected large chunks
-□ No duplicate dependencies
-□ All imports use direct paths
+- Run build:analyze
+- Loader < 3KB gzipped
+- No unexpected large chunks
+- No duplicate dependencies
+- All imports use direct paths
 ```
 
 ### Performance
 
 ```
-□ Loads after document ready
-□ Non-blocking script loading
-□ Retry logic with backoff
-□ Performance tracking in place
-□ No synchronous heavy operations
+- Loads after document ready
+- Non-blocking script loading
+- Retry logic with backoff
+- Performance tracking in place
+- No synchronous heavy operations
 ```

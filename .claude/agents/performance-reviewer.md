@@ -155,11 +155,17 @@ exports.processWebhookQueue = functions.firestore
 
 | Method | Use Case | Pros | Cons |
 |--------|----------|------|------|
-| Firestore trigger | Simple queuing | Easy, automatic retry | 10 second cold start |
-| **Cloud Tasks** | **Delayed processing, rate limits** | **Schedule delays, auto retry, 95% cheaper** | More setup |
-| Pub/Sub | High volume | Fast, scalable | More complex |
+| Firestore trigger | Simple queuing | Easy setup, automatic retry | 10s cold start, limited scale |
+| Cloud Tasks | Delayed processing, rate limits | Schedule delays, auto retry, low cost | More setup |
+| **Pub/Sub** | **High volume, fan-out, scaling** | **Fast, auto-scales, multiple consumers** | More complex |
+| Cron jobs | Scheduled batch jobs | Reliable timing | Not real-time |
 
-**Recommended:** Use Cloud Tasks for webhook background processing. See section 2a below.
+**Choosing Background Processing:**
+- **Immediate + Scale**: Pub/Sub (fan-out to multiple consumers)
+- **Delayed + Rate limit**: Cloud Tasks (built-in scheduling)
+- **Simple + Low volume**: Firestore triggers
+
+See `backend-development` skill for Pub/Sub, cron, and queue patterns.
 
 ---
 
@@ -598,7 +604,7 @@ client.on('error', err => {
 | Counters (orderCount) | No | - | Too volatile, constant invalidation |
 | Request-specific data | No | - | Won't be reused |
 
-**Reference:** See `.claude/skills/redis-caching.md` for implementation patterns.
+**Reference:** See `redis-cache-patterns` skill for implementation patterns.
 
 ---
 
@@ -688,10 +694,10 @@ du -sh packages/functions/node_modules/*
 
 ## Reference Skills
 
-For detailed patterns, see:
-- `.claude/skills/firestore.md` - Firestore queries, batching, TTL, indexes
-- `.claude/skills/bigquery.md` - Partitioning, clustering, cost control
-- `.claude/skills/shopify-api.md` - API selection, bulk ops, rate limits
-- `.claude/skills/cloud-tasks.md` - Background processing, rate limit handling, delays
-- `.claude/skills/redis-caching.md` - Redis patterns, circuit breaker, fallback strategies
-- `.claude/skills/backend.md` - Async patterns, function config, webhooks
+For detailed patterns, see these skills:
+- `firestore-database` - Firestore queries, batching, TTL, indexes
+- `bigquery-analytics` - Partitioning, clustering, cost control
+- `shopify-api-integration` - API selection, bulk ops, rate limits
+- `cloud-tasks-queue` - Delayed processing, rate limit handling, retries
+- `redis-cache-patterns` - Redis patterns, circuit breaker, fallback strategies
+- `backend-development` - Async patterns, Pub/Sub fan-out, cron jobs, Firestore queues

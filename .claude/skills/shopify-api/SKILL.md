@@ -1,3 +1,8 @@
+---
+name: shopify-api-integration
+description: Use this skill when the user asks about "Shopify GraphQL", "Admin API", "metafields", "webhooks", "rate limiting", "pagination", "App Bridge", or any Shopify API integration work. Provides Shopify API patterns, rate limit handling, and best practices.
+---
+
 # Shopify API Best Practices
 
 ## API Version Check (CRITICAL)
@@ -16,30 +21,19 @@ Shopify deprecates API versions regularly. Check:
 api_version = "2024-10"  // Verify this matches your implementation
 ```
 
-**Common Breaking Changes:**
-- Field renames (e.g., `priceV2` → `price`)
-- Deprecated mutations replaced with new ones
-- Changed input/output types
-- Removed fields
-
 ---
 
 ## API Selection Guide
 
-| Need | Solution | Search Docs For |
-|------|----------|-----------------|
-| Customize checkout UI | Checkout UI Extension | "checkout ui extension" |
-| Apply discounts | Discount Function | "discount function" |
-| Validate cart | Cart Validation Function | "cart validation function" |
-| Customize shipping | Delivery Customization | "delivery customization" |
-| Customize payments | Payment Customization | "payment customization" |
-| React to events | Webhooks | "webhooks" |
-| Read/write data | GraphQL Admin API | "admin api" |
-| Sync large data | Bulk Operations | "bulk operations" |
-| Store custom data | Metafields/Metaobjects | "metafields" |
-| Admin UI | Admin UI Extension | "admin ui extension" |
-| Customer account | Customer Account Extension | "customer account extension" |
-| Theme blocks | Theme App Extension | "theme app extension" |
+| Need | Solution |
+|------|----------|
+| Customize checkout UI | Checkout UI Extension |
+| Apply discounts | Discount Function |
+| Validate cart | Cart Validation Function |
+| React to events | Webhooks |
+| Read/write data | GraphQL Admin API |
+| Sync large data | Bulk Operations |
+| Store custom data | Metafields/Metaobjects |
 
 ---
 
@@ -110,19 +104,6 @@ async function getAllProducts(shopify) {
 - Regular metafield API: **2 requests/second**, **40 requests/minute**
 - Bulk Operations: **No rate limits** - runs server-side on Shopify
 
-### Common Scenarios Requiring Bulk Operations
-
-| Task | Use Bulk? | Why |
-|------|-----------|-----|
-| Sync all customers | ✅ Yes | Shops have 10k-1M+ customers |
-| Sync all products | ✅ Yes | Can be 10k+ products |
-| Update customer metafields | ✅ Yes | 1 API call per customer = rate limit |
-| Sync all orders | ✅ Yes | High volume shops = millions |
-| **Tier launch (mass update)** | ✅ Yes | Thousands of customers at once |
-| **Mass tag sync** | ✅ Yes | Avoids 429 errors |
-| Get single product | ❌ No | One-off query |
-| Update one metafield | ❌ No | Single mutation |
-
 ### Volume Decision Guide
 
 | Volume | Strategy |
@@ -130,94 +111,20 @@ async function getAllProducts(shopify) {
 | < 50 items | Regular GraphQL |
 | 50-500 items | Batch with Cloud Tasks + rate limiting |
 | **500+ items** | **Bulk Operations API** |
-| **100k+ items** | **Bulk Operations + chunking (50K lines/chunk)** |
 
-**For detailed bulk mutation patterns, see:** `.claude/skills/shopify-bulk-operations.md`
-
-### Run Bulk Query
-
-```javascript
-const mutation = `
-  mutation bulkOperationRunQuery($query: String!) {
-    bulkOperationRunQuery(query: $query) {
-      bulkOperation { id status }
-      userErrors { field message }
-    }
-  }
-`;
-
-const bulkQuery = `
-  {
-    customers {
-      edges {
-        node {
-          id
-          email
-          metafields(first: 10) {
-            edges { node { key value } }
-          }
-        }
-      }
-    }
-  }
-`;
-
-await shopify.graphql(mutation, { query: bulkQuery });
-```
-
-### Poll for Completion
-
-```javascript
-async function pollBulkOperation(shopify) {
-  const query = `
-    query {
-      currentBulkOperation {
-        id
-        status
-        url
-        errorCode
-      }
-    }
-  `;
-
-  while (true) {
-    const { currentBulkOperation } = await shopify.graphql(query);
-
-    if (currentBulkOperation.status === 'COMPLETED') {
-      return currentBulkOperation.url; // JSONL file URL
-    }
-
-    if (currentBulkOperation.status === 'FAILED') {
-      throw new Error(currentBulkOperation.errorCode);
-    }
-
-    await sleep(5000); // Poll every 5s
-  }
-}
-```
+**For detailed bulk mutation patterns, see:** `shopify-bulk-operations` skill
 
 ---
 
 ## Rate Limiting
 
-### Retry Strategy
-
-| Scenario | Strategy |
-|----------|----------|
-| Quick retry (< 30s) | In-function backoff |
-| Longer delay needed | Cloud Tasks |
-| Batch job failed | Cron retry |
-
 ### Cloud Tasks (Recommended for Rate Limits)
 
 ```javascript
-// ❌ BAD: In-function sleep wastes CPU time
+// BAD: In-function sleep wastes CPU time
 await sleep(60000); // 60s sleep = 60s CPU billed
 
-// ✅ GOOD: Schedule retry with Cloud Tasks
-const { CloudTasksClient } = require('@google-cloud/tasks');
-const client = new CloudTasksClient();
-
+// GOOD: Schedule retry with Cloud Tasks
 async function scheduleRetry(payload, delaySeconds) {
   await client.createTask({
     parent: client.queuePath(project, location, 'shopify-retry'),
@@ -232,36 +139,6 @@ async function scheduleRetry(payload, delaySeconds) {
       }
     }
   });
-}
-
-// Usage in handler
-try {
-  await shopify.graphql(mutation);
-} catch (error) {
-  if (error.extensions?.code === 'THROTTLED') {
-    await scheduleRetry({ mutation, variables }, 60); // Retry in 60s
-    return { success: true, queued: true };
-  }
-  throw error;
-}
-```
-
-### Quick In-Function Retry (Short Delays Only)
-
-```javascript
-// Only for delays < 5 seconds
-async function withRetry(fn, maxRetries = 3) {
-  for (let i = 0; i < maxRetries; i++) {
-    try {
-      return await fn();
-    } catch (error) {
-      if (error.extensions?.code === 'THROTTLED' && i < maxRetries - 1) {
-        await sleep(Math.pow(2, i) * 1000); // 1s, 2s, 4s
-        continue;
-      }
-      throw error;
-    }
-  }
 }
 ```
 
@@ -310,7 +187,7 @@ await shopify.graphql(mutation, {
 **Must respond within 5 seconds!**
 
 ```javascript
-// ❌ BAD: Heavy processing (may timeout)
+// BAD: Heavy processing (may timeout)
 app.post('/webhooks/orders/create', async (req, res) => {
   await calculatePoints(req.body);
   await updateCustomer(req.body);
@@ -318,7 +195,7 @@ app.post('/webhooks/orders/create', async (req, res) => {
   res.status(200).send('OK');
 });
 
-// ✅ GOOD: Queue and respond fast
+// GOOD: Queue and respond fast
 app.post('/webhooks/orders/create', async (req, res) => {
   // Quick validation
   if (!verifyHmac(req)) {
@@ -366,10 +243,10 @@ function verifyHmac(req) {
 
 | Scenario | Use App Bridge | Use Firebase API |
 |----------|---------------|------------------|
-| Simple Shopify CRUD | ✅ Yes | ❌ No |
-| Need Firestore data | ❌ No | ✅ Yes |
-| Complex business logic | ❌ No | ✅ Yes |
-| Background processing | ❌ No | ✅ Yes |
+| Simple Shopify CRUD | Yes | No |
+| Need Firestore data | No | Yes |
+| Complex business logic | No | Yes |
+| Background processing | No | Yes |
 
 ### Direct API Call
 

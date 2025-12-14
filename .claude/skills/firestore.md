@@ -128,6 +128,26 @@ async function getPage(shopId, lastDoc = null, pageSize = 50) {
 
 ## Indexes
 
+### Index File Structure
+
+Index definitions are split by collection in `firestore-indexes/`:
+
+```
+firestore-indexes/
+├── build.js              # Merges all files into firestore.indexes.json
+├── split.js              # Splits firestore.indexes.json into collection files
+├── customerRewards.json  # Indexes & overrides for customerRewards
+├── customers.json        # Indexes for customers
+├── settings.json         # Overrides for settings
+└── ... (34 collection files)
+```
+
+**Commands:**
+| Command | Description |
+|---------|-------------|
+| `yarn firestore:build` | Merge all collection files into `firestore.indexes.json` |
+| `yarn firestore:split` | Split `firestore.indexes.json` into collection files |
+
 ### When Index Required
 | Query Pattern | Index Needed? |
 |---------------|---------------|
@@ -138,7 +158,7 @@ async function getPage(shopId, lastDoc = null, pageSize = 50) {
 
 ### Create Index
 ```json
-// firestore.indexes.json
+// firestore-indexes/{collection}.json
 {
   "indexes": [
     {
@@ -154,8 +174,156 @@ async function getPage(shopId, lastDoc = null, pageSize = 50) {
 ```
 
 ```bash
-firebase deploy --only firestore:indexes
+yarn firestore:build && firebase deploy --only firestore:indexes
 ```
+
+---
+
+## Index Merging (Optimization)
+
+Firestore can merge indexes at query time for **equality clauses** that share the same sort field. This reduces the total number of indexes needed.
+
+### Concept
+
+**Without merging (4 indexes):**
+| Collection | Fields Indexed |
+|------------|----------------|
+| restaurants | category ASC, star_rating ASC |
+| restaurants | city ASC, star_rating ASC |
+| restaurants | category ASC, city ASC, star_rating ASC |
+| restaurants | category ASC, city ASC, editors_pick ASC, star_rating ASC |
+
+**With merging (3 indexes):**
+| Collection | Fields Indexed |
+|------------|----------------|
+| restaurants | category ASC, star_rating ASC |
+| restaurants | city ASC, star_rating ASC |
+| restaurants | editors_pick ASC, star_rating ASC |
+
+The merged set supports all the same queries AND additionally supports new query combinations.
+
+### Merge Requirements
+
+For index merging to work:
+- All equality fields must be covered across the merged indexes
+- Both indexes must have the **same sort field** in the **same direction**
+- The sort field must be at the end of each index
+
+### Merge Limitations
+
+Index merging does NOT work for:
+- Range queries (`<`, `>`, `<=`, `>=`)
+- Array-contains queries
+- Different sort directions
+
+### Identifying Mergeable Indexes
+
+Look for indexes with:
+1. Multiple equality fields (`where('field', '==', value)`)
+2. Same `orderBy()` field at the end
+3. Existing simpler indexes covering subsets of the equality fields
+
+```javascript
+// This query can use merged indexes:
+.where('shopId', '==', shopId)    // equality
+.where('tierId', '==', tierId)    // equality
+.where('type', '==', 'member')    // equality
+.orderBy('updatedAt', 'desc')     // sort field
+
+// Instead of: (shopId, tierId, type, updatedAt DESC)
+// Use merged: (shopId, tierId, updatedAt DESC) + (shopId, type, updatedAt DESC)
+```
+
+### Testing Index Merging
+
+Before removing an index:
+1. Search codebase for queries using that exact field combination
+2. Verify the merged indexes exist and have matching sort directions
+3. Test in Firebase emulator first
+4. Deploy to staging and verify no query failures
+
+```javascript
+// Test query to verify index merging works
+const testQuery = async (db, shopId) => {
+  try {
+    const snapshot = await db.collection('customers')
+      .where('shopId', '==', shopId)
+      .where('tierId', '==', 'tier-123')
+      .where('type', '==', 'member')
+      .orderBy('updatedAt', 'desc')
+      .limit(10)
+      .get();
+    console.log('Query succeeded with merged indexes');
+  } catch (error) {
+    console.error('Query failed - index merge not working:', error.message);
+  }
+};
+```
+
+### Documentation Reference
+
+See `docs/firestore-index-merging.md` for detailed list of redundant indexes that can be removed via merging.
+
+---
+
+## Index Exemptions
+
+An index exemption overrides the database-wide automatic index settings for specific fields.
+
+### When to Use Exemptions
+
+| Scenario | Reason |
+|----------|--------|
+| Large string fields | Reduce storage costs for fields you don't query |
+| High write rate with sequential values | Bypass 500 writes/second limit (e.g., timestamps) |
+| TTL fields | Reduce performance impact at higher traffic rates |
+| Large array/map fields | Avoid 40,000 index entries per document limit |
+
+### Configure Exemptions
+
+```json
+// firestore-indexes/{collection}.json
+{
+  "indexes": [],
+  "fieldOverrides": [
+    {
+      "collectionGroup": "webhookLogs",
+      "fieldPath": "body",
+      "indexes": []  // Empty array = no indexing
+    }
+  ]
+}
+```
+
+### Exemption Scope Options
+
+| Scope | Example | Use Case |
+|-------|---------|----------|
+| Field-level | `"fieldPath": "requestBody"` | Exempt specific field in collection |
+| Collection-wide | `"collectionGroup": "*"` | Exempt field across all collections |
+| Map subfields | `"fieldPath": "metadata.raw"` | Exempt nested fields |
+
+### Key Notes
+
+- **Inheritance**: Map field exemptions apply to all subfields unless overridden
+- **Composite indexes**: Exempted fields can still be part of composite indexes
+- **Limits**: Up to 200 field exemptions per database (1000 with billing enabled)
+- **TTL fields**: Should typically be exempted to reduce write overhead
+
+### Commonly Exempted Fields
+
+| Collection | Field | Reason |
+|------------|-------|--------|
+| customerRewards | `program` | Large nested object, only `program.appliedTo` is queried |
+| emailNotificationLogs | `notificationContent` | Full email HTML content |
+| webhookLogs | `body` | Full webhook payload JSON |
+| settings | `positionMenu`, `pointCalculator` | Complex nested config objects |
+| programCache | `data` | Large array of program objects |
+| customerActivities | `program`, `order`, `metadata` | Nested data objects |
+
+### Documentation Reference
+
+See `docs/firestore-index-exemptions.md` for complete list of exempted fields by collection.
 
 ---
 

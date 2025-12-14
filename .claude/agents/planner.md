@@ -203,7 +203,90 @@ Evaluate and document:
 - **Performance**: Cold starts, query optimization
 - **Security**: Authentication, data exposure
 
-#### 2.3 Check Avada Patterns
+#### 2.4 Background Processing Strategy (ALWAYS EVALUATE)
+
+**Choose the right approach for async/background work:**
+
+| Scenario | Solution | Why |
+|----------|----------|-----|
+| **Mass Shopify updates (500+ items)** | **Bulk Operations API** | Bypasses rate limits entirely |
+| Webhook heavy processing | **Cloud Tasks** | Respond fast, process async |
+| Rate-limited 3rd party API | **Cloud Tasks** | Re-enqueue with delay on 429 |
+| Delayed notifications | **Cloud Tasks** | Built-in schedule delays |
+| High-volume event streaming | Pub/Sub | Higher throughput |
+| Simple trigger on doc change | Firestore trigger | Easy setup |
+| Need immediate completion | Direct call | No async needed |
+
+#### 2.4a Shopify Bulk Operations (For Large Volumes)
+
+**When Volume > 500 items, use Shopify Bulk Operations API:**
+
+| Volume | Strategy | Rate Limit Risk |
+|--------|----------|-----------------|
+| 1-50 items | Direct API calls | Low |
+| 50-500 items | Cloud Tasks + batching | Medium |
+| **500+ items** | **Bulk Operations API** | None |
+| **100k+ items** | **Bulk Operations + chunking** | None |
+
+**Bulk Operations Use Cases:**
+- Tier launch/relaunch (mass customer updates)
+- Mass metafield sync (points, tier info)
+- Bulk customer tag updates
+- Initial data migration
+- Scheduled full sync jobs
+
+**Key Constraints:**
+- Max file size: ~100MB per bulk operation
+- Chunk at: ~50,000 lines per operation
+- Async execution: Takes minutes, use webhooks for completion
+
+**Architecture Pattern:**
+1. Collect data → Store in Firebase Storage (JSONL)
+2. Chunk if needed → 50K lines per operation
+3. Upload via Staged Uploads → `stagedUploadsCreate`
+4. Run bulk operation → `bulkOperationRunMutation`
+5. Wait for webhook → `BULK_OPERATIONS_FINISH`
+6. Process next chunk if needed
+
+**Reference:** See `.claude/skills/shopify-bulk-operations.md` for implementation patterns.
+
+**Cloud Tasks is RECOMMENDED for:**
+- Webhook handlers (must respond <5s)
+- Third-party API sync (Klaviyo, Omnisend, Smax)
+- Shopify API calls with rate limiting
+- Any delayed processing (use `scheduleDelaySeconds`)
+
+**Cloud Tasks Pattern:**
+```javascript
+// Enqueue task with delay
+import {enqueueTask} from '../services/cloudTaskService';
+import {ENQUEUE_SUBSCRIBER_FUNC_NAME} from '../handlers/schedule/enqueueHandler';
+
+await enqueueTask({
+  functionName: ENQUEUE_SUBSCRIBER_FUNC_NAME,
+  opts: {scheduleDelaySeconds: 3}, // Optional delay
+  data: {
+    type: 'yourTaskType', // Add case in enqueueHandler.js
+    data: {shopId, customerId, ...payload}
+  }
+});
+```
+
+**Rate Limit Handling:**
+```javascript
+// In enqueueHandler.js case
+if (result.retryAfter) {
+  await enqueueTask({
+    data: {type: 'yourTaskType', data: {..., retryCount: retryCount + 1}},
+    opts: {scheduleDelaySeconds: result.retryAfter}
+  });
+  return; // Don't throw - prevents double retry
+}
+```
+
+**Reference:** See `.claude/skills/cloud-tasks.md` for detailed patterns.
+
+#### 2.5 Check Avada Patterns
 
 **Repository Pattern:**
 - ONE repository = ONE Firestore collection (NEVER mix)
@@ -436,6 +519,28 @@ mutation metafieldsSet($metafields: [MetafieldsSetInput!]!) {
   }
 }
 ```
+
+## Background Processing (Cloud Tasks)
+
+**Does this feature need background processing?**
+- [ ] Webhook handler (must respond <5s)
+- [ ] Third-party API sync with rate limits
+- [ ] Delayed notifications
+- [ ] Long-running operations
+
+**If yes, Cloud Tasks implementation:**
+| Task Type | Trigger | Delay | Handler Case |
+|-----------|---------|-------|--------------|
+| `yourTaskType` | [when triggered] | [delay seconds] | `enqueueHandler.js` |
+
+**Rate Limit Strategy:**
+- [ ] Include `retryCount` in task data
+- [ ] Re-enqueue with `retryAfter` delay on 429
+- [ ] Set max retry count to prevent infinite loops
+
+**Files to modify:**
+- `handlers/schedule/enqueueHandler.js` - Add new case
+- `helpers/xxxTaskQueue.js` - Optional helper functions (if reusable)
 
 ---
 

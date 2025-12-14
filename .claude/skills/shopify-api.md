@@ -106,6 +106,10 @@ async function getAllProducts(shopify) {
 
 **Before implementing any Shopify data sync, ask: "Can this hit API limits?"**
 
+**Rate Limits Context:**
+- Regular metafield API: **2 requests/second**, **40 requests/minute**
+- Bulk Operations: **No rate limits** - runs server-side on Shopify
+
 ### Common Scenarios Requiring Bulk Operations
 
 | Task | Use Bulk? | Why |
@@ -114,6 +118,8 @@ async function getAllProducts(shopify) {
 | Sync all products | ✅ Yes | Can be 10k+ products |
 | Update customer metafields | ✅ Yes | 1 API call per customer = rate limit |
 | Sync all orders | ✅ Yes | High volume shops = millions |
+| **Tier launch (mass update)** | ✅ Yes | Thousands of customers at once |
+| **Mass tag sync** | ✅ Yes | Avoids 429 errors |
 | Get single product | ❌ No | One-off query |
 | Update one metafield | ❌ No | Single mutation |
 
@@ -122,9 +128,11 @@ async function getAllProducts(shopify) {
 | Volume | Strategy |
 |--------|----------|
 | < 50 items | Regular GraphQL |
-| 50-500 items | Batch with rate limiting |
-| 500+ items | Bulk Operations |
-| 100k+ items | Bulk Operations + chunking |
+| 50-500 items | Batch with Cloud Tasks + rate limiting |
+| **500+ items** | **Bulk Operations API** |
+| **100k+ items** | **Bulk Operations + chunking (50K lines/chunk)** |
+
+**For detailed bulk mutation patterns, see:** `.claude/skills/shopify-bulk-operations.md`
 
 ### Run Bulk Query
 

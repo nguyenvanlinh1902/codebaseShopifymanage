@@ -184,8 +184,21 @@ exports.processWebhook = functions.firestore
 | Method | Use Case | Pros | Cons |
 |--------|----------|------|------|
 | Firestore trigger | Simple queuing | Easy, auto retry | Cold start delay |
-| Cloud Tasks | Delayed processing | Schedule delays | More setup |
+| **Cloud Tasks** | **Delayed processing, rate limit handling** | **Schedule delays, auto retry, 95% cheaper** | More setup |
 | Pub/Sub | High volume | Fast, scalable | More complex |
+
+**Recommended:** Use Cloud Tasks for most background processing. See `.claude/skills/cloud-tasks.md` for detailed patterns.
+
+```javascript
+// Quick example - enqueue with delay
+import {enqueueTask} from '../services/cloudTaskService';
+
+await enqueueTask({
+  functionName: 'enqueueSubscriber',
+  opts: {scheduleDelaySeconds: 3},
+  data: {type: 'triggerOrder', data: {shopId, orderId}}
+});
+```
 
 ---
 
@@ -216,6 +229,50 @@ exports.dailySync = functions.pubsub
     await setLastSyncTimestamp(new Date());
   });
 ```
+
+---
+
+## Redis Caching
+
+**Use Redis to reduce Firestore reads for frequently accessed data.**
+
+### Quick Pattern
+
+```javascript
+async function getEntityCached(entityId) {
+  // 1. Try cache (fast timeout)
+  const cached = await getCache(`entity:${entityId}`);
+  if (cached) return cached;
+
+  // 2. Fallback to Firestore
+  const entity = await getFromFirestore(entityId);
+
+  // 3. Cache for next time (fire-and-forget)
+  if (entity) setCache(`entity:${entityId}`, entity);
+
+  return entity;
+}
+```
+
+### Key Principles
+
+| Principle | Implementation |
+|-----------|----------------|
+| Fail fast | 300ms read timeout |
+| Non-blocking writes | Fire-and-forget pattern |
+| Circuit breaker | Disable Redis 60s on max connections |
+| Graceful degradation | Always fall back to Firestore |
+
+### When to Cache
+
+| Data Type | Cache? | TTL |
+|-----------|--------|-----|
+| Shop settings | Yes | No expiry (invalidate on update) |
+| Notification templates | Yes | 30 days |
+| Customer data | Maybe | Short TTL (data changes often) |
+| Counters (orderCount) | No | Too volatile |
+
+**Reference:** See `.claude/skills/redis-caching.md` for detailed patterns.
 
 ---
 

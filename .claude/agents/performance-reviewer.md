@@ -156,8 +156,106 @@ exports.processWebhookQueue = functions.firestore
 | Method | Use Case | Pros | Cons |
 |--------|----------|------|------|
 | Firestore trigger | Simple queuing | Easy, automatic retry | 10 second cold start |
-| Cloud Tasks | Delayed processing | Schedule delays, retries | More setup |
+| **Cloud Tasks** | **Delayed processing, rate limits** | **Schedule delays, auto retry, 95% cheaper** | More setup |
 | Pub/Sub | High volume | Fast, scalable | More complex |
+
+**Recommended:** Use Cloud Tasks for webhook background processing. See section 2a below.
+
+---
+
+### 2a. Cloud Tasks Usage Audit
+
+**Cloud Tasks should be used for:**
+- Webhook heavy processing (respond fast, process async)
+- Third-party API sync with rate limits (Klaviyo, Omnisend, Smax)
+- Delayed notifications
+- Shopify API calls that may hit rate limits
+
+**Red Flags to Find:**
+
+| Issue | Impact | Example |
+|-------|--------|---------|
+| Not using Cloud Tasks for webhooks | 🔴 Timeouts | Heavy processing in webhook handler |
+| Missing retry handling | 🔴 Data loss | No re-enqueue on 429 errors |
+| Throwing on rate limits | 🔴 Double retry | Cloud Tasks + custom retry both trigger |
+| No retry count | 🔴 Infinite loops | Task keeps re-enqueueing forever |
+| Wrong delay values | 🟡 Inefficient | Hardcoded delays instead of retry-after |
+
+**Audit Checklist:**
+```
+□ Webhook handlers respond < 5s, enqueue to Cloud Tasks
+□ Third-party API syncs use Cloud Tasks (not direct calls in handlers)
+□ Rate limit errors re-enqueue with delay (don't throw)
+□ Task data includes retryCount to prevent infinite loops
+□ Using retry-after header value, not hardcoded delays
+□ Permanent errors return early (don't throw)
+□ Using helper functions for common task types
+□ Tasks batched with Promise.all when possible
+```
+
+**Bad vs Good Patterns:**
+
+```javascript
+// ❌ BAD: Throw on rate limit (causes double retry)
+case 'klaviyoSync': {
+  const result = await klaviyoService.sync(data);
+  if (result.status === 429) {
+    throw new Error('Rate limited'); // Cloud Tasks will retry!
+  }
+  break;
+}
+
+// ✅ GOOD: Re-enqueue with delay, return (no throw)
+case 'klaviyoSync': {
+  const result = await klaviyoService.sync(data);
+  if (result.retryAfter) {
+    await enqueueTask({
+      data: {type: 'klaviyoSync', data: {...data, retryCount: (data.retryCount || 0) + 1}},
+      opts: {scheduleDelaySeconds: result.retryAfter}
+    });
+    return; // Don't throw!
+  }
+  break;
+}
+```
+
+```javascript
+// ❌ BAD: Direct API call in webhook (may timeout)
+app.post('/webhooks/orders/create', async (req, res) => {
+  await klaviyoService.syncCustomer(req.body.customer);
+  res.status(200).send('OK');
+});
+
+// ✅ GOOD: Enqueue to Cloud Tasks
+app.post('/webhooks/orders/create', async (req, res) => {
+  await enqueueTask({
+    functionName: ENQUEUE_SUBSCRIBER_FUNC_NAME,
+    opts: {scheduleDelaySeconds: 3},
+    data: {type: 'triggerOrder', data: {shopId, orderId}}
+  });
+  res.status(200).send('OK');
+});
+```
+
+```javascript
+// ❌ BAD: No max retry (infinite loop risk)
+if (result.retryAfter) {
+  await enqueueTask({data: {..., retryCount: retryCount + 1}, ...});
+}
+
+// ✅ GOOD: Max retry limit
+if (result.retryAfter && retryCount < 5) {
+  await enqueueTask({data: {..., retryCount: retryCount + 1}, ...});
+} else if (retryCount >= 5) {
+  console.error('Max retries exceeded for', customerId);
+  // Log failure, don't re-enqueue
+}
+```
+
+**Cost Comparison:**
+- Cloud Tasks: ~$0.40 per million operations
+- Firestore Queue: ~$7.20 per million operations (read + write)
+- **Savings: ~95%**
 
 ---
 
@@ -406,6 +504,104 @@ const [rows] = await bigquery.query({
 
 ---
 
+### 7. Redis Caching Audit
+
+**Redis reduces Firestore reads but requires careful implementation.**
+
+**Red Flags to Find:**
+
+| Issue | Impact | Example |
+|-------|--------|---------|
+| Blocking cache writes | 🔴 Slow response | `await setCache()` in request path |
+| No timeout on reads | 🔴 Cascading failure | Waiting forever if Redis down |
+| No circuit breaker | 🔴 Connection storm | Retrying when max connections hit |
+| Caching volatile data | 🟡 Stale data | Caching counters that change constantly |
+| Not falling back to DB | 🔴 Request failure | Throwing instead of falling back to Firestore |
+| Long cache keys | 🟡 Network cost | Verbose keys increase egress |
+
+**Audit Checklist:**
+```
+□ Cache writes are fire-and-forget (non-blocking)
+□ Cache reads have timeout (300ms max)
+□ Circuit breaker disables Redis on max connections
+□ Always falls back to Firestore on any Redis error
+□ Volatile fields excluded from cache
+□ Cache invalidation on entity updates
+□ TTL set for temporary data
+□ Null values cached to prevent repeated lookups
+```
+
+**Bad vs Good Patterns:**
+
+```javascript
+// ❌ BAD: Blocking write
+async function getEntityCached(id) {
+  const cached = await getCache(`entity:${id}`);
+  if (cached) return cached;
+
+  const entity = await getFromFirestore(id);
+  await setCache(`entity:${id}`, entity); // Blocks response!
+  return entity;
+}
+
+// ✅ GOOD: Fire-and-forget write
+async function getEntityCached(id) {
+  const cached = await getCache(`entity:${id}`);
+  if (cached) return cached;
+
+  const entity = await getFromFirestore(id);
+  setCache(`entity:${id}`, entity); // Non-blocking!
+  return entity;
+}
+```
+
+```javascript
+// ❌ BAD: No timeout (may hang)
+async function getCache(key) {
+  const client = await getRedisClient();
+  return client.get(key); // What if Redis is slow?
+}
+
+// ✅ GOOD: Fast timeout with fallback
+async function getCache(key) {
+  try {
+    const client = await getRedisClient();
+    if (!client) return null;
+    return await withTimeout(client.get(key), 300);
+  } catch (e) {
+    return null; // Fall back to Firestore
+  }
+}
+```
+
+```javascript
+// ❌ BAD: No circuit breaker
+client.on('error', err => {
+  console.log(err); // Just logs, keeps retrying
+});
+
+// ✅ GOOD: Circuit breaker on max connections
+client.on('error', err => {
+  if (err.message.includes('max number of clients')) {
+    disableRedis(); // Stop trying for 60 seconds
+  }
+});
+```
+
+**When to Cache (Decision Guide):**
+
+| Data Type | Cache? | TTL | Why |
+|-----------|--------|-----|-----|
+| Shop settings | Yes | No expiry | Rarely changes, explicit invalidation |
+| Notification templates | Yes | 30 days | Infrequently updated |
+| Customer profile | Maybe | Short (5-15 min) | Changes on activity |
+| Counters (orderCount) | No | - | Too volatile, constant invalidation |
+| Request-specific data | No | - | Won't be reused |
+
+**Reference:** See `.claude/skills/redis-caching.md` for implementation patterns.
+
+---
+
 ## Audit Report Format
 
 ```markdown
@@ -496,5 +692,6 @@ For detailed patterns, see:
 - `.claude/skills/firestore.md` - Firestore queries, batching, TTL, indexes
 - `.claude/skills/bigquery.md` - Partitioning, clustering, cost control
 - `.claude/skills/shopify-api.md` - API selection, bulk ops, rate limits
-- `.claude/skills/async-patterns.md` - Promise.all, concurrency, error handling
-- `.claude/skills/firebase-functions.md` - Config, cold starts, webhooks
+- `.claude/skills/cloud-tasks.md` - Background processing, rate limit handling, delays
+- `.claude/skills/redis-caching.md` - Redis patterns, circuit breaker, fallback strategies
+- `.claude/skills/backend.md` - Async patterns, function config, webhooks

@@ -35,6 +35,19 @@ firebase functions:log --only functionName
 firebase firestore:indexes
 ```
 
+**Cloud Tasks:**
+```bash
+# View Cloud Tasks queue in Google Cloud Console
+# Cloud Tasks → Queues → enqueueSubscriber
+
+# Filter logs for specific task type
+# Cloud Functions → enqueueSubscriber → Logs
+# Search: "klaviyoSync" or other task type
+
+# Check function invocation logs
+firebase functions:log --only enqueueSubscriber
+```
+
 **Shopify:**
 - Check webhook delivery logs in Partner Dashboard
 - Verify HMAC signature validation
@@ -105,6 +118,35 @@ Use systematic elimination:
 | Memory leak | Unclosed listeners | Clean up event listeners, check async operations |
 | Timeout | Slow Firestore queries | Optimize queries, add caching |
 | Auth failures | Invalid JWT/session | Verify getCurrentShop() implementation |
+
+### Cloud Tasks
+| Issue | Cause | Solution |
+|-------|-------|----------|
+| Tasks not executing | Queue disabled or function not deployed | Check queue status in Cloud Console, deploy function |
+| High failure rate | Invalid credentials or integration not connected | Check task handler returns early for permanent errors |
+| Infinite retry loop | Missing retryCount or max retry check | Add `retryCount` to task data, check `retryCount < 5` |
+| Double retries | Throwing on rate limits instead of re-enqueueing | Return (don't throw) after re-enqueue for 429 errors |
+| Tasks timing out | Long processing time | Increase function timeout, optimize processing |
+| Rate limit not handled | Missing retry-after extraction | Extract `retry-after` header, re-enqueue with delay |
+| Local dev not working | Emulator URL mismatch | Check `appConfig.isLocal` and localhost:5011 endpoint |
+
+**Cloud Tasks Debugging Checklist:**
+```
+□ Check Cloud Tasks queue is enabled (Cloud Console → Cloud Tasks → Queues)
+□ Verify enqueueSubscriber function is deployed
+□ Check function logs for task type (search by task type name)
+□ Verify task handler case exists in enqueueHandler.js
+□ Check for errors in task data (shopId, customerId present?)
+□ Verify rate limit handling doesn't throw (return instead)
+□ Check retryCount is included and max retry enforced
+□ For 3rd party APIs, check integration is connected
+□ For local dev, verify emulators running on port 5011
+```
+
+**Key Files:**
+- `services/cloudTaskService.js` - Core enqueue function
+- `handlers/schedule/enqueueHandler.js` - Task dispatcher (switch statement)
+- `helpers/klaviyoTaskQueue.js` - Klaviyo-specific helper (example pattern)
 
 ## Report Format
 

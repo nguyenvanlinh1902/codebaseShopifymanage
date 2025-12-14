@@ -13,6 +13,57 @@ Use the `planner` agent to:
 2. Analyze architecture requirements
 3. Create a comprehensive implementation plan
 
-The plan will be saved to `plans/{feature-name}.md`
+## Output Requirements
 
-**DO NOT** start implementing - only create the plan.
+**MANDATORY:** Save the plan to `docs/features/{feature-name}.md`
+
+### Plan Document Structure
+
+```markdown
+# {Feature Name} Implementation Plan
+
+## Overview
+Brief description of the feature and its purpose.
+
+## Requirements
+- List of functional requirements
+- List of non-functional requirements
+
+## Architecture
+- Components affected
+- Data flow
+- Dependencies
+
+## Implementation Steps
+1. Step 1 with details
+2. Step 2 with details
+...
+
+## API Changes (if applicable)
+- New endpoints
+- Modified endpoints
+- Request/response formats
+
+## Database Changes (if applicable)
+- New collections/fields
+- Migrations needed
+
+## Testing Strategy
+- Unit tests
+- Integration tests
+- Manual testing
+
+## Rollout Plan
+- Feature flags
+- Staged rollout
+- Rollback strategy
+
+## Timeline Considerations
+- Dependencies between steps
+- Critical path items
+
+---
+*Generated: {date}*
+```
+
+**DO NOT** start implementing - only create the plan and save to docs.

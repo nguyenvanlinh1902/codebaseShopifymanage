@@ -127,6 +127,61 @@ You can enable Analytics for your project from Firebase project
 
 ![Enable Google Analytics on your app](https://firebasestorage.googleapis.com/v0/b/avada-development.appspot.com/o/images%2Fscreenshots%2Fenable_analytics.png?alt=media&token=559669e1-65d5-4e7b-b2dd-ce82517a262e)
 
+
+## AI-Assisted Development (Claude Code)
+
+This project supports agentic development workflows using Claude Code. See `CLAUDE.md` for detailed instructions.
+
+### Quick Commands
+
+| Command | Description |
+|---------|-------------|
+| `/plan [task]` | Create implementation plan for a feature |
+| `/fix [issue]` | Analyze and fix issues |
+| `/test` | Run tests and validate code quality |
+| `/debug [issue]` | Investigate and diagnose problems |
+| `/impact` | Analyze impact before merge request |
+| `/perf [target]` | Audit code for performance issues |
+| `/translate [feature]` | Update translations after adding labels |
+
+### Specialized Agents
+
+| Agent | Purpose |
+|-------|---------|
+| `planner` | Research and create implementation plans |
+| `debugger` | Investigate issues, analyze logs |
+| `tester` | Run tests, validate quality |
+| `code-reviewer` | Code review with Avada standards |
+| `security-auditor` | Security vulnerability analysis |
+| `performance-reviewer` | Audit performance and costs |
+| `shopify-app-tester` | MR impact and testing checklist |
+
+### Recommended Workflows
+
+**New Feature:**
+```
+/plan [feature] → implement → /test → /review → /impact
+```
+
+**Bug Fix:**
+```
+/debug [issue] → /fix → /test
+```
+
+**Before Merge:**
+```
+/test → /review → /perf → /impact
+```
+
+### Skills Reference
+
+Skills documentation is available in `.claude/skills/` for:
+- `avada-architecture.md` - Project structure and coding standards
+- `firestore.md` - Firestore queries, batching, indexes
+- `bigquery.md` - Partitioning, clustering, cost control
+- `shopify-api.md` - API selection, bulk operations, webhooks
+- `backend.md` - Async patterns, functions config
+
 ## TODO
 
 - [ ] Add testing

@@ -1,8 +1,13 @@
+---
+name: frontend-development
+description: Use this skill when the user asks about "React admin", "Polaris pages", "translations", "loadable components", "skeleton loading", "useFetchApi", "useCreateApi", "locale", "i18n", or any admin frontend development work. Provides React/Polaris patterns for the embedded admin app.
+---
+
 # Frontend Development (packages/assets)
 
 > **Admin Embedded App** - Uses React + Shopify Polaris
 >
-> For **storefront widgets** (customer-facing), see `.claude/skills/scripttag.md`
+> For **storefront widgets** (customer-facing), see `scripttag` skill
 
 ## Directory Structure
 
@@ -28,27 +33,6 @@ packages/assets/src/
 
 The app supports multiple languages (en, fr, es, de, it, ja, id, uk). Translation keys are defined in JSON files in `packages/assets/src/locale/input/`, then auto-translated to all supported languages.
 
-### File Structure
-
-```
-packages/assets/src/locale/
-├── input/                    # Source files (English keys)
-│   ├── Activity.json
-│   ├── Analytics.json
-│   ├── Customer.json
-│   └── ... (170+ files)
-└── output/                   # Generated translations
-    ├── en.json              # English (source)
-    ├── fr.json              # French
-    ├── es.json              # Spanish
-    ├── de.json              # German
-    ├── it.json              # Italian
-    ├── ja.json              # Japanese
-    ├── id.json              # Indonesian
-    ├── uk.json              # Ukrainian
-    └── origin.json          # Snapshot for change detection
-```
-
 ### Adding/Updating Translation Keys
 
 **Step 1: Edit or create JSON file in `locale/input/`**
@@ -61,8 +45,7 @@ Files are named after components/features (PascalCase):
   "title": "Activities",
   "subtitle": "Manage your customers' loyalty activities in one place",
   "learnMore": "Learn more",
-  "pointTab": "Point Activities",
-  "referralTab": "Referral Activities"
+  "pointTab": "Point Activities"
 }
 ```
 
@@ -71,13 +54,6 @@ Files are named after components/features (PascalCase):
 ```bash
 yarn update-label
 ```
-
-This script:
-1. Merges all `input/*.json` files into `output/en.json`
-2. Detects new/changed keys by comparing with `origin.json`
-3. Auto-translates only changed keys using Google Translate API
-4. Updates all language files (`fr.json`, `es.json`, etc.)
-5. Updates `origin.json` snapshot
 
 **Step 3: Use in components**
 
@@ -95,34 +71,7 @@ function ActivityPage() {
 }
 ```
 
-### Key Naming Convention
-
-- File names: PascalCase matching component/feature name
-- Key names: camelCase
-- Nested keys allowed for organization
-
-```json
-// locale/input/Customer.json
-{
-  "title": "Customers",
-  "tabs": {
-    "all": "All Customers",
-    "vip": "VIP Members",
-    "inactive": "Inactive"
-  },
-  "actions": {
-    "export": "Export",
-    "import": "Import",
-    "addPoints": "Add Points"
-  }
-}
-```
-
-Usage: `t('Customer.tabs.all')`, `t('Customer.actions.export')`
-
 ### Variables in Translations
-
-Use `{variable}` syntax for dynamic values:
 
 ```json
 {
@@ -134,39 +83,6 @@ Use `{variable}` syntax for dynamic values:
 ```javascript
 t('Reward.pointsEarned', { points: 100 })
 // Output: "You earned 100 points!"
-```
-
-### Best Practices
-
-| Do | Don't |
-|----|-------|
-| Use descriptive key names | Use generic names like `label1`, `text` |
-| Group related keys in objects | Flat structure for everything |
-| Keep translations short | Long sentences (harder to translate) |
-| Use variables for dynamic data | Concatenate strings |
-| One file per feature/component | Dump everything in one file |
-
-### Labels NOT Auto-Translated
-
-The script skips:
-- All uppercase text (API, CSV, VIP, POS)
-- Numbers and percentages (100%, 65)
-- Brand names (Shopify, Klaviyo, Joy)
-- URLs and emails
-- Very short text (2 chars or less)
-- File extensions (.csv, .xlsx)
-
-### Other Translation Commands
-
-```bash
-# Detect untranslated labels across all languages
-# (Uncomment detectUntranslatedLabels() in autoTranslateV2.js)
-
-# Translate missing labels from report
-# (Uncomment translateMissingLabels() in autoTranslateV2.js)
-
-# Translate all keys to a new language
-# (Uncomment translateAllKeysToNewLanguage('lang') in autoTranslateV2.js)
 ```
 
 ---
@@ -181,16 +97,15 @@ The script skips:
 - Never create loadable components at top level
 
 ```javascript
-// ✅ GOOD: loadables/CustomerPage/index.js
+// loadables/CustomerPage/index.js
 export default Loadable({
   loader: () => import('../../pages/Customer'),
   loading: CustomerSkeleton
 });
-
-// ❌ BAD: loadables/CustomerPage.js (no folder)
 ```
 
 ### Skeleton Loading
+
 All data-fetching pages must have skeleton loading states:
 
 ```javascript
@@ -208,15 +123,6 @@ function CustomerPageSkeleton() {
   );
 }
 ```
-
-### Polaris Usage
-
-**See `.claude/skills/polaris.md` for comprehensive Polaris patterns.**
-
-Quick rules:
-- Use Polaris v12+ components (avoid `Legacy*` components)
-- Use Icons v9 (no `Minor`/`Major` suffix)
-- Button navigation: use `url` prop, not `onClick`
 
 ---
 

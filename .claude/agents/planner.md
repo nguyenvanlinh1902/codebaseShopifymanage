@@ -248,7 +248,7 @@ Evaluate and document:
 5. Wait for webhook → `BULK_OPERATIONS_FINISH`
 6. Process next chunk if needed
 
-**Reference:** See `.claude/skills/shopify-bulk-operations.md` for implementation patterns.
+**Reference:** See `shopify-bulk-sync` skill for implementation patterns.
 
 **Cloud Tasks is RECOMMENDED for:**
 - Webhook handlers (must respond <5s)
@@ -284,7 +284,7 @@ if (result.retryAfter) {
 }
 ```
 
-**Reference:** See `.claude/skills/cloud-tasks.md` for detailed patterns.
+**Reference:** See `cloud-tasks-queue` skill for detailed patterns.
 
 #### 2.5 Check Avada Patterns
 

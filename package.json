@@ -29,7 +29,9 @@
     "make:ssl": "avada make:ssl",
     "update-localhost-runtime": "node ./scripts/updateLocalUrl.js",
     "timeout": "delay 3",
-    "git:theme-app-ext:config": "git config --global http.version HTTP/1.1 && git config http.postBuffer 524288000"
+    "git:theme-app-ext:config": "git config --global http.version HTTP/1.1 && git config http.postBuffer 524288000",
+    "firestore:build": "node firestore-indexes/build.js",
+    "firestore:split": "node firestore-indexes/split.js"
   },
   "devDependencies": {
     "babel-jest": "^24.9.0",

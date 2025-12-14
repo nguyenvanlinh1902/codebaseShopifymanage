@@ -69,13 +69,20 @@ for (let i = 0; i < items.length; i += BATCH_SIZE) {
 
 ### Index File Structure
 
+If `firestore-indexes/` folder exists, **always add indexes there** (not directly to `firestore.indexes.json`):
+
 ```
 firestore-indexes/
 ├── build.js              # Merge all → firestore.indexes.json
 ├── split.js              # Split into collection files
 ├── customers.json        # Indexes for customers
-└── ... (collection files)
+└── {collection}.json     # One file per collection
 ```
+
+### Workflow
+
+1. Create/edit `firestore-indexes/{collection}.json`
+2. Run `yarn firestore:build` to regenerate `firestore.indexes.json`
 
 | Command | Description |
 |---------|-------------|

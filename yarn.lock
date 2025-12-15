@@ -291,7 +291,7 @@ __metadata:
     dotenv: "npm:^16.4.5"
     esbuild: "npm:^0.20.0"
     firebase-admin: "npm:^13.6.0"
-    firebase-functions: "npm:^7.0.1"
+    firebase-functions: "npm:^6.6.0"
     fs-extra: "npm:^11.2.0"
     glob: "npm:^10.3.10"
     graphql-tag: "npm:^2.12.6"
@@ -11798,9 +11798,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"firebase-functions@npm:^7.0.1":
-  version: 7.0.1
-  resolution: "firebase-functions@npm:7.0.1"
+"firebase-functions@npm:^6.6.0":
+  version: 6.6.0
+  resolution: "firebase-functions@npm:6.6.0"
   dependencies:
     "@types/cors": "npm:^2.8.5"
     "@types/express": "npm:^4.17.21"
@@ -11811,7 +11811,7 @@ __metadata:
     firebase-admin: ^11.10.0 || ^12.0.0 || ^13.0.0
   bin:
     firebase-functions: lib/bin/firebase-functions.js
-  checksum: 10c0/6745a758d61a3f2e362b52e683c07c7f1c3dba11d7b7ee2497edaefccdb93e8487d3db87fe1851658e0822fbf91c4e658bd8ae5c66151a0ec6789069b39b8c7a
+  checksum: 10c0/ed38561be91f7760d5b9d4908c4cc1b231f9c936103e9aec03018bc18a5eba39fcea273136dc239cf70aa851b188eb9c65c0cb4f40694f42a6775b470856456b
   languageName: node
   linkType: hard
 

@@ -7,6 +7,28 @@ description: Use this skill when the user asks to "create an API endpoint", "bui
 
 > For **security patterns**, see `security` skill
 
+## CRITICAL: Firebase/Koa Context
+
+In Firebase Functions with Koa, the request body is accessed differently than standard Koa:
+
+```javascript
+// ❌ WRONG - Standard Koa (does NOT work in Firebase)
+const data = ctx.request.body;
+
+// ✅ CORRECT - Firebase/Koa
+const data = ctx.req.body;
+```
+
+| Property | Access Pattern |
+|----------|----------------|
+| Request body | `ctx.req.body` |
+| Query params | `ctx.query` |
+| URL params | `ctx.params` |
+| Response body | `ctx.body = {...}` |
+| State/context | `ctx.state` |
+
+---
+
 ## Directory Structure
 
 ```

@@ -49,6 +49,9 @@ extensions/               # Shopify extensions
 | `/security` | Security audit |
 | `/perf [target]` | Performance audit |
 | `/impact` | MR impact analysis |
+| `/label` | Check labels for Polaris content guidelines |
+| `/translate` | Update translations after adding labels |
+| `/lint-mr` | ESLint fix files changed in current MR |
 
 ## Agents
 

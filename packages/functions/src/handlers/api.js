@@ -8,6 +8,8 @@ import {verifyEmbedRequest} from '@avada/core';
 import shopifyConfig from '@functions/config/shopify';
 import appConfig from '@functions/config/app';
 import shopifyOptionalScopes from '@functions/config/shopifyOptionalScopes';
+import {publishTopicAsync} from '@functions/helpers/pubsub/publishTopic';
+import {getShopByField, getShopByShopifyDomain} from '@functions/repositories/shopRepository';
 
 // Initialize all demand configuration for an application
 const api = new App();
@@ -31,8 +33,24 @@ api.use(
     isEmbeddedApp: true,
     optionalScopes: shopifyOptionalScopes,
     accessTokenKey: shopifyConfig.accessTokenKey,
-    afterLogin: ctx => {},
-    afterInstall: ctx => {},
+    afterLogin: async ctx => {
+      try {
+        // const shopifyDomain = ctx.state.shopify.shop;
+      } catch (e) {}
+    },
+    afterInstall: async ctx => {
+      try {
+        const {shopifyDomain} = ctx.state.shopify.shop;
+        const shop = await getShopByShopifyDomain(shopifyDomain);
+        publishTopicAsync('backgroundHandling', {
+          type: 'afterInstall',
+          shopId: shop.id,
+          shopifyDomain
+        });
+      } catch (e) {
+        console.error('afterInstall error:', e);
+      }
+    },
     initialPlan: {
       id: 'free',
       name: 'Free',

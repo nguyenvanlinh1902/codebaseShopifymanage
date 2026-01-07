@@ -86,3 +86,5 @@ shopify.**.toml
 .shopify/
 
 claudekit-engineer-main/**
+
+.playwright-mcp

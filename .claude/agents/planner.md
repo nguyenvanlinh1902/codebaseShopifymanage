@@ -472,6 +472,8 @@ gcloud firestore fields ttls update expireAt \
 
 ## Firestore Indexes
 
+**IMPORTANT:** This project uses `firestore-indexes/{collection}.json` pattern.
+
 Analyze queries and determine if composite indexes are needed:
 
 | Collection | Fields | Query Type | Index Needed? |
@@ -479,12 +481,9 @@ Analyze queries and determine if composite indexes are needed:
 | xxx | shopId, createdAt | where + orderBy | YES |
 | xxx | shopId, status | where + where | YES (if inequality) |
 
-**Index Creation:**
+**Index Creation (Project Pattern):**
 ```bash
-# Check existing indexes
-firebase firestore:indexes
-
-# Add to firestore.indexes.json
+# 1. Create/edit firestore-indexes/{collection}.json
 {
   "indexes": [
     {
@@ -495,10 +494,14 @@ firebase firestore:indexes
         { "fieldPath": "createdAt", "order": "DESCENDING" }
       ]
     }
-  ]
+  ],
+  "fieldOverrides": []
 }
 
-# Deploy indexes
+# 2. Merge all index files
+yarn firestore:build
+
+# 3. Deploy indexes
 firebase deploy --only firestore:indexes
 ```
 
@@ -507,6 +510,8 @@ firebase deploy --only firestore:indexes
 - `where()` + `orderBy()` on different fields: Index needed
 - Multiple `where()` with inequality (`<`, `>`, `!=`): Index needed
 - `where()` on same field as `orderBy()`: No index needed
+
+**CHECKLIST:** When creating new collections with compound queries, ALWAYS create `firestore-indexes/{collection}.json`
 
 ## Shopify GraphQL
 

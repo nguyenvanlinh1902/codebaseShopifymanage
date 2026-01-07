@@ -47,6 +47,7 @@ packages/functions/src/
 - Check emptiness with `docs.empty` (not size/length)
 - Use Firestore aggregates for count/sum/avg
 - Filter early with `where`, select only needed fields
+- **INDEXES**: Create `firestore-indexes/{collection}.json` for compound queries, run `yarn firestore:build`
 
 ## Shopify/Polaris Rules
 - Use GraphQL Admin API (preferred over REST)

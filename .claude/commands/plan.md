@@ -46,6 +46,7 @@ Brief description of the feature and its purpose.
 
 ## Database Changes (if applicable)
 - New collections/fields
+- Firestore indexes (add to `firestore-indexes/{collection}.json`)
 - Migrations needed
 
 ## Testing Strategy

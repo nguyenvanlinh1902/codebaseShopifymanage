@@ -262,3 +262,227 @@ GET /api/customers?limit=20&cursor=eyJpZCI6IjEyMyJ9
 □ Rate limiting applied
 □ Authentication middleware
 ```
+
+---
+
+## Client API (Storefront Public Endpoints)
+
+For **public-facing storefront endpoints** accessed via Shopify App Proxy. Different from admin API - no authentication, shop identified by query param.
+
+### Directory Structure
+
+```
+packages/functions/src/
+├── routes/
+│   └── clientApi.js           # Public storefront routes
+├── controllers/
+│   └── clientApi/             # Storefront handlers
+│       └── featureClientController.js
+└── presenters/
+    └── featurePresenter.js    # Strip PII before response
+```
+
+### Route Configuration
+
+```javascript
+// routes/clientApi.js
+import Router from 'koa-router';
+import * as featureController from '../controllers/clientApi/featureClientController';
+
+const router = new Router({prefix: '/clientApi'});
+
+// No authentication middleware - public endpoints
+// Shop identified via app proxy 'shop' query param
+
+// Read endpoints
+router.get('/feature/:resourceId', featureController.getResource);
+router.get('/feature/bulk', featureController.getBulkResources);
+
+// Write endpoints (may check logged_in_customer_id)
+router.post('/feature', featureController.submitResource);
+
+// Settings (filtered for storefront)
+router.get('/feature/settings', featureController.getSettings);
+
+export default router;
+```
+
+### Shop Resolution Pattern
+
+App Proxy automatically adds `shop` query parameter. Resolve shop in controller:
+
+```javascript
+// Helper function in controller
+async function getShopFromQuery(ctx) {
+  const shopDomain = ctx.query.shop || ctx.query.shopifyDomain;
+
+  if (!shopDomain) {
+    return {shop: null, error: 'Missing shop parameter'};
+  }
+
+  const shop = await shopRepository.getShopByShopifyDomain(shopDomain);
+  if (!shop) {
+    return {shop: null, error: 'Shop not found'};
+  }
+
+  return {shop, error: null};
+}
+```
+
+### Controller Pattern
+
+```javascript
+// controllers/clientApi/featureClientController.js
+import * as featureService from '../../services/featureService';
+import {presentForStorefront} from '../../presenters/featurePresenter';
+
+export async function getResource(ctx) {
+  const {resourceId} = ctx.params;
+  const {limit, cursor} = ctx.query;
+
+  // Resolve shop from app proxy
+  const {shop, error} = await getShopFromQuery(ctx);
+  if (error) {
+    ctx.body = {success: false, error};
+    return;
+  }
+
+  const result = await featureService.getResource(shop.id, resourceId, {
+    limit: limit ? parseInt(limit, 10) : 10,
+    startAfter: cursor
+  });
+
+  // CRITICAL: Strip PII before returning to storefront
+  ctx.body = {
+    ...result,
+    data: {
+      ...result.data,
+      items: presentForStorefront(result.data.items)
+    }
+  };
+}
+```
+
+### Customer Context (Optional)
+
+App Proxy passes `logged_in_customer_id` for authenticated customers:
+
+```javascript
+export async function submitResource(ctx) {
+  const inputData = ctx.req.body;
+
+  const {shop, error} = await getShopFromQuery(ctx);
+  if (error) {
+    ctx.body = {success: false, error};
+    return;
+  }
+
+  // Get customer ID from app proxy if logged in
+  const customerId = ctx.query.logged_in_customer_id || null;
+  if (customerId) {
+    inputData.customerId = customerId;
+  }
+
+  const result = await featureService.createResource(shop.id, inputData);
+  ctx.body = result;
+}
+```
+
+### Bulk Endpoints with Limits
+
+Protect against abuse with array size limits:
+
+```javascript
+export async function getBulkResources(ctx) {
+  let {ids} = ctx.query;
+
+  const {shop, error} = await getShopFromQuery(ctx);
+  if (error) {
+    ctx.body = {success: false, error};
+    return;
+  }
+
+  // Handle comma-separated string
+  if (typeof ids === 'string') {
+    ids = ids.split(',').map(id => id.trim());
+  }
+
+  // CRITICAL: Limit array size to prevent abuse
+  if (ids.length > 100) {
+    ctx.body = {success: false, error: 'Maximum 100 items allowed'};
+    return;
+  }
+
+  const result = await featureService.getBulkResources(shop.id, ids);
+  ctx.body = result;
+}
+```
+
+### Settings Exposure
+
+Only expose settings needed for storefront rendering:
+
+```javascript
+export async function getSettings(ctx) {
+  const {shop, error} = await getShopFromQuery(ctx);
+  if (error) {
+    ctx.body = {success: false, error};
+    return;
+  }
+
+  const result = await featureService.getSettings(shop.id);
+
+  // Only expose necessary settings for storefront
+  ctx.body = {
+    success: true,
+    data: {
+      enabled: result.data.enabled,
+      primaryColor: result.data.primaryColor
+      // Don't expose: internalFlags, adminSettings, etc.
+    }
+  };
+}
+```
+
+### Presenter Pattern (Strip PII)
+
+```javascript
+// presenters/featurePresenter.js
+
+export function presentForStorefront(item) {
+  if (!item) return null;
+
+  // Destructure to exclude sensitive fields
+  // eslint-disable-next-line no-unused-vars
+  const {email, customerId, shopId, internalId, ...safeItem} = item;
+
+  return safeItem;
+}
+
+export function presentListForStorefront(items) {
+  if (!Array.isArray(items)) return [];
+  return items.map(presentForStorefront);
+}
+```
+
+### Client API Checklist
+
+```
+□ Shop resolved from ctx.query.shop (app proxy)
+□ No authentication middleware (public)
+□ PII stripped via presenters before response
+□ Array inputs have size limits
+□ Settings expose only needed fields
+□ Customer ID from logged_in_customer_id (optional)
+□ Proper error responses for missing shop
+```
+
+### Client API vs Admin API
+
+| Aspect | Admin API | Client API |
+|--------|-----------|------------|
+| Auth | JWT/Session | None (app proxy) |
+| Shop context | `ctx.state.shop` | `ctx.query.shop` |
+| Data exposure | Full (for admin) | Sanitized (no PII) |
+| Rate limiting | Per-shop | Per-IP |
+| Input limits | Higher | Strict (prevent abuse) |

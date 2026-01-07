@@ -77,6 +77,45 @@ async function copyNonJsFiles() {
   }
 }
 
+async function cleanOrphanedFiles() {
+  // Get all files in src
+  const srcFiles = glob.sync('**/*', {
+    cwd: srcDir,
+    nodir: true,
+    dot: true
+  });
+
+  // Get all files in lib
+  const libFiles = glob.sync('**/*', {
+    cwd: outDir,
+    nodir: true,
+    dot: true
+  });
+
+  const srcSet = new Set(srcFiles.map(f => f.replace(/\.js$/, '.js')));
+  let deletedCount = 0;
+
+  for (const libFile of libFiles) {
+    // Skip source maps
+    if (libFile.endsWith('.map')) {
+      continue;
+    }
+
+    // Check if corresponding source file exists
+    const srcFile = libFile;
+    if (!srcSet.has(srcFile)) {
+      const libPath = path.join(outDir, libFile);
+      await fs.remove(libPath);
+      console.log(`Cleaned orphaned file: ${libFile}`);
+      deletedCount++;
+    }
+  }
+
+  if (deletedCount > 0) {
+    console.log(`Removed ${deletedCount} orphaned files from lib/`);
+  }
+}
+
 async function build() {
   try {
     // Ensure output directory exists (don't clean to avoid permission issues)
@@ -124,6 +163,9 @@ async function build() {
     if (isWatch) {
       console.log('Starting watch mode...');
 
+      // Clean orphaned files first
+      await cleanOrphanedFiles();
+
       // Create esbuild context with plugins for watch mode
       const watchOptions = {
         ...buildOptions,
@@ -140,29 +182,111 @@ async function build() {
         ]
       };
 
-      const ctx = await esbuild.context(watchOptions);
+      let ctx = await esbuild.context(watchOptions);
       await ctx.watch();
       console.log('Watching for changes...');
 
-      // Also watch for non-JS file changes
+      // Track current JS files
+      let currentJsFiles = new Set(entryPoints);
+
+      // Watch for new JS files
       const chokidar = require('chokidar');
-      const watcher = chokidar.watch(srcDir, {
-        ignored: /\.js$/,
-        persistent: true
+      const jsWatcher = chokidar.watch(path.join(srcDir, '**/*.js'), {
+        persistent: true,
+        ignoreInitial: true // Don't trigger for existing files
       });
 
-      watcher.on('change', async changedPath => {
+      const rebuildContext = async (reason, filePath) => {
+        console.log(`\n${reason}: ${path.relative(srcDir, filePath)}`);
+        console.log('Rebuilding esbuild context...');
+
+        // Dispose old context
+        await ctx.dispose();
+
+        // Get updated entry points
+        const newEntryPoints = glob.sync('**/*.js', {
+          cwd: srcDir,
+          nodir: true,
+          absolute: true
+        });
+
+        currentJsFiles = new Set(newEntryPoints);
+
+        // Create new context with updated entry points
+        const newWatchOptions = {
+          ...watchOptions,
+          entryPoints: newEntryPoints
+        };
+
+        ctx = await esbuild.context(newWatchOptions);
+        await ctx.watch();
+        await transformAliasImports();
+        console.log('Context rebuilt successfully!\n');
+      };
+
+      jsWatcher.on('add', async addedPath => {
+        const absolutePath = path.resolve(addedPath);
+        if (!currentJsFiles.has(absolutePath)) {
+          await rebuildContext('New file detected', absolutePath);
+        }
+      });
+
+      jsWatcher.on('unlink', async deletedPath => {
+        const absolutePath = path.resolve(deletedPath);
+        if (currentJsFiles.has(absolutePath)) {
+          // Delete the compiled file and its source map from lib
+          const relativePath = path.relative(srcDir, absolutePath);
+          const destPath = path.join(outDir, relativePath);
+          const mapPath = destPath + '.map';
+
+          if (await fs.pathExists(destPath)) {
+            await fs.remove(destPath);
+            console.log(`Deleted from lib: ${relativePath}`);
+          }
+
+          if (await fs.pathExists(mapPath)) {
+            await fs.remove(mapPath);
+            console.log(`Deleted from lib: ${relativePath}.map`);
+          }
+
+          await rebuildContext('File deleted', absolutePath);
+        }
+      });
+
+      // Also watch for non-JS file changes and additions
+      const nonJsWatcher = chokidar.watch(srcDir, {
+        ignored: /(^|[/\\])\..|(\.js)$/,
+        persistent: true,
+        ignoreInitial: true
+      });
+
+      const copyNonJsFile = async changedPath => {
         const relativePath = path.relative(srcDir, changedPath);
         const destPath = path.join(outDir, relativePath);
         await fs.ensureDir(path.dirname(destPath));
         await fs.copy(changedPath, destPath);
         console.log(`Copied: ${relativePath}`);
+      };
+
+      nonJsWatcher.on('change', copyNonJsFile);
+      nonJsWatcher.on('add', async addedPath => {
+        console.log(`\nNew non-JS file detected: ${path.relative(srcDir, addedPath)}`);
+        await copyNonJsFile(addedPath);
+      });
+      nonJsWatcher.on('unlink', async deletedPath => {
+        const relativePath = path.relative(srcDir, deletedPath);
+        const destPath = path.join(outDir, relativePath);
+        if (await fs.pathExists(destPath)) {
+          await fs.remove(destPath);
+          console.log(`Deleted from lib: ${relativePath}`);
+        }
       });
 
       // Initial copy of non-JS files and transform aliases
       await copyNonJsFiles();
       await transformAliasImports();
     } else {
+      await cleanOrphanedFiles();
       await esbuild.build(buildOptions);
       await copyNonJsFiles();
       await transformAliasImports();

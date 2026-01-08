@@ -1,5 +1,5 @@
 (function() {
-  const BASE_URL = 'https://fri-donate-specifies-ontario.trycloudflare.com/scripttag';
+  const BASE_URL = 'https://jacob-smart-ear-oliver.trycloudflare.com/scripttag';
 
   const scriptElement = document.createElement('script');
   scriptElement.type = 'text/javascript';

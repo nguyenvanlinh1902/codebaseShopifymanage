@@ -143,6 +143,25 @@ export default defineConfig({
     'process.env.NODE_ENV': process.env.NODE_ENV
   },
   plugins: [
+    // Redirect root to /embed for embedded app mode
+    {
+      name: 'redirect-root-to-embed',
+      configureServer(server) {
+        server.middlewares.use((req, res, next) => {
+          // Redirect root path with embed params to /embed
+          if (req.url && (req.url === '/' || req.url.startsWith('/?'))) {
+            const hasEmbedParam = req.url.includes('embedded=') || req.url.includes('shop=');
+            if (hasEmbedParam) {
+              const newUrl = '/embed' + (req.url === '/' ? '' : req.url.slice(1));
+              res.writeHead(302, {Location: newUrl});
+              res.end();
+              return;
+            }
+          }
+          next();
+        });
+      }
+    },
     nodePolyfills(),
     // eslint-disable-next-line new-cap
     EnvironmentPlugin(

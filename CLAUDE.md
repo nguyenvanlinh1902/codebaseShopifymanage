@@ -54,6 +54,7 @@ extensions/               # Shopify extensions
 | `/translate` | Update translations after adding labels |
 | `/lint-mr` | ESLint fix files changed in current MR |
 | `/browser-test [target]` | Test app in browser (admin, storefront, theme, checkout, cart) |
+| `/commit` | Generate commit message and commit all changes |
 
 ## Agents
 

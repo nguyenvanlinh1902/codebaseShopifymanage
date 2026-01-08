@@ -52,5 +52,5 @@
     "@shopify/cli": "3.85.5",
     "concurrently": "^7.6.0"
   },
-  "packageManager": "yarn@4.9.1"
+  "packageManager": "yarn@4.12.0"
 }

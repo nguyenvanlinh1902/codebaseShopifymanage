@@ -36,6 +36,7 @@ extensions/               # Shopify extensions
 | `.claude/skills/bigquery.md` | Partitioning, clustering, cost control |
 | `.claude/skills/shopify-api.md` | API selection, bulk ops, webhooks |
 | `.claude/skills/backend.md` | Async patterns, functions config, webhooks |
+| `.claude/skills/shopify-testing/skill.md` | Browser testing with Playwright MCP |
 
 ## Commands
 
@@ -52,6 +53,7 @@ extensions/               # Shopify extensions
 | `/label` | Check labels for Polaris content guidelines |
 | `/translate` | Update translations after adding labels |
 | `/lint-mr` | ESLint fix files changed in current MR |
+| `/browser-test [target]` | Test app in browser (admin, storefront, theme, checkout, cart) |
 
 ## Agents
 
@@ -113,6 +115,27 @@ When debugging backend issues, check:
 - Contains: function executions, HTTP requests/responses, errors, warnings
 - Search for errors: `grep -i "error\|warn" firebase-debug.log`
 - View recent logs: `tail -100 firebase-debug.log`
+
+### Testing the App
+To test the app, use these URLs (read from `shopify.app.toml`):
+
+**Embedded App (Shopify Admin):**
+- **URL pattern**: `https://admin.shopify.com/store/{store}/apps/{app-handle}/embed`
+- **Store**: Extract from `dev_store_url` (e.g., `thomas-joy-klaviyo-prod.myshopify.com` → `thomas-joy-klaviyo-prod`)
+- **App handle**: Convert `name` to kebab-case (e.g., `thomas app base template` → `thomas-app-base-template`)
+- **Example**: `https://admin.shopify.com/store/thomas-joy-klaviyo-prod/apps/thomas-app-base-template/embed`
+
+**Frontend Dev Server (Vite):**
+- **URL**: The cloudflare tunnel URL from `yarn dev` output (e.g., `https://jacob-smart-ear-oliver.trycloudflare.com`)
+- **How to find**: Check terminal output when running `yarn dev`, or look at Shopify Admin Dev Console panel
+- **Direct access**: `https://{tunnel-url}/embed` for embed app, `https://{tunnel-url}/` for standalone
+
+**Storefront (Customer-facing):**
+- **URL pattern**: `https://{dev_store_url}` from `shopify.app.toml`
+- **Example**: `https://thomas-joy-klaviyo-prod.myshopify.com`
+- **Theme extension preview**: Available in Dev Console when running `yarn dev`
+
+Use Playwright MCP to open and test the app in browser.
 
 ## Workflows
 

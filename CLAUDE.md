@@ -75,6 +75,7 @@ extensions/               # Shopify extensions
 - **Repositories** handle ONE Firestore collection each
 - Response format: `{success, data, error}`
 - Use `Promise.all` for parallel operations
+- **Request body**: Use `ctx.req.body` (NOT `ctx.request.body`) - Firebase Functions pre-parses the body
 
 ### Code Style
 - **Early return** - avoid else/else-if, use guard clauses

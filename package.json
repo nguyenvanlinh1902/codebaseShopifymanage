@@ -49,7 +49,7 @@
   "dependencies": {
     "@avada/console": "1.0.0",
     "@playwright/mcp": "^0.0.54",
-    "@shopify/cli": "3.85.5",
+    "@shopify/cli": "3.88.1",
     "concurrently": "^7.6.0"
   },
   "packageManager": "yarn@4.12.0"

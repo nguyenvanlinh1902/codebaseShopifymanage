@@ -100,6 +100,20 @@ extensions/               # Shopify extensions
 - Always include partition filter in queries
 - Cluster by frequently filtered columns
 
+## Development & Debugging
+
+### Running the App
+The app runs with two separate terminal processes:
+- `sudo yarn dev` - Frontend dev server
+- `yarn emulators` - Firebase emulators (backend)
+
+### Backend Logs
+When debugging backend issues, check:
+- **`firebase-debug.log`** - Main log file for Firebase emulators (functions, hosting, firestore)
+- Contains: function executions, HTTP requests/responses, errors, warnings
+- Search for errors: `grep -i "error\|warn" firebase-debug.log`
+- View recent logs: `tail -100 firebase-debug.log`
+
 ## Workflows
 
 ### New Feature

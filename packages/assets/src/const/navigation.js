@@ -15,4 +15,7 @@ export const navigationLinks = [
     label: 'Optional Scopes',
     destination: '/optional-scopes'
   }
-];
+].map(item => ({
+  ...item,
+  destination: '/embed' + item.destination
+}));

@@ -55,10 +55,16 @@ module.exports = {
     scriptType: 'text/javascript'
   },
   resolve: {
+    extensions: ['.js', '.jsx', '.json'],
     alias: {
       react: 'preact/compat',
-      'react-dom': 'preact/compat'
-    }
+      'react-dom': 'preact/compat',
+      '@assets': path.resolve(__dirname, '../assets/src')
+    },
+    modules: [
+      'node_modules',
+      path.resolve(__dirname, '../assets/node_modules')
+    ]
   },
   module: {
     rules: [
@@ -71,6 +77,12 @@ module.exports = {
               parser: {
                 syntax: 'ecmascript',
                 jsx: true
+              },
+              transform: {
+                react: {
+                  runtime: 'automatic',
+                  importSource: 'preact'
+                }
               }
             }
           }

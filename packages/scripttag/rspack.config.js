@@ -47,7 +47,7 @@ module.exports = {
   experiments: {asyncWebAssembly: true, topLevelAwait: true},
   output: {
     path: path.resolve(__dirname, '../../static/scripttag'),
-    filename: 'avada-sale-pop.min.js',
+    filename: 'avada-storefront.min.js',
     publicPath: jsPath,
     chunkFilename: '[name].[contenthash].bundle.js',
     assetModuleFilename: '[name].[hash][ext]',

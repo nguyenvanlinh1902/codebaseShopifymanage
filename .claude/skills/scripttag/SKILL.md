@@ -21,8 +21,79 @@ The scripttag package contains **customer-facing storefront widgets** injected i
 | **preact-lazy** | Lazy loading | Lightweight lazy loader |
 | **SCSS** | Styling | Scoped styles, minimal footprint |
 | **Rspack** | Bundler | 10x faster than webpack |
+| **Theme App Extension** | Script loading | Shopify-native, no ScriptTag API |
 
 > **Styling:** Always use custom SCSS/CSS. Avoid UI libraries - they add unnecessary bundle size.
+
+### Loading via Theme App Extension (Recommended)
+
+Scripts are loaded via Theme App Extension app embed block, not the deprecated ScriptTag API.
+
+```
+extensions/theme-extension/
+├── blocks/
+│   └── app-embed.liquid      # App embed block (loads script)
+├── assets/
+│   └── app-widget.js         # Minimal loader (or inline in liquid)
+└── locales/
+    └── en.default.json
+```
+
+#### App Embed Block (blocks/app-embed.liquid)
+```liquid
+{% comment %}
+  App embed block - loads the storefront widget
+  Enabled by merchant in Theme Editor > App Embeds
+{% endcomment %}
+
+{% liquid
+  assign app_url = shop.metafields.app.script_url | default: 'https://cdn.example.com'
+%}
+
+<script>
+  window.AVADA_APP_DATA = {
+    shop: {{ shop | json }},
+    customer: {{ customer | json }},
+    settings: {{ block.settings | json }},
+    productId: {{ product.id | json }},
+    config: {{ shop.metafields['$app:feature']['config'].value | json }}
+  };
+</script>
+
+<script src="{{ app_url }}/widget.min.js" defer></script>
+
+{% schema %}
+{
+  "name": "App Widget",
+  "target": "body",
+  "settings": [
+    {
+      "type": "checkbox",
+      "id": "enabled",
+      "label": "Enable widget",
+      "default": true
+    },
+    {
+      "type": "color",
+      "id": "primary_color",
+      "label": "Primary color",
+      "default": "#000000"
+    }
+  ]
+}
+{% endschema %}
+```
+
+#### Why Theme App Extension over ScriptTag API
+
+| Aspect | Theme App Extension | ScriptTag API |
+|--------|---------------------|---------------|
+| **Deprecation** | Current standard | Deprecated |
+| **Merchant control** | Theme Editor toggle | None |
+| **Settings UI** | Built-in schema | Custom needed |
+| **Liquid access** | Full (shop, product, customer) | None |
+| **Metafield access** | Direct in Liquid | Requires fetch |
+| **Performance** | Can use `defer`/`async` | Limited control |
 
 ---
 
@@ -213,6 +284,143 @@ npm run build:analyze
 # Development build (unminified)
 npm run build:dev
 ```
+
+---
+
+## Request Interception
+
+Intercept Shopify storefront requests to modify data, add properties, or track analytics.
+
+### Common Use Cases
+
+| Endpoint | Use Case |
+|----------|----------|
+| `/cart/add` | Modify quantity, add line item properties |
+| `/cart/update` | Adjust quantities, apply discounts |
+| `/cart/change` | Track cart modifications |
+| `/contact` | Add hidden fields, track submissions |
+
+### Fetch Interception
+
+```javascript
+(function() {
+  if (window.__appInterceptorInstalled) return;
+  window.__appInterceptorInstalled = true;
+
+  const INTERCEPT_URLS = ['/cart/add', '/cart/update']; // Configure endpoints
+
+  const originalFetch = window.fetch;
+  window.fetch = function(url, options) {
+    const urlStr = typeof url === 'string' ? url : (url && url.url) || '';
+    const shouldIntercept = INTERCEPT_URLS.some(endpoint => urlStr.includes(endpoint));
+
+    if (shouldIntercept && options && options.body) {
+      try {
+        const modifiedData = getModifiedData(urlStr); // Your modification logic
+        if (modifiedData) {
+          if (typeof options.body === 'string') {
+            const body = JSON.parse(options.body);
+            Object.assign(body, modifiedData);
+            options = {...options, body: JSON.stringify(body)};
+          } else if (options.body instanceof FormData) {
+            Object.entries(modifiedData).forEach(([key, value]) => {
+              options.body.set(key, String(value));
+            });
+          }
+        }
+      } catch (e) {
+        console.log('Intercept error:', e);
+      }
+    }
+    return originalFetch.call(this, url, options);
+  };
+})();
+```
+
+### XMLHttpRequest Interception
+
+```javascript
+(function() {
+  const INTERCEPT_URLS = ['/cart/add', '/cart/update'];
+  const originalOpen = XMLHttpRequest.prototype.open;
+  const originalSend = XMLHttpRequest.prototype.send;
+
+  XMLHttpRequest.prototype.open = function(method, url) {
+    this._interceptUrl = url;
+    return originalOpen.apply(this, arguments);
+  };
+
+  XMLHttpRequest.prototype.send = function(data) {
+    const shouldIntercept = INTERCEPT_URLS.some(endpoint =>
+      this._interceptUrl && this._interceptUrl.includes(endpoint)
+    );
+
+    if (shouldIntercept && data) {
+      try {
+        const modifiedData = getModifiedData(this._interceptUrl);
+        if (modifiedData) {
+          if (typeof data === 'string') {
+            const parsed = JSON.parse(data);
+            Object.assign(parsed, modifiedData);
+            data = JSON.stringify(parsed);
+          } else if (data instanceof FormData) {
+            Object.entries(modifiedData).forEach(([key, value]) => {
+              data.set(key, String(value));
+            });
+          }
+        }
+      } catch (e) {
+        console.log('Intercept error:', e);
+      }
+    }
+    return originalSend.call(this, data);
+  };
+})();
+```
+
+### Form Submission Interception
+
+```javascript
+(function() {
+  const INTERCEPT_URLS = ['/cart/add', '/cart/update'];
+
+  document.addEventListener('submit', function(e) {
+    const form = e.target;
+    const shouldIntercept = INTERCEPT_URLS.some(endpoint =>
+      form.action && form.action.includes(endpoint)
+    );
+
+    if (shouldIntercept) {
+      const modifiedData = getModifiedData(form.action);
+      if (modifiedData) {
+        Object.entries(modifiedData).forEach(([key, value]) => {
+          const input = form.querySelector(`[name="${key}"]`);
+          if (input) {
+            input.value = value;
+          } else {
+            // Create hidden input for new fields
+            const hidden = document.createElement('input');
+            hidden.type = 'hidden';
+            hidden.name = key;
+            hidden.value = value;
+            form.appendChild(hidden);
+          }
+        });
+      }
+    }
+  }, true); // Capture phase
+})();
+```
+
+### Key Points
+
+| Aspect | Recommendation |
+|--------|----------------|
+| Install once | Use global flag `window.__appInterceptorInstalled` |
+| Configure endpoints | Define `INTERCEPT_URLS` array for flexibility |
+| Preserve original | Store and call original functions |
+| Handle all methods | Intercept fetch, XHR, and form submissions |
+| Error handling | Wrap in try-catch, fail gracefully |
 
 ---
 

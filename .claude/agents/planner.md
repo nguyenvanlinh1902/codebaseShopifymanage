@@ -67,7 +67,36 @@ Find existing patterns before designing new ones:
 - Is there a GraphQL mutation or do we need Functions?
 - Any limitations or requirements?
 
-#### 1.3 App Bridge vs Firebase API Decision
+#### 1.3 Storefront Data Delivery Decision
+
+**For features that display data on storefront:**
+
+| Need | Approach | Speed | Cost | Portability |
+|------|----------|-------|------|-------------|
+| GET (display config/settings) | Metafield → Window | Fastest | Free | Shopify-only |
+| GET (multi-platform app) | App Proxy API | Slower | Per-request | Multi-platform |
+| POST (track/submit/modify) | App Proxy API | Required | Per-request | Any |
+
+**Metafield → Window (Recommended for Shopify-only GET):**
+```liquid
+{% comment %} Theme App Extension - loads data into window {% endcomment %}
+<script>
+  window.APP_DATA = {
+    config: {{ shop.metafields['$app:feature']['config'].value | json }}
+  };
+</script>
+```
+- Zero API calls, instant load, no server cost
+- Sync metafield on data change (create/update/delete)
+
+**App Proxy API (For POST actions or multi-platform):**
+- Required for mutations (tracking, form submit)
+- Use if app expands to WooCommerce/BigCommerce later
+- Higher cost but portable
+
+**Reference:** See `storefront-data` skill for detailed patterns.
+
+#### 1.4 App Bridge vs Firebase API Decision
 
 **Use App Bridge direct API when:**
 | Scenario | Use App Bridge | Use Firebase /api |

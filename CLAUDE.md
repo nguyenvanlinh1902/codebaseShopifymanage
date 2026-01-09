@@ -47,6 +47,7 @@ extensions/               # Shopify extensions
 | `/test` | Run tests and validate |
 | `/debug [issue]` | Investigate problems |
 | `/review` | Code review |
+| `/refactor [target]` | Refactor code (extract constants, DRY, early returns) |
 | `/security` | Security audit |
 | `/perf [target]` | Performance audit |
 | `/impact` | MR impact analysis |
@@ -55,6 +56,7 @@ extensions/               # Shopify extensions
 | `/lint-mr` | ESLint fix files changed in current MR |
 | `/browser-test [target]` | Test app in browser (admin, storefront, theme, checkout, cart) |
 | `/commit` | Generate commit message and commit all changes |
+| `/typedoc` | Update JSDoc comments and TypeScript types in index.d.ts |
 
 ## Agents
 
@@ -82,7 +84,7 @@ extensions/               # Shopify extensions
 - **Early return** - avoid else/else-if, use guard clauses
 - **Small functions** - single responsibility, one function does one thing
 - **JSDoc** - required for public service/handler functions
-- **TypeDefs** - centralize types in `functions.d.ts`
+- **TypeDefs** - centralize types in `packages/functions/index.d.ts`
 
 ### Firestore
 - Always scope queries by `shopId` (multi-tenant)

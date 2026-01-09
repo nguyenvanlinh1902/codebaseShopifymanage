@@ -18,6 +18,7 @@
 - Prefer `const` over `let`; avoid mutation
 - Use `===` instead of `==`
 - Prefer async/await over promises
+- Prefer `map/filter/reduce` over `for` loops for data transformation
 - Functions with >3 params use object destructuring
 - Use early return pattern; minimize `else`
 - Single responsibility: one function does one thing
@@ -30,9 +31,24 @@ packages/functions/src/
 ├── repositories/  # ONE Firestore collection per repo - NEVER mix
 ├── helpers/       # Small single-purpose utilities
 ├── presenters/    # Format output data
-├── const/         # Constants grouped by domain
+├── const/         # Constants grouped by domain (see Constants Rules)
 └── config/        # Configuration
 ```
+
+### Constants Organization
+- Group constants by feature in `const/{feature}/` directory
+- Split into small files for bundle optimization (scripttag imports)
+- Use barrel file `index.js` for convenient imports
+- Keep collection names inline in repositories (not extracted)
+- Example structure:
+  ```
+  const/featureName/
+  ├── index.js      # Barrel file re-exporting all
+  ├── status.js     # Enums (scripttag-safe)
+  ├── widget.js     # Default settings (scripttag-safe)
+  ├── validation.js # Validation limits (backend)
+  └── metafield.js  # Metafield configs (backend)
+  ```
 
 ### Frontend Structure (React)
 - One component per file (PascalCase filename)
@@ -43,6 +59,8 @@ packages/functions/src/
 
 ## Firestore Rules
 - Repository handles ONE collection only
+- Define collection name as `const COLLECTION_NAME = '...'` inline in repository
+- All query/mutation functions require `shopId` as first parameter (multi-tenant)
 - Use batch operations (max 500 per batch)
 - Check emptiness with `docs.empty` (not size/length)
 - Use Firestore aggregates for count/sum/avg

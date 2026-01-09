@@ -164,6 +164,149 @@ const {deleting, handleDelete} = useDeleteApi({
 await handleDelete(customerId);
 ```
 
+### Edit (Update)
+
+```javascript
+const {editing, handleEdit} = useEditApi({
+  url: `/api/customers/${customerId}`,
+  successMsg: 'Customer updated successfully',
+  successCallback: () => fetchApi()
+});
+
+// Usage
+await handleEdit({ name, email, points });
+```
+
+---
+
+## Save Bar (App Bridge)
+
+The `<ui-save-bar>` web component requires refs and `setAttribute` for loading state (React props don't work on web components).
+
+### Pattern
+
+```javascript
+import {useRef, useEffect} from 'react';
+import {useAppBridge} from '@shopify/app-bridge-react';
+
+function MyForm() {
+  const shopify = useAppBridge();
+  const saveButtonRef = useRef(null);
+  const [isDirty, setIsDirty] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  // Show/hide save bar based on form changes
+  useEffect(() => {
+    if (isDirty) {
+      shopify.saveBar.show('my-save-bar');
+    } else {
+      shopify.saveBar.hide('my-save-bar');
+    }
+  }, [isDirty, shopify]);
+
+  // Set loading state on save button (CRITICAL: use setAttribute)
+  useEffect(() => {
+    if (saveButtonRef.current) {
+      if (saving) {
+        saveButtonRef.current.setAttribute('loading', '');
+        saveButtonRef.current.setAttribute('disabled', '');
+      } else {
+        saveButtonRef.current.removeAttribute('loading');
+        saveButtonRef.current.removeAttribute('disabled');
+      }
+    }
+  }, [saving]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    await saveData();
+    setSaving(false);
+    setIsDirty(false);
+  };
+
+  const handleDiscard = () => {
+    resetForm();
+    setIsDirty(false);
+  };
+
+  return (
+    <Page title="Settings">
+      <ui-save-bar id="my-save-bar">
+        <button ref={saveButtonRef} variant="primary" onClick={handleSave}>
+          Save
+        </button>
+        <button onClick={handleDiscard}>Discard</button>
+      </ui-save-bar>
+      {/* Form content */}
+    </Page>
+  );
+}
+```
+
+### Key Points
+
+| Issue | Solution |
+|-------|----------|
+| Loading state not working | Use `setAttribute('loading', '')` via ref |
+| Disabled state not working | Use `setAttribute('disabled', '')` via ref |
+| Save bar not showing | Call `shopify.saveBar.show('bar-id')` |
+| Save bar not hiding | Call `shopify.saveBar.hide('bar-id')` |
+
+---
+
+## Resource Picker (App Bridge)
+
+Use App Bridge's resource picker for selecting Shopify resources (products, collections, etc.).
+
+### Product Selection
+
+```javascript
+import {useAppBridge} from '@shopify/app-bridge-react';
+
+function ProductSelector({selectedProducts, onSelect}) {
+  const shopify = useAppBridge();
+
+  const handleSelectProducts = async () => {
+    try {
+      const selected = await shopify.resourcePicker({
+        type: 'product',
+        multiple: true,
+        selectionIds: selectedProducts.map(p => ({id: p.id})),
+        filter: {
+          variants: false  // Exclude variants
+        }
+      });
+
+      if (selected) {
+        onSelect(selected.map(product => ({
+          id: product.id,
+          title: product.title,
+          image: product.images?.[0]?.originalSrc || null
+        })));
+      }
+    } catch (error) {
+      console.error('Resource picker error:', error);
+    }
+  };
+
+  return (
+    <Button icon={SearchIcon} onClick={handleSelectProducts}>
+      Browse products
+    </Button>
+  );
+}
+```
+
+### Resource Picker Options
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `type` | string | `'product'`, `'collection'`, `'variant'` |
+| `multiple` | boolean | Allow multiple selection |
+| `selectionIds` | array | Pre-selected resource IDs `[{id: 'gid://...'}]` |
+| `filter.variants` | boolean | Include/exclude variants |
+| `filter.draft` | boolean | Include draft products |
+
 ---
 
 ## State Management

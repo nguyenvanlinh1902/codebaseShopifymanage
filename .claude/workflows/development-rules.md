@@ -37,18 +37,18 @@ packages/functions/src/
 
 ### Constants Organization
 - Group constants by feature in `const/{feature}/` directory
-- Split into small files for bundle optimization (scripttag imports)
+- **Split by bundle target**: scripttag-safe (lightweight) vs backend-only (heavier)
 - Use barrel file `index.js` for convenient imports
 - Keep collection names inline in repositories (not extracted)
 - Example structure:
   ```
   const/featureName/
   ├── index.js      # Barrel file re-exporting all
-  ├── status.js     # Enums (scripttag-safe)
-  ├── widget.js     # Default settings (scripttag-safe)
-  ├── validation.js # Validation limits (backend)
-  └── metafield.js  # Metafield configs (backend)
+  ├── settings.js   # Default settings, enums (SCRIPTTAG-SAFE - keep lightweight)
+  └── config.js     # TTL, API config, fallbacks (BACKEND-ONLY)
   ```
+- **Scripttag imports**: Use direct path `@functions/const/feature/settings` (not barrel)
+- **Backend/Admin imports**: Use barrel `@functions/const/feature`
 
 ### Frontend Structure (React)
 - One component per file (PascalCase filename)
@@ -73,6 +73,13 @@ packages/functions/src/
 - Use Polaris components when available
 - Verify webhook HMAC signatures
 - Handle rate limits with exponential backoff
+
+## Development Environment
+- `yarn dev` auto-syncs cloudflare tunnel URL to all packages:
+  - `packages/functions/.env` (APP_BASE_URL)
+  - `packages/scripttag/.env.development` (API_URL)
+  - `extensions/theme-extension/assets/` (BASE_URL)
+- No manual env updates needed during development
 
 ## Security
 - NEVER commit credentials or API keys

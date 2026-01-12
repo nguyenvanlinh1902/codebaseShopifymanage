@@ -141,9 +141,15 @@ if (document.readyState === 'complete') {
 ### 2. Lazy Loading Components
 
 ```javascript
-import lazy from 'preact-lazy';
+// Use preact/compat lazy (NOT preact-lazy) for React component compatibility
+import {lazy, Suspense} from 'preact/compat';
 
 const HeavyComponent = lazy(() => import('./HeavyComponent'));
+
+// With Suspense wrapper
+<Suspense fallback={null}>
+  <HeavyComponent />
+</Suspense>
 ```
 
 ### 3. Tree Shaking
@@ -182,11 +188,35 @@ import formatCurrency from '../helpers/formatCurrency';
 // Use preact directly
 import {render} from 'preact';
 import {useState, useEffect} from 'preact/hooks';
+import {lazy, Suspense} from 'preact/compat';
 
 // Rspack aliases handle React compat:
 // 'react' -> 'preact/compat'
 // 'react-dom' -> 'preact/compat'
 ```
+
+### Sharing Components with Admin (React)
+
+Scripttag can import React components from `@assets/` - they work via Preact compat:
+
+```javascript
+// rspack.config.js aliases:
+// '@assets': '../assets/src'
+// '@functions': '../functions/src'
+
+// Import React component - works with Preact compat
+const NotificationPopup = lazy(() =>
+  import('@assets/components/NotificationPopup/NotificationPopup')
+);
+
+// Import lightweight constants from functions
+import {DEFAULT_SETTINGS} from '@functions/const/salePop/settings';
+```
+
+**Benefits:**
+- Single source of truth for shared UI components
+- Preview in admin matches storefront exactly
+- Constants shared between backend, admin, and scripttag
 
 ### Functional Components with Hooks
 
@@ -266,6 +296,32 @@ const {
 // Always destructure with defaults
 const {items = [], config = {}} = settings || {};
 ```
+
+---
+
+## Environment Configuration
+
+### Rspack Env Loading
+
+Rspack loads env files with fallback chain:
+
+```javascript
+// rspack.config.js loads in order:
+// 1. .env.{ENVIRONMENT} (e.g., .env.development)
+// 2. .env.local
+// 3. .env
+
+// Environment variables available in bundle:
+process.env.API_URL      // Backend API URL
+process.env.HOST         // Current host URL
+process.env.PUBLIC_PATH  // CDN path for assets
+```
+
+### Auto-Sync from Vite
+
+When running `yarn dev`, vite.config.js automatically updates:
+- `packages/scripttag/.env.development` with `API_URL` from cloudflare tunnel
+- No manual env file updates needed during development
 
 ---
 

@@ -117,6 +117,63 @@ Use for large fields you don't query:
 
 ---
 
+## TTL (Time-To-Live) Pattern
+
+Automatically delete old documents without cron jobs:
+
+### 1. Add `expireAt` Field in Repository
+
+```javascript
+/** TTL duration in milliseconds (90 days) */
+const TTL_MS = 90 * 24 * 60 * 60 * 1000;
+
+function getExpireAt(now) {
+  return new Date(now.getTime() + TTL_MS);
+}
+
+export async function createNotification({shopId, data}) {
+  const now = new Date();
+
+  return collection.add({
+    ...data,
+    shopId,
+    createdAt: now,
+    expireAt: getExpireAt(now)  // TTL field
+  });
+}
+```
+
+### 2. Add TTL fieldOverride in Index File
+
+```json
+// firestore-indexes/{collection}.json
+{
+  "indexes": [...],
+  "fieldOverrides": [
+    {
+      "collectionGroup": "salePopNotifications",
+      "fieldPath": "expireAt",
+      "ttl": true,
+      "indexes": []
+    }
+  ]
+}
+```
+
+### 3. Deploy Indexes
+
+```bash
+yarn firestore:build   # Merge index files
+firebase deploy --only firestore:indexes
+```
+
+**Notes:**
+- TTL deletion is eventual (may take 24-48 hours after expireAt)
+- Use for logs, temporary data, notifications
+- No Firestore reads/writes cost for TTL deletions
+
+---
+
 ## Write Rate Limits
 
 **Limit: 1 write per document per second**

@@ -61,6 +61,11 @@ if (!isProduction && shopifyApiKey) {
 
     updateThemeAppExtFile('../../extensions/theme-extension/assets/avada-embed.js');
 
+    // Update scripttag .env.development with API_URL
+    updateEnvFile('../scripttag/.env.development', {
+      API_URL: process.env.HOST
+    });
+
     updateEnvFile('.env.development', {
       VITE_SHOPIFY_API_KEY: shopifyApiKey
     });

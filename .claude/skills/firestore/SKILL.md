@@ -97,6 +97,39 @@ firestore-indexes/
 | `where()` + `orderBy()` different fields | YES |
 | Multiple inequality `where()` | YES |
 
+### Sortable Lists: Both Directions Required
+
+When a repository uses `paginateQuery` or supports sortable grids/lists, **create indexes for BOTH ASC and DESC directions**:
+
+```json
+// firestore-indexes/{collection}.json
+{
+  "indexes": [
+    {
+      "collectionGroup": "trustBadges",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "shopId", "order": "ASCENDING"},
+        {"fieldPath": "order", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "trustBadges",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "shopId", "order": "ASCENDING"},
+        {"fieldPath": "order", "order": "DESCENDING"}
+      ]
+    }
+  ]
+}
+```
+
+**Why both directions?**
+- `paginateQuery` helper uses `startAfter`/`endBefore` cursors
+- Cursor direction depends on sort order (ASC vs DESC)
+- Missing direction index causes `FAILED_PRECONDITION` error
+
 ---
 
 ## Index Exemptions

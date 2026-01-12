@@ -63,6 +63,31 @@ firebase emulators:exec "npm test"
 npm test -- --grep "PointsService"
 ```
 
+### 4. Browser Testing (Playwright MCP)
+
+When manual browser testing is needed, use **Playwright MCP** tools:
+
+**When to use browser testing:**
+- Testing embedded app in Shopify Admin
+- Testing storefront widgets (scripttag)
+- Testing theme extension blocks
+- Verifying checkout flow integrations
+- Testing customer account extensions
+
+**Use `/browser-test` command** or call Playwright MCP tools directly:
+```
+mcp__playwright__browser_navigate - Navigate to URL
+mcp__playwright__browser_snapshot - Get page accessibility snapshot
+mcp__playwright__browser_click - Click elements
+mcp__playwright__browser_type - Type text
+mcp__playwright__browser_take_screenshot - Capture screenshots
+```
+
+**Test URLs (from `shopify.app.toml`):**
+- **Admin**: `https://admin.shopify.com/store/{store}/apps/{app-handle}/embed`
+- **Storefront**: `https://{dev_store_url}`
+- **Dev Server**: Cloudflare tunnel URL from `yarn dev`
+
 ## Test Categories
 
 ### Unit Tests

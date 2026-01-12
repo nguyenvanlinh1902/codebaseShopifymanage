@@ -20,23 +20,36 @@ packages/
 │   ├── repositories/     # ONE collection per repo
 │   ├── helpers/          # Utilities
 │   └── presenters/       # Output formatting
-├── assets/src/           # Frontend (React)
+├── assets/src/           # Frontend (React/Polaris)
 │   ├── components/       # Reusable components
 │   ├── pages/            # Page components
 │   └── hooks/            # Custom hooks
-extensions/               # Shopify extensions
+├── scripttag/src/        # Storefront widget (Preact, lightweight)
+extensions/
+└── theme-extension/      # Theme App Extension (Liquid blocks)
+firestore-indexes/        # Compound query indexes (run yarn firestore:build)
 ```
 
 ## Skills (Reference Documentation)
 
 | Skill | Use For |
 |-------|---------|
-| `.claude/skills/avada-architecture.md` | Project structure, patterns, coding standards |
-| `.claude/skills/firestore.md` | Queries, batching, TTL, indexes |
-| `.claude/skills/bigquery.md` | Partitioning, clustering, cost control |
-| `.claude/skills/shopify-api.md` | API selection, bulk ops, webhooks |
-| `.claude/skills/backend.md` | Async patterns, functions config, webhooks |
-| `.claude/skills/shopify-testing/skill.md` | Browser testing with Playwright MCP |
+| `.claude/skills/backend/` | Async patterns, Firebase functions, Pub/Sub, webhooks |
+| `.claude/skills/frontend/` | React/Polaris admin app patterns |
+| `.claude/skills/firestore/` | Queries, batching, TTL, indexes |
+| `.claude/skills/bigquery/` | Partitioning, clustering, cost control |
+| `.claude/skills/shopify-api/` | API selection, rate limits, webhooks |
+| `.claude/skills/shopify-bulk-operations/` | Bulk mutations, JSONL, staged uploads |
+| `.claude/skills/shopify-functions/` | Shopify Functions (discounts, validation) |
+| `.claude/skills/scripttag/` | Storefront widget (Preact, lightweight) |
+| `.claude/skills/theme-extension/` | Theme App Extension (Liquid blocks) |
+| `.claude/skills/storefront-data/` | Storefront data layer patterns |
+| `.claude/skills/polaris/` | Polaris v12+ component patterns |
+| `.claude/skills/api-design/` | REST API design, validation, responses |
+| `.claude/skills/redis-caching/` | Redis caching, TTL, circuit breaker |
+| `.claude/skills/cloud-tasks/` | Cloud Tasks background processing |
+| `.claude/skills/security/` | Auth, IDOR prevention, webhook verification |
+| `.claude/skills/shopify-testing/` | Browser testing with Playwright MCP |
 
 ## Commands
 
@@ -57,6 +70,8 @@ extensions/               # Shopify extensions
 | `/browser-test [target]` | Test app in browser (admin, storefront, theme, checkout, cart) |
 | `/commit` | Generate commit message and commit all changes |
 | `/typedoc` | Update JSDoc comments and TypeScript types in index.d.ts |
+| `/docs [feature]` | Document feature changes and updates |
+| `/learn-from-mr [area]` | Analyze MR to extract patterns and update `.claude/` skills/rules |
 
 ## Agents
 
@@ -143,17 +158,28 @@ Use Playwright MCP to open and test the app in browser.
 
 ## Workflows
 
-### New Feature
+- Primary workflow: `.claude/workflows/primary-workflow.md`
+- Development rules: `.claude/workflows/development-rules.md`
+- Orchestration protocol: `.claude/workflows/orchestration-protocol.md`
+- Documentation management: `.claude/workflows/documentation-management.md`
+
+**IMPORTANT:** You must follow the primary workflow in `.claude/workflows/primary-workflow.md` for all implementation tasks.
+**IMPORTANT:** You must follow strictly the development rules in `.claude/workflows/development-rules.md` file.
+**IMPORTANT:** Activate relevant skills from `.claude/skills/` based on the task requirements.
+
+### Quick Reference
+
+**New Feature:**
 ```
-/plan [feature] → implement → /test → /review → /impact
+/plan → implement → /test → /refactor (optional) → /typedoc → /review → /impact
 ```
 
-### Bug Fix
+**Bug Fix:**
 ```
-/debug [issue] → /fix → /test
+/debug → /fix → /test → /review
 ```
 
-### Before Merge
+**Before Merge:**
 ```
 /test → /review → /perf → /impact
 ```

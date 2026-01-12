@@ -2,7 +2,7 @@ import {prepareShopData} from '@avada/core';
 import shopifyConfig from '../config/shopify';
 import Shopify from 'shopify-api-node';
 
-export const API_VERSION = '2024-04';
+export const API_VERSION = '2025-10';
 
 /**
  * Create Shopify instance with the latest API version and auto limit enabled

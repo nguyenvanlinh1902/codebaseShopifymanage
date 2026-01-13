@@ -241,6 +241,122 @@ export const update = (id, data) =>
 
 ---
 
+## Repository Helper Functions
+
+Import standardized utilities from `repositories/helper.js`:
+
+```javascript
+import {
+  prepareDoc,
+  paginateQuery,
+  getOrderBy,
+  getByIds,
+  batchCreate,
+  batchUpdate,
+  batchDelete,
+  getDocsInChunks
+} from './helper';
+```
+
+| Function | Purpose | Use Case |
+|----------|---------|----------|
+| `prepareDoc({doc})` | Format document with date conversion | All read operations |
+| `paginateQuery({queriedRef, collection, query})` | Cursor-based pagination with hasPre/hasNext | List endpoints |
+| `getOrderBy(sortType)` | Parse "field_direction" string | Sortable lists |
+| `getByIds({collection, ids, filters})` | Batch fetch by IDs (handles 10-item 'in' limit) | Bulk lookups |
+| `batchCreate/Update/Delete` | Chunked batch operations (500 limit) | Bulk mutations |
+| `getDocsInChunks({collection, shopId})` | Recursive fetch for large datasets | Exports, migrations |
+
+### paginateQuery Usage
+
+```javascript
+export async function getItemList({shopId, query = {}}) {
+  const {order, status} = query;
+
+  // Always start with shopId filter
+  let queriedRef = collection.where('shopId', '==', shopId);
+
+  // Apply optional filters
+  if (status) {
+    queriedRef = queriedRef.where('status', '==', status);
+  }
+
+  // Apply sorting
+  const {sortField, direction} = getOrderBy(order);
+  queriedRef = queriedRef.orderBy(sortField, direction);
+
+  // Returns: {data, count, total, pageInfo: {hasPre, hasNext, totalPage}}
+  return await paginateQuery({queriedRef, collection, query});
+}
+```
+
+### getByIds Usage
+
+```javascript
+// Fetch multiple documents by ID with shopId filter
+const items = await getByIds({
+  collection,
+  ids: ['id1', 'id2', 'id3'],
+  filters: {shopId}  // Security: always include shopId
+});
+
+// Fetch by custom field
+const items = await getByIds({
+  collection,
+  ids: ['SKU001', 'SKU002'],
+  idField: 'sku',
+  selectFields: ['name', 'price']
+});
+```
+
+---
+
+## Sample Repository Template
+
+For new repositories, use `packages/functions/src/repositories/sampleRepository.js` as a template.
+
+**Includes patterns for:**
+- Multi-tenant security (shopId validation)
+- Ownership validation before updates/deletes
+- Paginated list with filters and sorting
+- Batch create/update/delete operations
+- Field uniqueness checking
+- Count queries
+
+```bash
+# Copy and rename for new collection
+cp packages/functions/src/repositories/sampleRepository.js \
+   packages/functions/src/repositories/myFeatureRepository.js
+```
+
+**Key patterns in template:**
+
+```javascript
+// Ownership validation
+export async function getById(id, shopId) {
+  const doc = await collection.doc(id).get();
+  if (!doc.exists) return null;
+
+  const data = prepareDoc({doc});
+  if (data.shopId !== shopId) {
+    console.error(`Unauthorized access: ${shopId} tried to access ${id}`);
+    return null;
+  }
+  return data;
+}
+
+// Update with ownership check
+export async function updateById(id, shopId, data) {
+  const existing = await getById(id, shopId);
+  if (!existing) {
+    return {success: false, error: 'Not found or access denied'};
+  }
+  // ... update logic
+}
+```
+
+---
+
 ## Aggregate Pattern with Transactions
 
 For maintaining counters, averages, and breakdowns that must stay consistent with related data. Common uses: rating averages, point totals, inventory counts, statistics.

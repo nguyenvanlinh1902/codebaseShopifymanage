@@ -9,6 +9,18 @@ description: Use this skill when the user asks about "React admin", "Polaris pag
 >
 > For **storefront widgets** (customer-facing), see `scripttag` skill
 
+## Quick Reference
+
+| Topic | Reference File |
+|-------|---------------|
+| i18n, Translation Keys, yarn update-label | [references/translations.md](references/translations.md) |
+| useFetchApi, useCreateApi, useEditApi | [references/api-hooks.md](references/api-hooks.md) |
+| ui-save-bar, Loading States | [references/save-bar.md](references/save-bar.md) |
+| Product/Collection Picker | [references/resource-picker.md](references/resource-picker.md) |
+| New Page Checklist, Routes, Navigation | [references/creating-pages.md](references/creating-pages.md) |
+
+---
+
 ## Directory Structure
 
 ```
@@ -27,89 +39,41 @@ packages/assets/src/
 
 ---
 
-## Translations
+## Quick Patterns
 
-### Overview
-
-The app supports multiple languages (en, fr, es, de, it, ja, id, uk). Translation keys are defined in JSON files in `packages/assets/src/locale/input/`, then auto-translated to all supported languages.
-
-### Adding/Updating Translation Keys
-
-**Step 1: Edit or create JSON file in `locale/input/`**
-
-Files are named after components/features (PascalCase):
-
-```json
-// locale/input/Activity.json
-{
-  "title": "Activities",
-  "subtitle": "Manage your customers' loyalty activities in one place",
-  "learnMore": "Learn more",
-  "pointTab": "Point Activities"
-}
-```
-
-**Step 2: Run the translation script**
-
-```bash
-yarn update-label
-```
-
-**Step 3: Use in components**
+### Translation Usage
 
 ```javascript
 import {useTranslation} from 'react-i18next';
 
-function ActivityPage() {
+function MyPage() {
   const {t} = useTranslation();
-
-  return (
-    <Page title={t('Activity.title')}>
-      <Text>{t('Activity.subtitle')}</Text>
-    </Page>
-  );
+  return <Page title={t('MyPage.title')}>{t('MyPage.subtitle')}</Page>;
 }
 ```
 
-### Variables in Translations
-
-```json
-{
-  "pointsEarned": "You earned {points} points!",
-  "welcome": "Welcome, {name}!"
-}
-```
+### API Hooks
 
 ```javascript
-t('Reward.pointsEarned', { points: 100 })
-// Output: "You earned 100 points!"
-```
+// Fetch data
+const {data, loading, fetchApi} = useFetchApi({
+  url: '/api/customers',
+  defaultData: [],
+  initLoad: true
+});
 
----
-
-## Component Guidelines
-
-### File Extensions
-- Use `.js` files only (no `.jsx`)
-
-### Loadable Components
-- Always create in organized folders with `index.js`
-- Never create loadable components at top level
-
-```javascript
-// loadables/CustomerPage/index.js
-export default Loadable({
-  loader: () => import('../../pages/Customer'),
-  loading: CustomerSkeleton
+// Create
+const {creating, handleCreate} = useCreateApi({
+  url: '/api/customers',
+  successMsg: 'Created!',
+  successCallback: () => fetchApi()
 });
 ```
 
 ### Skeleton Loading
 
-All data-fetching pages must have skeleton loading states:
-
 ```javascript
-function CustomerPageSkeleton() {
+function PageSkeleton() {
   return (
     <SkeletonPage primaryAction>
       <Layout>
@@ -126,194 +90,10 @@ function CustomerPageSkeleton() {
 
 ---
 
-## API Hooks
-
-### Fetch Data
-
-```javascript
-const {data, loading, fetchApi} = useFetchApi({
-  url: '/api/customers',
-  defaultData: [],
-  initLoad: true  // Load on mount
-});
-```
-
-### Create/Update
-
-```javascript
-const {creating, handleCreate} = useCreateApi({
-  url: '/api/customers',
-  successMsg: 'Customer created successfully',
-  successCallback: () => fetchApi()
-});
-
-// Usage
-await handleCreate({ name, email, points });
-```
-
-### Delete
-
-```javascript
-const {deleting, handleDelete} = useDeleteApi({
-  url: '/api/customers',
-  successMsg: 'Customer deleted',
-  successCallback: () => fetchApi()
-});
-
-// Usage
-await handleDelete(customerId);
-```
-
-### Edit (Update)
-
-```javascript
-const {editing, handleEdit} = useEditApi({
-  url: `/api/customers/${customerId}`,
-  successMsg: 'Customer updated successfully',
-  successCallback: () => fetchApi()
-});
-
-// Usage
-await handleEdit({ name, email, points });
-```
-
----
-
-## Save Bar (App Bridge)
-
-The `<ui-save-bar>` web component requires refs and `setAttribute` for loading state (React props don't work on web components).
-
-### Pattern
-
-```javascript
-import {useRef, useEffect} from 'react';
-import {useAppBridge} from '@shopify/app-bridge-react';
-
-function MyForm() {
-  const shopify = useAppBridge();
-  const saveButtonRef = useRef(null);
-  const [isDirty, setIsDirty] = useState(false);
-  const [saving, setSaving] = useState(false);
-
-  // Show/hide save bar based on form changes
-  useEffect(() => {
-    if (isDirty) {
-      shopify.saveBar.show('my-save-bar');
-    } else {
-      shopify.saveBar.hide('my-save-bar');
-    }
-  }, [isDirty, shopify]);
-
-  // Set loading state on save button (CRITICAL: use setAttribute)
-  useEffect(() => {
-    if (saveButtonRef.current) {
-      if (saving) {
-        saveButtonRef.current.setAttribute('loading', '');
-        saveButtonRef.current.setAttribute('disabled', '');
-      } else {
-        saveButtonRef.current.removeAttribute('loading');
-        saveButtonRef.current.removeAttribute('disabled');
-      }
-    }
-  }, [saving]);
-
-  const handleSave = async () => {
-    setSaving(true);
-    await saveData();
-    setSaving(false);
-    setIsDirty(false);
-  };
-
-  const handleDiscard = () => {
-    resetForm();
-    setIsDirty(false);
-  };
-
-  return (
-    <Page title="Settings">
-      <ui-save-bar id="my-save-bar">
-        <button ref={saveButtonRef} variant="primary" onClick={handleSave}>
-          Save
-        </button>
-        <button onClick={handleDiscard}>Discard</button>
-      </ui-save-bar>
-      {/* Form content */}
-    </Page>
-  );
-}
-```
-
-### Key Points
-
-| Issue | Solution |
-|-------|----------|
-| Loading state not working | Use `setAttribute('loading', '')` via ref |
-| Disabled state not working | Use `setAttribute('disabled', '')` via ref |
-| Save bar not showing | Call `shopify.saveBar.show('bar-id')` |
-| Save bar not hiding | Call `shopify.saveBar.hide('bar-id')` |
-
----
-
-## Resource Picker (App Bridge)
-
-Use App Bridge's resource picker for selecting Shopify resources (products, collections, etc.).
-
-### Product Selection
-
-```javascript
-import {useAppBridge} from '@shopify/app-bridge-react';
-
-function ProductSelector({selectedProducts, onSelect}) {
-  const shopify = useAppBridge();
-
-  const handleSelectProducts = async () => {
-    try {
-      const selected = await shopify.resourcePicker({
-        type: 'product',
-        multiple: true,
-        selectionIds: selectedProducts.map(p => ({id: p.id})),
-        filter: {
-          variants: false  // Exclude variants
-        }
-      });
-
-      if (selected) {
-        onSelect(selected.map(product => ({
-          id: product.id,
-          title: product.title,
-          image: product.images?.[0]?.originalSrc || null
-        })));
-      }
-    } catch (error) {
-      console.error('Resource picker error:', error);
-    }
-  };
-
-  return (
-    <Button icon={SearchIcon} onClick={handleSelectProducts}>
-      Browse products
-    </Button>
-  );
-}
-```
-
-### Resource Picker Options
-
-| Option | Type | Description |
-|--------|------|-------------|
-| `type` | string | `'product'`, `'collection'`, `'variant'` |
-| `multiple` | boolean | Allow multiple selection |
-| `selectionIds` | array | Pre-selected resource IDs `[{id: 'gid://...'}]` |
-| `filter.variants` | boolean | Include/exclude variants |
-| `filter.draft` | boolean | Include draft products |
-
----
-
 ## State Management
 
 - Use React Context for global state
 - Use local state for component-specific data
-- Use Redux Saga sparingly (legacy patterns)
 
 ```javascript
 // contexts/ShopContext.js
@@ -334,61 +114,11 @@ export const useShop = () => useContext(ShopContext);
 
 ---
 
-## Creating New Pages
+## Component Guidelines
 
-When adding a new page to the admin app, follow this checklist:
-
-### Checklist
-
-| Step | File | Action |
-|------|------|--------|
-| 1. Page component | `pages/MyPage/MyPage.js` | Create main page component |
-| 2. Index export | `pages/MyPage/index.js` | Export default component |
-| 3. Loadable | `loadables/MyPage/MyPage.js` | Create lazy-loaded wrapper |
-| 4. Route | `routes/routes.js` | Add route with import |
-| 5. **Navigation** | `const/navigation.js` | **Add to navigationLinks array** |
-
-### Example: Adding "Trust Badges" Page
-
-```javascript
-// 1. pages/TrustBadges/TrustBadges.js
-export default function TrustBadges() {
-  return <Page title="Trust Badges">...</Page>;
-}
-
-// 2. pages/TrustBadges/index.js
-export {default} from './TrustBadges';
-
-// 3. loadables/TrustBadges/TrustBadges.js
-import React from 'react';
-const Loadable = React.lazy(() => import('../../pages/TrustBadges/TrustBadges'));
-export default Loadable;
-
-// 4. routes/routes.js
-import TrustBadges from '@assets/loadables/TrustBadges/TrustBadges';
-// Add in Switch:
-<Route exact path={prefix + '/trust-badges'} component={TrustBadges} />
-
-// 5. const/navigation.js - ADD TO NAVIGATION
-export const navigationLinks = [
-  {
-    label: 'Trust Badges',      // <-- ADD NEW ITEM
-    destination: '/trust-badges'
-  },
-  // ... other links
-].map(item => ({
-  ...item,
-  destination: '/embed' + item.destination
-}));
-```
-
-### Navigation File Location
-
-```
-packages/assets/src/const/navigation.js
-```
-
-The navigation array is transformed to add `/embed` prefix automatically.
+- Use `.js` files only (no `.jsx`)
+- Always create loadable components in organized folders with `index.js`
+- All data-fetching pages must have skeleton loading states
 
 ---
 

@@ -68,6 +68,7 @@ firestore-indexes/        # Compound query indexes (run yarn firestore:build)
 | `/translate` | Update translations after adding labels |
 | `/lint-mr` | ESLint fix files changed in current MR |
 | `/browser-test [target]` | Test app in browser (admin, storefront, theme, checkout, cart) |
+| `/test-checklist` | Generate grey box testing checklist from current MR/branch |
 | `/commit` | Generate commit message and commit all changes |
 | `/typedoc` | Update JSDoc comments and TypeScript types in index.d.ts |
 | `/docs [feature]` | Document feature changes and updates |

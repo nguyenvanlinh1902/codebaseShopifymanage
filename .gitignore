@@ -72,19 +72,9 @@ stats.json
 
 # IDE
 .idea/
-/.run/
 
 # Firebase
 .firebaserc
 .runtimeconfig.json
 serviceAccount.json
 serviceAccount.*.json
-
-# Shopify
-shopify.**.toml
-.yarn/
-.shopify/
-
-claudekit-engineer-main/**
-
-.playwright-mcp

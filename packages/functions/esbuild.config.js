@@ -28,7 +28,16 @@ async function transformAliasImports() {
       modified = true;
       const fileDir = path.dirname(filePath);
       // Target should be in lib directory, not src
-      const targetPath = path.join(outDir, importPath);
+      let targetPath = path.join(outDir, importPath);
+
+      // Check if target is a directory (has index.js)
+      const indexPath = path.join(targetPath, 'index.js');
+      if (fs.existsSync(indexPath)) {
+        targetPath = indexPath;
+      } else if (!targetPath.endsWith('.js')) {
+        // Add .js extension if not a directory and not already .js
+        targetPath += '.js';
+      }
 
       // Calculate relative path from current file to target
       let relativePath = path.relative(fileDir, targetPath);
@@ -40,11 +49,6 @@ async function transformAliasImports() {
 
       // Convert Windows backslashes to forward slashes
       relativePath = relativePath.replace(/\\/g, '/');
-
-      // Add .js extension if not present
-      if (!relativePath.endsWith('.js')) {
-        relativePath += '.js';
-      }
 
       return `require("${relativePath}")`;
     });

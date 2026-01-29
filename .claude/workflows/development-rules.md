@@ -99,3 +99,23 @@ packages/functions/src/
 - Keep files under 200 lines when possible
 - Split large files into focused modules
 - Extract utilities into separate files
+
+## AI/LangChain Rules
+
+### Multi-Agent Architecture
+- **NEVER** combine 50+ tools into a single agent - LLM won't call tools reliably
+- Split into specialist agents with **5-15 tools each** by domain
+- Use supervisor pattern to route to specialists
+- Reference: `.claude/skills/langchain/references/multi-agent-architecture.md`
+
+### Agent Configuration
+- Use `temperature: 0` for specialist agents (reliable tool calling)
+- Use `temperature: 0.3` for supervisor (routing decisions)
+- Agent prompts MUST list tools explicitly with examples
+- Include "CALL the tool, don't describe the action" instruction
+
+### Tool Design
+- Tool descriptions must be clear with example inputs
+- HITL tools return `{pending: true, actionType, actionId}` for confirmation
+- Use `interrupt()` inside tools for human-in-the-loop confirmation
+- Execute tools are separate from confirmation tools (two-step HITL)

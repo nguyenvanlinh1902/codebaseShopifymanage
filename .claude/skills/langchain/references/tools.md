@@ -1,5 +1,9 @@
 # Tools & DynamicStructuredTool
 
+> **IMPORTANT: v1 Packages Required**
+> - `DynamicStructuredTool` from `@langchain/core/tools` (^1.1.8)
+> - See SKILL.md for exact package versions and breaking changes.
+
 ## Table of Contents
 - [DynamicStructuredTool Overview](#dynamicstructuredtool-overview)
 - [Zod Schema Best Practices](#zod-schema-best-practices)

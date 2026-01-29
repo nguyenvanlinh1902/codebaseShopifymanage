@@ -1,5 +1,10 @@
 # StateGraph & State Management
 
+> **IMPORTANT: v1 Packages Required**
+> - `StateGraph`, `MessagesAnnotation`, `Annotation` from `@langchain/langgraph` (^1.1.0)
+> - `messagesStateReducer` from `@langchain/langgraph` (^1.1.0)
+> - See SKILL.md for exact package versions and breaking changes.
+
 ## Table of Contents
 - [StateGraph Overview](#stategraph-overview)
 - [Annotations](#annotations)

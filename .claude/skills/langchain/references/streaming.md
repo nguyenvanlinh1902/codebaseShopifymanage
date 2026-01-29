@@ -1,5 +1,8 @@
 # Streaming & streamEvents
 
+> **IMPORTANT: v1 Packages Required** - Always use `version: 'v2'` in streamEvents calls.
+> See SKILL.md for exact package versions and breaking changes.
+
 ## Table of Contents
 - [Streaming Overview](#streaming-overview)
 - [streamEvents API](#streamevents-api)

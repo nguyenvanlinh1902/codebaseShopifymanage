@@ -5,6 +5,38 @@ description: Use this skill when the user asks about "LangChain", "LangGraph", "
 
 # LangChain & LangGraph Development Guide
 
+## CRITICAL: Version Requirements (v1)
+
+This project uses **LangChain v1 / LangGraph v1**. All code MUST use v1 APIs.
+
+```json
+{
+  "@langchain/core": "^1.1.8",
+  "@langchain/langgraph": "^1.1.0",
+  "@langchain/langgraph-checkpoint": "^1.0.0",
+  "@langchain/langgraph-supervisor": "^1.0.1",
+  "@langchain/openai": "^1.2.0",
+  "@langchain/mcp-adapters": "^1.1.1",
+  "zod": "^3.24.1"
+}
+```
+
+### v1 Breaking Changes - DO NOT USE Old Patterns
+
+| Old Pattern (v0) | v1 Pattern | Notes |
+|---|---|---|
+| `import {createReactAgent} from 'langchain/agents'` | `import {createReactAgent} from '@langchain/langgraph/prebuilt'` | Different API |
+| `stateModifier` in createReactAgent | `messageModifier` or `prompt` (function) | `stateModifier` removed |
+| `AgentExecutor` | `createReactAgent` from `@langchain/langgraph/prebuilt` | AgentExecutor is deprecated |
+| `initializeAgentExecutorWithOptions` | `createReactAgent` | Deprecated |
+| `new ChatOpenAI({modelName: '...'})` | `new ChatOpenAI({model: '...'})` | `modelName` renamed to `model` |
+| `streamEvents` without `version` | `streamEvents(input, {...config, version: 'v2'})` | v2 required |
+| `createReactAgent` without `version` | `createReactAgent({..., version: 'v2'})` | Required for subgraph interrupts |
+| `import {BaseCheckpointSaver} from '@langchain/langgraph'` | `import {BaseCheckpointSaver} from '@langchain/langgraph-checkpoint'` | Separate package |
+| Custom supervisor routing tools | `import {createSupervisor} from '@langchain/langgraph-supervisor'` | Built-in supervisor |
+
+---
+
 ## Quick Reference
 
 | Topic | Reference File |
@@ -13,26 +45,39 @@ description: Use this skill when the user asks about "LangChain", "LangGraph", "
 | DynamicStructuredTool, bindTools | [references/tools.md](references/tools.md) |
 | streamEvents, Token Streaming | [references/streaming.md](references/streaming.md) |
 | Checkpointer, Memory Persistence | [references/checkpointer.md](references/checkpointer.md) |
+| Human-in-the-Loop (HITL) | [references/human-in-the-loop.md](references/human-in-the-loop.md) |
+| HITL Frontend Hook | [references/hitl-frontend-hook.md](references/hitl-frontend-hook.md) |
+| Tool UI Streaming | [references/tool-ui.md](references/tool-ui.md) |
+| Todo Middleware | [references/todo-middleware.md](references/todo-middleware.md) |
+| **Multi-Agent Architecture** | [references/multi-agent-architecture.md](references/multi-agent-architecture.md) |
+| Web Search Tools (Free) | [references/web-search-tools.md](references/web-search-tools.md) |
+| **Tool Creation Guide** | [references/tool-creation.md](references/tool-creation.md) |
 
 ---
 
-## Core Dependencies
+## Core v1 Imports
 
 ```javascript
-// LangChain Core
-import {ChatOpenAI} from '@langchain/openai';
-import {ChatPromptTemplate} from '@langchain/core/prompts';
-import {DynamicStructuredTool} from '@langchain/core/tools';
-import {HumanMessage, AIMessage, SystemMessage, ToolMessage} from '@langchain/core/messages';
+// LangChain Core (v1)
+import {ChatOpenAI} from '@langchain/openai';                           // ^1.2.0
+import {ChatPromptTemplate} from '@langchain/core/prompts';             // ^1.1.8
+import {DynamicStructuredTool} from '@langchain/core/tools';            // ^1.1.8
+import {HumanMessage, AIMessage, SystemMessage, ToolMessage} from '@langchain/core/messages'; // ^1.1.8
 
-// LangGraph
-import {StateGraph, MessagesAnnotation, Annotation} from '@langchain/langgraph';
-import {ToolNode} from '@langchain/langgraph/prebuilt';
-import {messagesStateReducer} from '@langchain/langgraph';
-import {BaseCheckpointSaver} from '@langchain/langgraph-checkpoint';
+// LangGraph (v1)
+import {StateGraph, MessagesAnnotation, Annotation} from '@langchain/langgraph';  // ^1.1.0
+import {ToolNode} from '@langchain/langgraph/prebuilt';                           // ^1.1.0
+import {createReactAgent} from '@langchain/langgraph/prebuilt';                   // ^1.1.0
+import {messagesStateReducer} from '@langchain/langgraph';                        // ^1.1.0
+
+// LangGraph Checkpoint (v1 - SEPARATE PACKAGE)
+import {BaseCheckpointSaver} from '@langchain/langgraph-checkpoint';              // ^1.0.0
+
+// LangGraph Supervisor (v1 - SEPARATE PACKAGE)
+import {createSupervisor} from '@langchain/langgraph-supervisor';                 // ^1.0.1
 
 // Schema Validation
-import {z} from 'zod';
+import {z} from 'zod';                                                           // ^3.24.1
 ```
 
 ---
@@ -51,45 +96,211 @@ import {z} from 'zod';
 
 ---
 
-## Basic Agent Pattern
+## Reference Code: createReactAgent (from avadaAgentFactory.js)
+
+This is the pattern used in our codebase for single-agent creation:
 
 ```javascript
+import {createReactAgent} from '@langchain/langgraph/prebuilt';
 import {ChatOpenAI} from '@langchain/openai';
-import {StateGraph, MessagesAnnotation} from '@langchain/langgraph';
-import {ToolNode} from '@langchain/langgraph/prebuilt';
+import {HumanMessage, SystemMessage} from '@langchain/core/messages';
+import {FirestoreCheckpointer} from './firestoreCheckpointer';
 
-const model = new ChatOpenAI({
-  model: 'gpt-4o',
-  apiKey: process.env.OPENAI_API_KEY,
+// Singleton checkpointer
+let checkpointerInstance = null;
+function getCheckpointer() {
+  if (!checkpointerInstance) {
+    checkpointerInstance = new FirestoreCheckpointer();
+  }
+  return checkpointerInstance;
+}
+
+// Create model
+const llm = new ChatOpenAI({
+  model: 'gpt-4o-mini',   // Use 'model' NOT 'modelName'
+  temperature: 0,
   streaming: true
 });
 
-// Define model call with tool binding
-const callModel = async state => {
-  const systemMessage = {role: 'system', content: 'You are a helpful assistant.'};
-  const boundModel = model.bindTools(tools);
-  const response = await boundModel.invoke([systemMessage, ...state.messages]);
-  return {messages: [response]};
-};
+// Create agent with messageModifier for prompt injection + message trimming
+const agent = createReactAgent({
+  llm,
+  tools: allTools,
+  checkpointSaver: getCheckpointer(),
+  messageModifier: state => {
+    // Trim messages to prevent Firestore 1MB limit
+    const messages = state.messages;
+    const maxMessages = 50;
+    const trimmedMessages =
+      messages.length > maxMessages ? messages.slice(-maxMessages) : messages;
 
-// Conditional edge function
-function shouldContinue(state) {
-  const lastMessage = state.messages[state.messages.length - 1];
-  if (!lastMessage.tool_calls || lastMessage.tool_calls.length === 0) {
-    return '__end__';
+    // Prepend system message to the conversation
+    return [new SystemMessage(systemPrompt), ...trimmedMessages];
   }
-  return 'tools';
+});
+
+// Invoke with thread config
+const result = await agent.invoke(
+  {messages: [new HumanMessage(query)]},
+  {
+    configurable: {
+      thread_id: threadId,
+      checkpoint_ns: shopId ? `shop:${shopId}` : undefined
+    },
+    metadata: {appId, shopId}
+  }
+);
+```
+
+---
+
+## Reference Code: Supervisor Pattern (from supervisorService.js)
+
+This is the pattern used in our codebase for multi-agent orchestration:
+
+```javascript
+import {createSupervisor} from '@langchain/langgraph-supervisor';
+import {createReactAgent} from '@langchain/langgraph/prebuilt';
+import {ChatOpenAI} from '@langchain/openai';
+
+// ============================================
+// 1. CREATE SPECIALIST AGENTS
+// ============================================
+
+function createSpecialistAgent(name, tools, getPrompt) {
+  const model = new ChatOpenAI({
+    model: 'gpt-4o',
+    temperature: 0  // Low temperature for reliable tool calling
+  });
+
+  // Use prompt FUNCTION (not string) to inject system prompt
+  const promptFn = state => [
+    {role: 'system', content: getPrompt()},
+    ...state.messages
+  ];
+
+  return createReactAgent({
+    llm: model,
+    tools: tools,
+    name: name,
+    prompt: promptFn,
+    // CRITICAL: version 'v2' for proper interrupt handling in subgraphs
+    // v2 executes each tool call in a separate node instance
+    version: 'v2'
+  });
 }
 
-// Build and compile graph
-const workflow = new StateGraph(MessagesAnnotation)
-  .addNode('agent', callModel)
-  .addNode('tools', new ToolNode(tools))
-  .addEdge('__start__', 'agent')
-  .addConditionalEdges('agent', shouldContinue)
-  .addEdge('tools', 'agent');
+const marketingAgent = createSpecialistAgent(
+  'marketing_agent',
+  MARKETING_TOOLS,
+  getMarketingAgentPrompt
+);
 
-const app = workflow.compile({checkpointer});
+const customerAgent = createSpecialistAgent(
+  'customer_agent',
+  CUSTOMER_TOOLS,
+  getCustomerAgentPrompt
+);
+
+// ============================================
+// 2. CREATE SUPERVISOR
+// ============================================
+
+const supervisorModel = new ChatOpenAI({
+  model: 'gpt-4o',
+  temperature: 0.3
+});
+
+const supervisor = createSupervisor({
+  agents: [marketingAgent, customerAgent, productAgent, orderAgent],
+  llm: supervisorModel,
+  prompt: getSupervisorPrompt(),
+  tools: [writeTodosTool],           // Supervisor-level tools only
+  outputMode: 'last_message',        // v1: return last agent message
+  addHandoffBackMessages: false      // v1: disable auto handoff-back messages
+});
+
+// ============================================
+// 3. COMPILE WITH CHECKPOINTER
+// ============================================
+
+const app = supervisor.compile({
+  checkpointer: getCheckpointer()
+});
+
+// ============================================
+// 4. STREAM EVENTS (v2 format)
+// ============================================
+
+const eventStream = app.streamEvents(
+  {messages: [{role: 'user', content: query}]},
+  {
+    configurable: {thread_id: conversationId},
+    metadata: {shopId},
+    version: 'v2'   // REQUIRED for latest event format
+  }
+);
+
+for await (const event of eventStream) {
+  if (event.event === 'on_chat_model_stream') {
+    const content = event.data?.chunk?.content;
+    if (content) {
+      onToken({type: 'delta', content});
+    }
+  }
+}
+```
+
+---
+
+## createReactAgent: prompt vs messageModifier
+
+In **v1**, `createReactAgent` supports two ways to inject system prompts:
+
+### Option 1: `prompt` (function) - For supervisor subgraphs
+
+```javascript
+// Use when agent is a SUBGRAPH of a supervisor
+createReactAgent({
+  llm: model,
+  tools: tools,
+  name: 'agent_name',
+  prompt: state => [
+    {role: 'system', content: 'System prompt here'},
+    ...state.messages
+  ],
+  version: 'v2'   // Required for subgraph interrupts
+});
+```
+
+### Option 2: `messageModifier` - For standalone agents
+
+```javascript
+// Use for standalone agents with message trimming
+createReactAgent({
+  llm: model,
+  tools: allTools,
+  checkpointSaver: checkpointer,
+  messageModifier: state => {
+    const messages = state.messages;
+    const trimmed = messages.length > 50 ? messages.slice(-50) : messages;
+    return [new SystemMessage(systemPrompt), ...trimmed];
+  }
+});
+```
+
+### DO NOT USE (deprecated/wrong):
+
+```javascript
+// WRONG: stateModifier does not exist in v1
+createReactAgent({
+  stateModifier: systemPrompt  // ❌ Removed in v1
+});
+
+// WRONG: prompt as string (only works as function)
+createReactAgent({
+  prompt: 'You are a helpful assistant'  // ❌ Must be function
+});
 ```
 
 ---
@@ -179,13 +390,19 @@ const weatherTool = new DynamicStructuredTool({
 
 ---
 
-## Project Structure (Joy App)
+## Project Structure
 
 ```
 packages/functions/src/services/ai/
-├── langchainService.js       # Main agent graph, askAi function
-├── firestoreCheckpointer.js  # Memory persistence
-├── imageAnalysisService.js   # Image processing
+├── avadaAgentFactory.js     # Standard agent factory (createReactAgent + messageModifier)
+├── supervisorService.js     # Multi-agent supervisor (createSupervisor + specialist agents)
+├── firestoreCheckpointer.js # Memory persistence (extends BaseCheckpointSaver)
+├── plugins/
+│   ├── pluginRegistry.js    # Plugin registration system
+│   ├── coreTools.js         # Shared core tools
+│   └── scopeFilter.js       # Scope-based tool filtering
+├── prompts/
+│   └── standardAgentPrompt.js  # System prompts
 └── tools/
     ├── shopifyToolService.js     # Shopify API tools
     ├── inAppToolService.js       # App-specific tools
@@ -197,137 +414,67 @@ packages/functions/src/services/ai/
 
 ---
 
-## Multi-Agent Architecture
-
-For complex applications with specialized agents, use the factory pattern:
-
-```
-packages/functions/src/services/ai/
-├── agentFactory.js           # Tool registry, agent creation
-├── agentRouter.js            # Route queries to specialist agents
-├── supervisorService.js      # Orchestrate multi-agent workflows
-├── agents/
-│   └── baseAgent.js          # Base agent class with common logic
-├── prompts/
-│   └── index.js              # System prompts by agent type
-└── tools/
-    ├── productTools.js       # Product-specific tools
-    ├── orderTools.js         # Order-specific tools
-    ├── customerTools.js      # Customer-specific tools
-    ├── marketingTools.js     # Marketing/discount tools
-    ├── routingTools.js       # Tools for routing between agents
-    └── skillTools.js         # Dynamic skill loading tools
-```
-
-### Agent Factory Pattern
+## createSupervisor v1 Options
 
 ```javascript
-// agentFactory.js
-import {AGENT_TYPES, AGENT_CONFIGS} from '@functions/config/aiAgents';
+import {createSupervisor} from '@langchain/langgraph-supervisor';
 
-// Centralized tool registry
-const TOOL_REGISTRY = {
-  product_search: productSearchTool,
-  order_list: orderListTool,
-  customer_get: customerGetTool,
-  // ... more tools
-};
+const supervisor = createSupervisor({
+  // Required
+  agents: [agent1, agent2],              // Array of createReactAgent instances
+  llm: supervisorModel,                  // ChatOpenAI instance
+  prompt: 'Supervisor system prompt',    // String or function
 
-// Singleton checkpointer (multi-tenant)
-let checkpointerInstance = null;
-function getCheckpointer() {
-  if (!checkpointerInstance) {
-    checkpointerInstance = new FirestoreCheckpointer();
-  }
-  return checkpointerInstance;
-}
+  // Optional
+  tools: [supervisorTool],              // Supervisor-level tools (not agent tools)
+  outputMode: 'last_message',           // 'last_message' | 'full_history'
+  addHandoffBackMessages: false,        // Disable auto handoff-back messages
+});
 
-// Create agent with configured tools
-export function createAgent({agentType, customTools = []}) {
-  const config = AGENT_CONFIGS[agentType];
-  const tools = config.tools.map(name => TOOL_REGISTRY[name]).filter(Boolean);
-
-  return new BaseAgent({
-    agentType,
-    tools: [...tools, ...customTools],
-    systemPrompt: getSystemPrompt(agentType),
-    checkpointer: getCheckpointer()
-  });
-}
-```
-
-### Agent Configuration
-
-```javascript
-// config/aiAgents.js
-export const AGENT_TYPES = {
-  MASTER: 'master',
-  ANALYTICS: 'analytics',
-  PRODUCT: 'product',
-  ORDER: 'order',
-  CUSTOMER: 'customer',
-  MARKETING: 'marketing'
-};
-
-export const AGENT_CONFIGS = {
-  [AGENT_TYPES.MASTER]: {
-    name: 'Master Agent',
-    description: 'Routes queries to specialist agents',
-    tools: ['route_to_analytics', 'route_to_product', 'route_to_order']
-  },
-  [AGENT_TYPES.PRODUCT]: {
-    name: 'Product Agent',
-    description: 'Handles product queries and updates',
-    tools: ['product_search', 'product_get', 'product_update', 'inventory_get']
-  }
-  // ... more agent configs
-};
-```
-
-### Dynamic Tool Registration
-
-```javascript
-// Register custom tools at runtime
-import {registerTool, unregisterTool} from './agentFactory';
-
-// Add shop-specific tool
-registerTool('custom_loyalty_check', createLoyaltyTool(shopConfig));
-
-// Remove tool when no longer needed
-unregisterTool('custom_loyalty_check');
-```
-
-### Multi-Agent Routing
-
-```javascript
-// routingTools.js - Tools for master agent to delegate
-export const routeToProductTool = new DynamicStructuredTool({
-  name: 'route_to_product',
-  description: 'Route product-related queries to the Product specialist agent',
-  schema: z.object({
-    query: z.string().describe('The product-related query to handle'),
-    context: z.string().optional().describe('Additional context')
-  }),
-  func: async ({query, context}) => {
-    // Delegate to product agent
-    const productAgent = createAgent({agentType: AGENT_TYPES.PRODUCT});
-    return await productAgent.invoke(query, {context});
-  }
+const app = supervisor.compile({
+  checkpointer: getCheckpointer()
 });
 ```
 
-### Multi-Tenant Checkpointer
+---
 
-The `FirestoreCheckpointer` requires `shopId` in config for isolation:
+## Basic StateGraph Pattern
+
+For custom graph workflows (when createReactAgent isn't enough):
 
 ```javascript
-// CRITICAL: Always pass shopId in metadata
-const config = {
-  configurable: {thread_id: conversationId},
-  metadata: {shopId}  // Required for multi-tenant isolation
+import {ChatOpenAI} from '@langchain/openai';
+import {StateGraph, MessagesAnnotation} from '@langchain/langgraph';
+import {ToolNode} from '@langchain/langgraph/prebuilt';
+
+const model = new ChatOpenAI({
+  model: 'gpt-4o',    // NOT modelName
+  streaming: true
+});
+
+const callModel = async state => {
+  const systemMessage = {role: 'system', content: 'You are a helpful assistant.'};
+  const boundModel = model.bindTools(tools);
+  const response = await boundModel.invoke([systemMessage, ...state.messages]);
+  return {messages: [response]};
 };
 
-const result = await agent.invoke(messages, config);
+function shouldContinue(state) {
+  const lastMessage = state.messages[state.messages.length - 1];
+  if (!lastMessage.tool_calls || lastMessage.tool_calls.length === 0) {
+    return '__end__';
+  }
+  return 'tools';
+}
+
+const workflow = new StateGraph(MessagesAnnotation)
+  .addNode('agent', callModel)
+  .addNode('tools', new ToolNode(tools))
+  .addEdge('__start__', 'agent')
+  .addConditionalEdges('agent', shouldContinue)
+  .addEdge('tools', 'agent');
+
+const app = workflow.compile({checkpointer});
 ```
 
 ---
@@ -335,15 +482,22 @@ const result = await agent.invoke(messages, config);
 ## Development Checklist
 
 ```
+□ Using v1 packages (@langchain/core ^1.1.8, @langchain/langgraph ^1.1.0)
+□ Using 'model' not 'modelName' in ChatOpenAI
+□ Using createReactAgent from '@langchain/langgraph/prebuilt' (NOT langchain/agents)
+□ Using BaseCheckpointSaver from '@langchain/langgraph-checkpoint' (separate package)
+□ Using createSupervisor from '@langchain/langgraph-supervisor' (separate package)
+□ Using version: 'v2' in createReactAgent for subgraph agents
+□ Using version: 'v2' in streamEvents calls
+□ Using prompt function (not string) in createReactAgent for supervisor subgraphs
+□ Using messageModifier in createReactAgent for standalone agents
 □ Tools have detailed descriptions with examples
 □ Zod schemas include .describe() for all fields
 □ Error handling returns strings, not throws
-□ streamEvents used for token-level streaming
 □ Checkpointer configured for conversation memory
 □ Tool call limits prevent infinite loops (max 20)
-□ Conversation summarization for long chats (>15 msgs)
+□ Message windowing to prevent Firestore 1MB limit (max 50 messages)
 □ Metadata passed through config for context
-□ MessagesAnnotation used with messagesStateReducer
 □ Config propagated to child runnables for streaming
 ```
 
@@ -353,11 +507,18 @@ const result = await agent.invoke(messages, config);
 
 | Issue | Solution |
 |-------|----------|
-| streamEvents not emitting | Propagate RunnableConfig to child runnables |
+| `modelName` not working | Use `model` instead (v1 change) |
+| `stateModifier` not working | Use `messageModifier` or `prompt` (function) |
+| `AgentExecutor` deprecated | Use `createReactAgent` from `@langchain/langgraph/prebuilt` |
+| streamEvents not emitting | Add `version: 'v2'` and propagate RunnableConfig |
 | Zod warnings in console | Suppress with custom error map (see references/tools.md) |
 | Tool calls in infinite loop | Add tool call counter in shouldContinue |
-| Context overflow | Enable conversation summarization middleware |
+| Context overflow | Enable message windowing (maxMessages in messageModifier) |
 | Missing tool results | Ensure ToolMessage.tool_call_id matches AIMessage |
+| **LLM not calling tools** | **Split into specialist agents with 5-15 tools each** |
+| HITL not working in subgraph | Add `version: 'v2'` to createReactAgent |
+| BaseCheckpointSaver import fails | Import from `@langchain/langgraph-checkpoint` (separate package) |
+| createSupervisor import fails | Import from `@langchain/langgraph-supervisor` (separate package) |
 
 ---
 
@@ -367,3 +528,4 @@ const result = await agent.invoke(messages, config);
 - [LangGraph.js API Reference](https://langchain-ai.github.io/langgraphjs/reference/classes/langgraph.StateGraph.html)
 - [LangGraph Concepts](https://langchain-ai.github.io/langgraphjs/concepts/low_level/)
 - [@langchain/langgraph-checkpoint](https://www.npmjs.com/package/@langchain/langgraph-checkpoint)
+- [@langchain/langgraph-supervisor](https://www.npmjs.com/package/@langchain/langgraph-supervisor)

@@ -1,5 +1,9 @@
 # Checkpointer & Memory Persistence
 
+> **IMPORTANT: v1 Packages Required**
+> - `BaseCheckpointSaver` from `@langchain/langgraph-checkpoint` (SEPARATE package, NOT `@langchain/langgraph`)
+> - See SKILL.md for exact package versions and breaking changes.
+
 ## Table of Contents
 - [Checkpointer Overview](#checkpointer-overview)
 - [Built-in Checkpointers](#built-in-checkpointers)

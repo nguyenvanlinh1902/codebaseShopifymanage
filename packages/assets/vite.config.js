@@ -121,7 +121,7 @@ const proxyConfig = {
   /**
    * Just for local handling uninstall webhook
    */
-  // '/embed/auth/webhook/app/uninstalled': '/auth/webhook/app/uninstalled'
+  '/embed/auth/webhook/app/uninstalled': '/auth/webhook/app/uninstalled'
 };
 
 /** @type {ServerOptions} */

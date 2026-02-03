@@ -78,10 +78,6 @@
         "function": "embedApp"
       },
       {
-        "source": "/",
-        "function": "embedApp"
-      },
-      {
         "source": "**",
         "destination": "/standalone.html"
       }

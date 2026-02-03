@@ -1,0 +1,37 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "customers",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "organizationId", "order": "ASCENDING"},
+        {"fieldPath": "createdAt", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "customers",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "organizationId", "order": "ASCENDING"},
+        {"fieldPath": "email", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "customers",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "organizationId", "order": "ASCENDING"},
+        {"fieldPath": "shopifyId", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "customers",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "organizationId", "order": "ASCENDING"},
+        {"fieldPath": "phone", "order": "ASCENDING"}
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

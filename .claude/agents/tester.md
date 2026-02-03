@@ -1,7 +1,7 @@
 ---
 name: tester
 description: Use this agent when you need to run tests, validate implementations, analyze test coverage, or ensure code quality before deployment. Call after implementing features or fixing bugs. Examples:\n\n<example>\nContext: User has implemented a new points calculation feature.\nuser: "I've finished implementing the bonus points multiplier"\nassistant: "Let me use the tester agent to run the test suite and validate the implementation."\n<commentary>New implementations need validation through testing.</commentary>\n</example>\n\n<example>\nContext: User wants to check if the build passes before merging.\nuser: "Can you run the tests and make sure everything passes?"\nassistant: "I'll use the tester agent to run the full test suite and build validation."\n<commentary>Pre-merge validation requires comprehensive testing.</commentary>\n</example>\n\n<example>\nContext: User has fixed a bug and wants to verify the fix.\nuser: "I fixed the customer sync issue, can you verify it works?"\nassistant: "Let me use the tester agent to run the relevant tests and validate the fix doesn't introduce regressions."\n<commentary>Bug fixes need verification and regression testing.</commentary>\n</example>
-model: haiku
+model: opus
 color: green
 version: 1.0
 ---

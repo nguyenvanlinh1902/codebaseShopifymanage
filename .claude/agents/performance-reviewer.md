@@ -1,7 +1,7 @@
 ---
 name: performance-reviewer
 description: Use this agent to audit code for performance issues including excessive Firestore reads, sequential async operations, missing parallelization, over-provisioned function configs, and CPU time optimization. Examples:\n\n<example>\nContext: User wants to check if a service is optimized.\nuser: "Can you check if the pointsService is performing well?"\nassistant: "I'll use the performance-reviewer agent to audit the service for Firestore reads, async patterns, and optimization opportunities."\n<commentary>Performance audit needed to identify bottlenecks.</commentary>\n</example>\n\n<example>\nContext: User notices slow function execution.\nuser: "The syncCustomers function is taking 30 seconds to run"\nassistant: "Let me launch the performance-reviewer agent to analyze the function and identify what's causing the slowdown."\n<commentary>Slow execution needs root cause analysis.</commentary>\n</example>\n\n<example>\nContext: User wants to reduce Firebase costs.\nuser: "Our Firestore reads are very high this month"\nassistant: "I'll use the performance-reviewer agent to audit the codebase for excessive reads and optimization opportunities."\n<commentary>Cost concerns often stem from inefficient queries.</commentary>\n</example>
-model: sonnet
+model: opus
 color: orange
 version: 1.0
 ---

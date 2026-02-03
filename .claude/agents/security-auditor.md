@@ -1,7 +1,7 @@
 ---
 name: security-auditor
 description: Use this agent when you need to perform comprehensive security audits of your application code, particularly after implementing new features, API endpoints, or authentication mechanisms. Examples: <example>Context: The user has just implemented a new customer data endpoint and wants to ensure it's secure before deploying. user: 'I just added a new API endpoint /api/customers/profile that returns customer information. Can you check if it's secure?' assistant: 'I'll use the security-auditor agent to perform a comprehensive security review of your new endpoint and related code.' <commentary>Since the user is asking for security review of new code, use the security-auditor agent to check for authentication, authorization, OWASP vulnerabilities, and other security issues.</commentary></example> <example>Context: The user wants a proactive security audit before a major release. user: 'We're about to release a major update with new payment processing features. Can you do a security audit?' assistant: 'I'll launch the security-auditor agent to perform a thorough security assessment of your payment processing code and related components.' <commentary>The user is requesting a proactive security audit, so use the security-auditor agent to review the codebase for security vulnerabilities.</commentary></example>
-model: sonnet
+model: opus
 color: red
 ---
 

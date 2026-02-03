@@ -3,14 +3,6 @@
     "shopify-dev-mcp": {
       "command": "npx",
       "args": ["-y", "@shopify/dev-mcp@latest"]
-    },
-    "playwright": {
-      "command": "npx",
-      "args": ["-y", "@playwright/mcp@0.0.54"]
-    },
-    "chrome-devtools": {
-      "command": "npx",
-      "args": ["-y", "chrome-devtools-mcp@latest"]
     }
   }
 }

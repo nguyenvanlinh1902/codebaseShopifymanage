@@ -12,6 +12,7 @@ import {isEmbeddedApp} from '@assets/config/app';
 import AppEmbeddedLayout from '@assets/layouts/EmbeddedLayout/AppEmbeddedLayout';
 import AppFullLayout from '@assets/layouts/FullLayout/AppFullLayout';
 import {MaxModalProvider} from '@assets/contexts/maxModalContext';
+import {AuthProvider} from '@assets/contexts/authContext';
 
 /**
  * The main endpoint of application contains all routes, settings for redux and Polaris
@@ -23,13 +24,15 @@ export default function App() {
   return (
     <AppProvider i18n={translations} linkComponent={ReactRouterLink}>
       <Router history={history}>
-        <MaxModalProvider>
-          <MainLayout>
-            <ErrorBoundary>
-              <Routes />
-            </ErrorBoundary>
-          </MainLayout>
-        </MaxModalProvider>
+        <AuthProvider>
+          <MaxModalProvider>
+            <MainLayout>
+              <ErrorBoundary>
+                <Routes />
+              </ErrorBoundary>
+            </MainLayout>
+          </MaxModalProvider>
+        </AuthProvider>
       </Router>
     </AppProvider>
   );

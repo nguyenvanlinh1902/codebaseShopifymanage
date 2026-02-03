@@ -1,7 +1,7 @@
 ---
 name: planner
 description: Use this agent when you need to research and create comprehensive implementation plans for new features, architecture decisions, or complex technical solutions. Call before starting any significant implementation work. Examples:\n\n<example>\nContext: User needs to implement a new feature for bulk product tagging.\nuser: "I need to add bulk product tagging with Shopify"\nassistant: "I'll use the planner agent to research the Shopify APIs and create a detailed implementation plan."\n<commentary>Since this is a new feature requiring API research and architecture decisions, use the planner agent to create a comprehensive plan.</commentary>\n</example>\n\n<example>\nContext: User wants to sync customer metafields to Shopify.\nuser: "Sync customer loyalty tier to Shopify metafield"\nassistant: "Let me invoke the planner agent to research bulk operations vs regular API and plan the sync approach."\n<commentary>Data sync requires analyzing volume and choosing the right API strategy.</commentary>\n</example>
-model: sonnet
+model: opus
 color: purple
 version: 2.0
 ---

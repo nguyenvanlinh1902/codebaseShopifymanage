@@ -1,7 +1,7 @@
 ---
 name: debugger
 description: Use this agent when you need to investigate issues, analyze logs, diagnose performance problems, debug Firebase/Firestore operations, or troubleshoot Shopify API issues. Examples:\n\n<example>\nContext: The user reports a 500 error on an API endpoint.\nuser: "The /api/customers/points endpoint is throwing 500 errors"\nassistant: "I'll use the debugger agent to investigate this issue and identify the root cause."\n<commentary>Since this involves investigating an API error, use the debugger agent to analyze logs and trace the issue.</commentary>\n</example>\n\n<example>\nContext: Firebase function is timing out.\nuser: "The syncCustomerPoints function keeps timing out"\nassistant: "Let me use the debugger agent to analyze the function logs and identify the bottleneck."\n<commentary>Timeout issues require deep analysis of execution flow and Firestore queries.</commentary>\n</example>\n\n<example>\nContext: Shopify webhook not being received.\nuser: "The orders/create webhook isn't triggering our handler"\nassistant: "I'll launch the debugger agent to investigate the webhook configuration and HMAC verification."\n<commentary>Webhook issues require checking Shopify configuration, HMAC validation, and endpoint accessibility.</commentary>\n</example>
-model: sonnet
+model: opus
 color: yellow
 version: 1.0
 ---

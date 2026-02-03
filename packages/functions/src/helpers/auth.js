@@ -28,7 +28,7 @@ export function getCurrentUserInstance(ctx) {
  * @returns {*}
  */
 export function getCurrentShopData(ctx) {
-  const shopData = ctx.state.user.shopData;
+  const shopData = ctx.state?.user?.shopData;
   if (!shopData) return null;
 
   return formatDateFields(ctx.state.user.shopData);

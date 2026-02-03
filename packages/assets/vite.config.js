@@ -117,7 +117,11 @@ const proxyConfig = {
   '^/apiSa(/|(\\?.*)?$)': proxyOptions,
   '^/scripttag(/|(\\?.*)?$)': proxyOptions,
   '^/clientApi(/|(\\?.*)?$)': proxyOptions,
-  '^/webhook(/|(\\?.*)?$)': proxyOptions
+  '^/webhook(/|(\\?.*)?$)': proxyOptions,
+  /**
+   * Just for local handling uninstall webhook
+   */
+  // '/embed/auth/webhook/app/uninstalled': '/auth/webhook/app/uninstalled'
 };
 
 /** @type {ServerOptions} */

@@ -35,12 +35,16 @@ api.use(
     accessTokenKey: shopifyConfig.accessTokenKey,
     afterLogin: async ctx => {
       try {
-        // const shopifyDomain = ctx.state.shopify.shop;
-      } catch (e) {}
+        const shopifyDomain = ctx.state.shopify.shop;
+        console.log('After login for' + shopifyDomain);
+      } catch (e) {
+        console.error(e);
+      }
     },
     afterInstall: async ctx => {
       try {
         const {shopifyDomain} = ctx.state.shopify.shop;
+        console.log('After install for' + shopifyDomain);
         const shop = await getShopByShopifyDomain(shopifyDomain);
         publishTopicAsync('backgroundHandling', {
           type: 'afterInstall',

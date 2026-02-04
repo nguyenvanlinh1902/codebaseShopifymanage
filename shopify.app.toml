@@ -1,8 +1,8 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
-client_id = "651b04dda6e76910a72e5a04fef4ec97"
-name = "Chatty Helpdesk"
-application_url = "https://admin.shopify.com/store/test-store-1100000000000000000000000000000003476/apps/chatty-helpdesk"
+client_id = "43ec518fd90be399735b2dc0e2b186c6"
+name = "final_exam"
+application_url = "https://admin.shopify.com/store/test-store-1100000000000000000000000000000003476/apps/final_exam"
 embedded = true
 
 [build]

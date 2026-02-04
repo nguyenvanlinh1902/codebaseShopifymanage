@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code when working with this Chatty Helpdesk application.
+This file provides guidance to Claude Code when working with this Avada Shopify application.
 
 ## Tech Stack
 

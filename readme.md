@@ -1,6 +1,6 @@
-# Chatty Helpdesk
+# app-name
 
-> Helpdesk for eCommerce
+> Application tag line describe here
 
 ## Preparation
 

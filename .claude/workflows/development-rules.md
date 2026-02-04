@@ -55,18 +55,18 @@ if (handler) handler();
 
 Validation is split into **middleware** and **service**:
 
-1. **Middleware (Zod)** — Schema validation: types, formats, lengths, required fields. Runs before the controller. Rejects malformed input with 400.
+1. **Middleware (Zod or Yup)** — Schema validation: types, formats, lengths, required fields. Runs before the controller. Rejects malformed input with 400.
 2. **Service** — Business validation: uniqueness checks, reserved values, cross-entity rules. Requires DB lookups.
 
 ```
-Request → [Zod Middleware] → Controller → [Service Validation] → Repository
-             ↑ 400                          ↑ {success: false}
+Request → [Schema Middleware] → Controller → [Service Validation] → Repository
+             ↑ 400                             ↑ {success: false}
 ```
 
-- Define Zod schemas in `middleware/{feature}Validation.js`
+- Define schemas in `middleware/{feature}Validation.js`
 - Use generic `validate(schema)` factory to create middleware
 - Wire middleware in routes: `router.post('/skills', validateCreate, controller.create)`
-- Zod replaces body with parsed/trimmed data — no need for manual sanitization in controllers
+- Schema middleware replaces body with parsed/trimmed data — no need for manual sanitization in controllers
 - Reference: `.claude/skills/api-design/references/validation.md`
 
 ### Service Layer Extraction

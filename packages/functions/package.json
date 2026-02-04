@@ -29,7 +29,8 @@
     "koa2-cors": "^2.0.6",
     "node-fetch": "^2.6.7",
     "qs": "^6.11.0",
-    "shopify-api-node": "3.11.0"
+    "shopify-api-node": "3.11.0",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "chokidar": "^3.5.3",

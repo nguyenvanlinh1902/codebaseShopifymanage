@@ -15,6 +15,7 @@ Refactor the specified file or code pattern following Avada Development standard
 - [ ] Extract magic strings/numbers to named constants
 - [ ] Replace hardcoded values with configuration or environment variables
 - [ ] Apply early return pattern (eliminate else/else-if chains)
+- [ ] Replace switch/if-else chains (3+ branches) with handler maps
 - [ ] Prefer `map/filter/reduce` over `for` loops for data transformation
 - [ ] Break large functions into smaller, single-responsibility functions
 - [ ] Use descriptive variable/function names (verbs for functions, nouns for variables)
@@ -28,11 +29,13 @@ Refactor the specified file or code pattern following Avada Development standard
 
 ### Architecture Patterns
 - [ ] Ensure handlers only orchestrate (no business logic)
-- [ ] Move business logic to services
+- [ ] Move business logic to services (uniqueness checks, cross-entity rules)
+- [ ] Extract schema validation to Zod middleware (`middleware/{feature}Validation.js`)
 - [ ] Keep repositories focused on single collection
 - [ ] Repository functions require `shopId` as first parameter (multi-tenant)
 - [ ] Define collection name inline in repository (`const COLLECTION_NAME = '...'`)
-- [ ] Use proper dependency injection patterns
+- [ ] Store GraphQL queries as named constants at module top level
+- [ ] Extract result mapper functions for API response transformation
 - [ ] Separate concerns appropriately
 
 ### Performance Considerations
@@ -123,6 +126,97 @@ packages/functions/src/const/{feature}/
 ```
 
 **Note**: Collection names stay inline in repositories, not extracted to constants.
+
+### Replace Switch/Else-If with Handler Map
+```javascript
+// BEFORE - switch/if-else chain
+function handleAction(actionType, params) {
+  if (actionType === 'discount_create') {
+    return executeDiscountCreate(params);
+  } else if (actionType === 'customer_add_tags') {
+    return executeAddTags(params);
+  } else if (actionType === 'order_cancel') {
+    return executeCancelOrder(params);
+  }
+}
+
+// AFTER - data-driven handler map
+const ACTION_HANDLERS = {
+  discount_create: ({shop, params}) => executeDiscountCreate(shop, params),
+  customer_add_tags: ({shop, params}) => executeAddTags(shop, params),
+  order_cancel: ({shop, params}) => executeCancelOrder(shop, params)
+};
+
+function handleAction(actionType, context) {
+  const handler = ACTION_HANDLERS[actionType];
+  if (!handler) return {success: false, error: `Unknown action: ${actionType}`};
+  return handler(context);
+}
+```
+
+### Extract Service Layer from Controller
+```javascript
+// BEFORE - validation + business logic in controller
+export async function createSkill(ctx) {
+  const {command} = ctx.req.body;
+  if (RESERVED_COMMANDS.includes(command)) {
+    ctx.status = 400;
+    ctx.body = {error: 'Reserved command'};
+    return;
+  }
+  const isTaken = await repo.isCommandTaken({command, shopId});
+  if (isTaken) { ... }
+  const skill = await repo.createCustomSkill({shopId, ...});
+  ctx.body = {data: skill};
+}
+
+// AFTER - service handles logic, controller orchestrates
+// services/customSkillService.js
+export async function createSkill(shopId, {command, ...params}) {
+  const validation = await validateCommand(command, shopId);
+  if (!validation.valid) return {success: false, error: validation.error};
+  const skill = await repo.createCustomSkill({shopId, command, ...params});
+  return {success: true, data: skill};
+}
+
+// controllers/customSkillController.js
+export async function createSkill(ctx) {
+  const result = await skillService.createSkill(shopId, ctx.req.body);
+  if (!result.success) ctx.status = 400;
+  ctx.body = result;
+}
+```
+
+### GraphQL Queries as Named Constants with Mappers
+```javascript
+// BEFORE - inline query + inline transformation
+export async function searchProducts(shopData, q) {
+  const result = await executeGraphQLQuery(shopData, `query { products(...) { edges { node { id title } } } }`, ...);
+  return result.data.products.edges.map(e => ({
+    id: e.node.id.replace('gid://shopify/Product/', ''),
+    title: e.node.title
+  }));
+}
+
+// AFTER - named constant + mapper function
+const PRODUCT_SEARCH_QUERY = `
+  query searchProducts($query: String!, $first: Int!) {
+    products(first: $first, query: $query) {
+      edges { node { id title handle status } }
+    }
+  }
+`;
+
+function mapProduct(node) {
+  return { id: extractId(node.id, 'Product'), title: node.title, handle: node.handle };
+}
+
+export async function searchProducts(shopData, q, limit) {
+  const result = await executeGraphQLQuery(shopData, PRODUCT_SEARCH_QUERY, undefined, {query: q, first: limit});
+  if (!result.success) return {success: false, error: result.error};
+  return {success: true, data: result.data.products.edges.map(e => mapProduct(e.node))};
+}
+```
 
 **Import patterns**:
 ```javascript

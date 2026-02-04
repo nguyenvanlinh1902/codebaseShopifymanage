@@ -64,6 +64,12 @@ Analyze the code across multiple dimensions:
     - Extract complex conditions to predicate functions with meaningful names
     - Write self-explanatory code
     - Use JSDoc + definition types for inputs/outputs
+- **Data-Driven Patterns:**
+    - Replace `switch`/`if-else` chains (3+ branches) with object map lookups
+    - Handler maps for action routing: `const HANDLERS = { type: handlerFn }`
+    - Entity-specific suggestion/config maps with generator functions
+    - Pattern-driven categorization (array of `{category, patterns}` with `.find()`)
+    - Error message maps instead of if-else error handling
 
 #### Architecture & Design Patterns
 
@@ -89,6 +95,10 @@ functions/
 - Services combine multiple repos by feature
 - Split functions for clarity
 - DB/3rd-party access lives in repo/service/helper layers
+- GraphQL queries as named constants at module top level (e.g., `PRODUCT_SEARCH_QUERY`)
+- Mapper functions for API response transformation (e.g., `mapProduct(node)`)
+- Validation logic belongs in services, not controllers
+- Magic strings/numbers extracted to named constants at module or `const/` level
 
 **React.js Architecture:**
 - **Component Structure:**
@@ -276,6 +286,11 @@ Validate all items before approval:
 - [ ] Polaris: navigation via `url` prop
 - [ ] Backend follows required folder structure
 - [ ] Repository pattern: one collection per repo
+- [ ] No business logic in controllers/handlers (business rules in services)
+- [ ] Schema validation in Zod middleware, business validation in services (two-layer)
+- [ ] No switch/if-else chains with 3+ branches (use handler maps)
+- [ ] No magic strings/numbers (extract to named constants)
+- [ ] GraphQL queries as named constants with mapper functions
 - [ ] JSDoc documentation complete
 - [ ] Tests adequate and passing
 

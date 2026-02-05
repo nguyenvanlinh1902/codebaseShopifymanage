@@ -1,12 +1,12 @@
 import React, {lazy, Suspense} from 'react';
 import Loading from '../../components/Loading';
 
-const NotFound = lazy(() => import('../../pages/NotFound'));
+const Dashboard = lazy(() => import('../../pages/Dashboard'));
 
-const NotFoundLoadable = () => (
+const DashboardLoadable = () => (
   <Suspense fallback={<Loading />}>
-    <NotFound />
+    <Dashboard />
   </Suspense>
 );
 
-export default NotFoundLoadable;
+export default DashboardLoadable;

@@ -1,25 +1,20 @@
 import React from 'react';
-import {Spinner} from '@shopify/polaris';
-import NotFound from '@assets/pages/NotFound/NotFound';
-import PropTypes from 'prop-types';
-import '@assets/styles/preloader.scss';
+import {SkeletonPage, Layout, Card, SkeletonBodyText} from '@shopify/polaris';
 
 /**
- * Global loading component
- *
- * @returns {JSX.Element|null}
- * @constructor
+ * Loading Component
+ * Displayed while lazy components are loading
  */
-export default function Loading({error, pastDelay = true}) {
-  if (error) {
-    console.error(error);
-    return <NotFound />;
-  }
-
-  return <div className="PreLoading PreLoading-Spinner">{pastDelay && <Spinner />}</div>;
+export default function Loading() {
+  return (
+    <SkeletonPage primaryAction>
+      <Layout>
+        <Layout.Section>
+          <Card>
+            <SkeletonBodyText lines={10} />
+          </Card>
+        </Layout.Section>
+      </Layout>
+    </SkeletonPage>
+  );
 }
-
-Loading.propTypes = {
-  error: PropTypes.any,
-  pastDelay: PropTypes.bool
-};

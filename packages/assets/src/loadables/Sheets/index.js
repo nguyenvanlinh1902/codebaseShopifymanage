@@ -1,12 +1,12 @@
 import React, {lazy, Suspense} from 'react';
 import Loading from '../../components/Loading';
 
-const NotFound = lazy(() => import('../../pages/NotFound'));
+const Sheets = lazy(() => import('../../pages/Sheets'));
 
-const NotFoundLoadable = () => (
+const SheetsLoadable = () => (
   <Suspense fallback={<Loading />}>
-    <NotFound />
+    <Sheets />
   </Suspense>
 );
 
-export default NotFoundLoadable;
+export default SheetsLoadable;

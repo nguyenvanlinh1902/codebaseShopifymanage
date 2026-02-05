@@ -1,5 +1,0 @@
-type="backend"
-port=5000
-
-[commands]
-dev = "npm run start-dev-embed"

@@ -1,12 +1,12 @@
 import React, {lazy, Suspense} from 'react';
 import Loading from '../../components/Loading';
 
-const NotFound = lazy(() => import('../../pages/NotFound'));
+const Tracking = lazy(() => import('../../pages/Tracking'));
 
-const NotFoundLoadable = () => (
+const TrackingLoadable = () => (
   <Suspense fallback={<Loading />}>
-    <NotFound />
+    <Tracking />
   </Suspense>
 );
 
-export default NotFoundLoadable;
+export default TrackingLoadable;

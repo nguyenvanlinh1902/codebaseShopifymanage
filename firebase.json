@@ -15,23 +15,11 @@
     "firestore": {
       "port": 8080
     },
-    "pubsub": {
-      "port": 8085
-    },
     "ui": {
       "port": 4000
     },
     "hosting": {
       "port": 5000
-    },
-    "storage": {
-      "port": 9199
-    },
-    "auth": {
-      "port": 9099
-    },
-    "database": {
-      "port": 9000
     },
     "singleProjectMode": true
   },
@@ -46,60 +34,8 @@
         "function": "api"
       },
       {
-        "source": "/apiSa/**",
-        "function": "apiSa"
-      },
-      {
-        "source": "/auth/**",
-        "function": "auth"
-      },
-      {
-        "source": "/authSa/**",
-        "function": "authSa"
-      },
-      {
-        "source": "/clientApi/**",
-        "function": "clientApi"
-      },
-      {
-        "source": "/webhook/**",
-        "function": "webhook"
-      },
-      {
-        "source": "/embed.html",
-        "function": "embedApp"
-      },
-      {
-        "source": "/embed/**",
-        "function": "embedApp"
-      },
-      {
-        "source": "/embed",
-        "function": "embedApp"
-      },
-      {
         "source": "**",
-        "destination": "/standalone.html"
-      }
-    ],
-    "headers": [
-      {
-        "source": "embed.html",
-        "headers": [
-          {
-            "key": "Cache-Control",
-            "value": "no-cache, no-store, must-revalidate"
-          }
-        ]
-      },
-      {
-        "source": "sw.js",
-        "headers": [
-          {
-            "key": "Cache-Control",
-            "value": "max-age=0"
-          }
-        ]
+        "destination": "/index.html"
       }
     ]
   }

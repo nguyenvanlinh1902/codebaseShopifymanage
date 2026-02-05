@@ -1,5 +1,6 @@
 import {onRequest} from 'firebase-functions/v2/https';
 import {onMessagePublished} from 'firebase-functions/v2/pubsub';
+import {onSchedule} from 'firebase-functions/v2/scheduler';
 import {initializeApp} from 'firebase-admin/app';
 import * as storeController from './controllers/storeController.js';
 import * as oauthController from './controllers/oauthController.js';
@@ -120,8 +121,20 @@ export const api = onRequest(
         return await productImportController.getSuccessfulImports(req, res);
       }
 
+      if (urlPath === '/api/products/list' && method === 'GET') {
+        return await productImportController.getProducts(req, res);
+      }
+
       if (urlPath === '/api/products/template' && method === 'GET') {
         return await productImportController.downloadTemplate(req, res);
+      }
+
+      if (urlPath === '/api/products/queue-stats' && method === 'GET') {
+        return await productImportController.getQueueStats(req, res);
+      }
+
+      if (urlPath === '/api/products/process-queue' && method === 'POST') {
+        return await productImportController.processQueueManual(req, res);
       }
 
       if (urlPath.startsWith('/api/products/imports/') && pathParts.length === 4) {
@@ -162,6 +175,10 @@ export const api = onRequest(
 
       if (urlPath === '/api/orders/webhook-instructions' && method === 'GET') {
         return await orderSyncController.getWebhookInstructions(req, res);
+      }
+
+      if (urlPath === '/api/orders/webhook-list' && method === 'GET') {
+        return await orderSyncController.getWebhookList(req, res);
       }
 
       if (urlPath === '/api/orders/sync-stats' && method === 'GET') {
@@ -255,5 +272,25 @@ export const processTrackingImportQueue = onMessagePublished(
   },
   async event => {
     await trackingImportController.processTrackingImport(event.data);
+  }
+);
+
+/**
+ * Scheduled Function (CronJob): Process Product Queue
+ * Runs every minute to process pending products from the queue
+ */
+export const productQueueCron = onSchedule(
+  {
+    schedule: 'every 1 minutes',
+    timeZone: 'Asia/Ho_Chi_Minh',
+    memory: '512MiB',
+    timeoutSeconds: 540,
+    retryConfig: {
+      retryCount: 3,
+      maxRetrySeconds: 600
+    }
+  },
+  async () => {
+    await productImportController.processProductQueue();
   }
 );

@@ -5,23 +5,26 @@
 
 /**
  * Parse CSV string to array of objects
+ * Properly handles multi-line fields (newlines inside quotes)
  */
 export function parseCsv(csvString) {
   // Remove UTF-8 BOM if present (common in Excel exports)
   const cleanedString = csvString.replace(/^\uFEFF/, '');
-  const lines = cleanedString.trim().split('\n');
 
-  if (lines.length < 2) {
+  // Parse all rows (handles multi-line fields)
+  const rows = parseAllRows(cleanedString);
+
+  if (rows.length < 2) {
     throw new Error('CSV file must have at least a header row and one data row');
   }
 
   // Parse header
-  const headers = parseRow(lines[0]);
+  const headers = rows[0];
 
   // Parse data rows
   const products = [];
-  for (let i = 1; i < lines.length; i++) {
-    const row = parseRow(lines[i]);
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i];
 
     // Skip empty rows
     if (row.length === 0 || row.every(cell => !cell)) {
@@ -41,20 +44,22 @@ export function parseCsv(csvString) {
 }
 
 /**
- * Parse a single CSV row (handles quoted values)
+ * Parse all rows from CSV string
+ * Handles multi-line fields (newlines inside quoted fields)
  */
-function parseRow(row) {
+function parseAllRows(csvString) {
+  const rows = [];
   const cells = [];
   let current = '';
   let inQuotes = false;
 
-  for (let i = 0; i < row.length; i++) {
-    const char = row[i];
-    const nextChar = row[i + 1];
+  for (let i = 0; i < csvString.length; i++) {
+    const char = csvString[i];
+    const nextChar = csvString[i + 1];
 
     if (char === '"') {
       if (inQuotes && nextChar === '"') {
-        // Escaped quote
+        // Escaped quote (two quotes in a row)
         current += '"';
         i++; // Skip next quote
       } else {
@@ -65,15 +70,37 @@ function parseRow(row) {
       // End of cell
       cells.push(current);
       current = '';
+    } else if ((char === '\n' || char === '\r') && !inQuotes) {
+      // End of row
+      // Skip \r\n or \n\r combinations
+      if ((char === '\r' && nextChar === '\n') || (char === '\n' && nextChar === '\r')) {
+        i++; // Skip next newline character
+      }
+
+      // Add last cell to row
+      cells.push(current);
+      current = '';
+
+      // Add row to result (skip empty rows)
+      if (cells.length > 0 && !cells.every(c => !c)) {
+        rows.push([...cells]);
+      }
+      cells.length = 0;
     } else {
+      // Regular character (including newlines inside quotes)
       current += char;
     }
   }
 
-  // Add last cell
-  cells.push(current);
+  // Add last cell and row if not empty
+  if (current || cells.length > 0) {
+    cells.push(current);
+    if (cells.length > 0 && !cells.every(c => !c)) {
+      rows.push(cells);
+    }
+  }
 
-  return cells;
+  return rows;
 }
 
 /**
@@ -115,15 +142,20 @@ export function validateProductData(product) {
  * - Simplified format (title, description, sku, price, etc.)
  */
 export function mapToShopifyProduct(csvProduct) {
+  // Parse Published field - handles TRUE, True, true, or empty (defaults to active)
+  const published = csvProduct.Published || csvProduct.published || '';
+  const isPublished = published.toLowerCase() === 'true' || published === '1' || published === '';
+
   return {
     title: csvProduct.Title || csvProduct.title || '',
     description: csvProduct['Body (HTML)'] || csvProduct.description || csvProduct.body_html || '',
     vendor: csvProduct.Vendor || csvProduct.vendor || '',
     productType: csvProduct.Type || csvProduct.product_type || csvProduct.productType || '',
     tags: csvProduct.Tags || csvProduct.tags || '',
-    status: csvProduct.Published === 'TRUE' || csvProduct.Published === 'true'
-      ? 'active'
-      : (csvProduct.status || 'draft'),
+    status: isPublished ? 'active' : 'draft',
+    handle: csvProduct.Handle || csvProduct.handle || '',
+
+    // Variant data
     price: csvProduct['Variant Price'] || csvProduct.price || csvProduct.variant_price || '0.00',
     compareAtPrice: csvProduct['Variant Compare At Price'] || csvProduct.compare_at_price || csvProduct.compareAtPrice || null,
     sku: csvProduct['Variant SKU'] || csvProduct.sku || csvProduct.variant_sku || '',
@@ -134,8 +166,19 @@ export function mapToShopifyProduct(csvProduct) {
       csvProduct.inventoryQuantity ||
       0
     ),
+    weight: parseFloat(csvProduct['Variant Grams'] || csvProduct.weight || 0),
+    weightUnit: csvProduct['Variant Weight Unit'] || csvProduct.weight_unit || 'lb',
+    requiresShipping: (csvProduct['Variant Requires Shipping'] || 'True').toLowerCase() === 'true',
+    taxable: (csvProduct['Variant Taxable'] || 'True').toLowerCase() === 'true',
+    cost: parseFloat(csvProduct['Cost per item'] || csvProduct.cost || 0) || null,
+
+    // Image data
     imageUrl: csvProduct['Image Src'] || csvProduct.image_src || csvProduct.imageUrl || '',
-    handle: csvProduct.Handle || csvProduct.handle || ''
+    imageAlt: csvProduct['Image Alt Text'] || csvProduct.image_alt || csvProduct.imageAlt || '',
+
+    // SEO data
+    seoTitle: csvProduct['SEO Title'] || csvProduct.seo_title || csvProduct.seoTitle || '',
+    seoDescription: csvProduct['SEO Description'] || csvProduct.seo_description || csvProduct.seoDescription || ''
   };
 }
 
@@ -150,13 +193,22 @@ export function generateCsvTemplate() {
     'vendor',
     'product_type',
     'tags',
+    'published',
+    'handle',
     'price',
     'compare_at_price',
     'sku',
     'barcode',
     'inventory_quantity',
+    'weight',
+    'weight_unit',
+    'requires_shipping',
+    'taxable',
+    'cost',
     'image_src',
-    'status'
+    'image_alt',
+    'seo_title',
+    'seo_description'
   ];
 
   const exampleRow = [
@@ -165,17 +217,26 @@ export function generateCsvTemplate() {
     'My Brand',
     'Electronics',
     'new, featured',
+    'True',
+    'example-product',
     '29.99',
     '39.99',
     'SKU-001',
     '123456789',
     '100',
+    '0',
+    'lb',
+    'True',
+    'True',
+    '20.00',
     'https://example.com/image.jpg',
-    'active'
+    'Example Product Image',
+    'Buy Example Product - Best Electronics',
+    'High quality example product with free shipping. Perfect for home and office use.'
   ];
 
   // Add header comment explaining format compatibility
-  const comment = '# This is a simplified format. Shopify product export CSV files are also supported.\n';
+  const comment = '# Simplified format. Shopify product export CSV (with fields like "Title", "Body (HTML)", "Variant Price") is also fully supported.\n';
 
   return comment + headers.join(',') + '\n' + exampleRow.join(',');
 }

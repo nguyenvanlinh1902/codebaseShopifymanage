@@ -27,6 +27,7 @@ export class ShopifyService {
         product_type: productData.productType || '',
         tags: productData.tags || '',
         status: productData.status || 'draft',
+        handle: productData.handle || undefined,
         variants: [
           {
             price: productData.price || '0.00',
@@ -34,16 +35,32 @@ export class ShopifyService {
             sku: productData.sku || '',
             barcode: productData.barcode || '',
             inventory_quantity: parseInt(productData.inventoryQuantity || 0),
-            inventory_management: 'shopify'
+            inventory_management: 'shopify',
+            weight: productData.weight || 0,
+            weight_unit: productData.weightUnit || 'lb',
+            requires_shipping: productData.requiresShipping !== undefined ? productData.requiresShipping : true,
+            taxable: productData.taxable !== undefined ? productData.taxable : true
           }
         ]
       };
+
+      // Add cost if provided (requires Shopify Plus for inventory cost tracking)
+      if (productData.cost) {
+        shopifyProduct.variants[0].cost = productData.cost;
+      }
+
+      // Add SEO fields if provided
+      if (productData.seoTitle || productData.seoDescription) {
+        shopifyProduct.metafields_global_title_tag = productData.seoTitle || undefined;
+        shopifyProduct.metafields_global_description_tag = productData.seoDescription || undefined;
+      }
 
       // Add image if provided
       if (productData.imageUrl) {
         shopifyProduct.images = [
           {
-            src: productData.imageUrl
+            src: productData.imageUrl,
+            alt: productData.imageAlt || undefined
           }
         ];
       }
@@ -71,9 +88,30 @@ export class ShopifyService {
       if (productData.productType) updateData.product_type = productData.productType;
       if (productData.tags) updateData.tags = productData.tags;
       if (productData.status) updateData.status = productData.status;
+      if (productData.handle) updateData.handle = productData.handle;
+
+      // Update SEO fields
+      if (productData.seoTitle) {
+        updateData.metafields_global_title_tag = productData.seoTitle;
+      }
+      if (productData.seoDescription) {
+        updateData.metafields_global_description_tag = productData.seoDescription;
+      }
 
       // Update variant if needed
-      if (productData.price || productData.sku || productData.inventoryQuantity) {
+      const needsVariantUpdate =
+        productData.price ||
+        productData.compareAtPrice ||
+        productData.sku ||
+        productData.barcode ||
+        productData.inventoryQuantity ||
+        productData.weight ||
+        productData.weightUnit ||
+        productData.requiresShipping !== undefined ||
+        productData.taxable !== undefined ||
+        productData.cost;
+
+      if (needsVariantUpdate) {
         const product = await this.shopify.product.get(productId);
         if (product.variants && product.variants.length > 0) {
           const variantId = product.variants[0].id;
@@ -83,11 +121,31 @@ export class ShopifyService {
           if (productData.compareAtPrice) variantUpdate.compare_at_price = productData.compareAtPrice;
           if (productData.sku) variantUpdate.sku = productData.sku;
           if (productData.barcode) variantUpdate.barcode = productData.barcode;
-          if (productData.inventoryQuantity) {
+          if (productData.inventoryQuantity !== undefined) {
             variantUpdate.inventory_quantity = parseInt(productData.inventoryQuantity);
           }
+          if (productData.weight !== undefined) variantUpdate.weight = productData.weight;
+          if (productData.weightUnit) variantUpdate.weight_unit = productData.weightUnit;
+          if (productData.requiresShipping !== undefined) {
+            variantUpdate.requires_shipping = productData.requiresShipping;
+          }
+          if (productData.taxable !== undefined) variantUpdate.taxable = productData.taxable;
+          if (productData.cost) variantUpdate.cost = productData.cost;
 
           await this.shopify.productVariant.update(variantId, variantUpdate);
+        }
+      }
+
+      // Update image if provided
+      if (productData.imageUrl) {
+        const product = await this.shopify.product.get(productId);
+        // Check if image already exists
+        const existingImage = product.images?.find(img => img.src === productData.imageUrl);
+        if (!existingImage) {
+          await this.shopify.productImage.create(productId, {
+            src: productData.imageUrl,
+            alt: productData.imageAlt || undefined
+          });
         }
       }
 

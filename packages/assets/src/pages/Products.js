@@ -14,30 +14,48 @@ import {
   SkeletonBodyText,
   EmptyState,
   Modal,
-  BlockStack
+  BlockStack,
+  Tabs,
+  ChoiceList
 } from '@shopify/polaris';
 
 const USER_ID = 'demo-user'; // TODO: Replace with real auth
 
 /**
- * Products Import Page - CSV Upload
+ * Products Page - Upload, History, and Products List
  */
 export default function Products() {
+  const [selectedTab, setSelectedTab] = useState(0);
   const [stores, setStores] = useState([]);
   const [selectedStore, setSelectedStore] = useState('');
+  const [selectedStores, setSelectedStores] = useState([]); // For multi-store import
   const [file, setFile] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [importHistory, setImportHistory] = useState([]);
   const [successfulImports, setSuccessfulImports] = useState([]);
+  const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [detailsModal, setDetailsModal] = useState(null);
+  const [queueStats, setQueueStats] = useState(null);
+  const [processingQueue, setProcessingQueue] = useState(false);
 
   useEffect(() => {
     fetchStores();
     fetchImportHistory();
     fetchSuccessfulImports();
+    fetchProducts();
+    fetchQueueStats();
+    // Poll queue stats every 30 seconds
+    const interval = setInterval(fetchQueueStats, 30000);
+    return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    if (selectedTab === 2) {
+      fetchProducts();
+    }
+  }, [selectedStore, selectedTab]);
 
   const fetchStores = async () => {
     try {
@@ -78,6 +96,62 @@ export default function Products() {
     }
   };
 
+  const fetchProducts = async () => {
+    try {
+      const url = selectedStore
+        ? `/api/products/list?userId=${USER_ID}&storeId=${selectedStore}`
+        : `/api/products/list?userId=${USER_ID}`;
+      const response = await fetch(url);
+      const result = await response.json();
+      if (result.success) {
+        setProducts(result.data);
+      }
+    } catch (err) {
+      console.error('Error fetching products:', err);
+    }
+  };
+
+  const fetchQueueStats = async () => {
+    try {
+      const response = await fetch('/api/products/queue-stats');
+      const result = await response.json();
+      if (result.success) {
+        setQueueStats(result.data);
+      }
+    } catch (err) {
+      console.error('Error fetching queue stats:', err);
+    }
+  };
+
+  const handleProcessQueue = async () => {
+    try {
+      setProcessingQueue(true);
+      setError(null);
+
+      const response = await fetch('/api/products/process-queue', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'}
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        // Update queue stats with the result
+        setQueueStats(result.data);
+        // Refresh other data
+        await fetchImportHistory();
+        await fetchProducts();
+      } else {
+        setError(result.error || 'Failed to process queue');
+      }
+    } catch (err) {
+      console.error('Error processing queue:', err);
+      setError('Failed to process queue');
+    } finally {
+      setProcessingQueue(false);
+    }
+  };
+
   const handleDropZoneDrop = useCallback((_dropFiles, acceptedFiles, _rejectedFiles) => {
     setFile(acceptedFiles[0]);
     setError(null);
@@ -88,8 +162,8 @@ export default function Products() {
   }, []);
 
   const handleUpload = async () => {
-    if (!selectedStore) {
-      setError('Please select a store');
+    if (selectedStores.length === 0) {
+      setError('Please select at least one store');
       return;
     }
 
@@ -112,7 +186,7 @@ export default function Products() {
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({
             userId: USER_ID,
-            storeId: selectedStore,
+            storeIds: selectedStores, // Send array of store IDs
             csvData,
             fileName: file.name
           })
@@ -122,8 +196,10 @@ export default function Products() {
 
         if (result.success) {
           setFile(null);
+          setSelectedStores([]); // Clear selection after upload
           await fetchImportHistory();
           await fetchSuccessfulImports();
+          await fetchProducts();
         } else {
           setError(result.error || 'Failed to upload CSV');
         }
@@ -175,7 +251,7 @@ export default function Products() {
   };
 
   const storeOptions = [
-    {label: 'Select a store', value: ''},
+    {label: 'All Stores', value: ''},
     ...stores.map(store => ({
       label: `${store.name} (${store.shopDomain})`,
       value: store.id
@@ -215,15 +291,46 @@ export default function Products() {
     `${imp.processedProducts || 0}/${imp.totalProducts}`,
     `${imp.successCount || 0} success, ${imp.failedCount || 0} failed`,
     new Date(imp.createdAt).toLocaleString(),
-    <Button size="slim" onClick={() => viewImportDetails(imp.id)}>
+    <Button key={`btn-${imp.id}`} size="slim" onClick={() => viewImportDetails(imp.id)}>
       View Details
     </Button>
   ]);
 
+  const productRows = products.map(product => [
+    product.title,
+    product.sku || '-',
+    product.price ? `$${product.price}` : '-',
+    product.vendor || '-',
+    product.productType || '-',
+    <Badge key={`badge-${product.id}`} tone={product.action === 'created' ? 'success' : 'info'}>
+      {product.action || 'unknown'}
+    </Badge>,
+    stores.find(s => s.id === product.storeId)?.name || product.storeName || '-',
+    new Date(product.createdAt).toLocaleString()
+  ]);
+
+  const tabs = [
+    {
+      id: 'upload',
+      content: 'Upload CSV',
+      panelID: 'upload-panel'
+    },
+    {
+      id: 'history',
+      content: 'Import History',
+      panelID: 'history-panel'
+    },
+    {
+      id: 'products',
+      content: 'Products',
+      panelID: 'products-panel'
+    }
+  ];
+
   return (
     <Page
-      title="Product Import"
-      subtitle="Import products from CSV file"
+      title="Product Management"
+      subtitle="Import products from CSV and manage imported products"
       secondaryActions={[{content: 'Download CSV Template', onAction: handleDownloadTemplate}]}
     >
       <Layout>
@@ -237,101 +344,232 @@ export default function Products() {
 
         <Layout.Section>
           <Card>
-            <BlockStack gap="400">
-              <Text as="h2" variant="headingMd">
-                Upload CSV File
-              </Text>
-
-              <Select
-                label="Select Store"
-                options={storeOptions}
-                value={selectedStore}
-                onChange={setSelectedStore}
-                disabled={uploading}
-              />
-
-              <DropZone
-                onDrop={handleDropZoneDrop}
-                accept=".csv,text/csv"
-                type="file"
-                disabled={uploading}
-              >
-                {uploadedFiles}
-                {fileUpload}
-              </DropZone>
-
-              <InlineStack align="end">
-                <Button
-                  variant="primary"
-                  onClick={handleUpload}
-                  loading={uploading}
-                  disabled={!selectedStore || !file}
-                >
-                  Upload & Import
-                </Button>
-              </InlineStack>
-
-              <Banner tone="info">
-                <Text as="p">
-                  <strong>CSV Format:</strong> Download the template to see the required columns. The CSV
-                  must include: title, price, sku, and other product details.
-                </Text>
-              </Banner>
-            </BlockStack>
-          </Card>
-        </Layout.Section>
-
-        {successfulImports.length > 0 && (
-          <Layout.Section>
-            <Card>
-              <BlockStack gap="400">
-                <Text as="h2" variant="headingMd">
-                  Successful Imports by Store
-                </Text>
-                {successfulImports.map(storeImport => (
-                  <BlockStack key={storeImport.storeId} gap="200">
-                    <Text as="p" variant="headingSm">
-                      {storeImport.storeName} ({storeImport.shopDomain})
+            <Tabs tabs={tabs} selected={selectedTab} onSelect={setSelectedTab}>
+              <div style={{padding: '16px'}}>
+                {selectedTab === 0 && (
+                  <BlockStack gap="400">
+                    <Text as="h2" variant="headingMd">
+                      Upload CSV File
                     </Text>
-                    {storeImport.imports.map(imp => (
-                      <InlineStack key={imp.importId} gap="200">
+
+                    <ChoiceList
+                      title="Select Stores (can select multiple)"
+                      allowMultiple
+                      choices={stores.map(store => ({
+                        label: `${store.name} (${store.shopDomain})`,
+                        value: store.id
+                      }))}
+                      selected={selectedStores}
+                      onChange={setSelectedStores}
+                      disabled={uploading}
+                    />
+
+                    {selectedStores.length > 0 && (
+                      <Banner tone="info">
                         <Text as="p">
-                          {imp.fileName} - {imp.successCount} products -{' '}
-                          {new Date(imp.completedAt).toLocaleDateString()}
+                          <strong>{selectedStores.length} store(s) selected:</strong> The CSV will be imported to all
+                          selected stores.
                         </Text>
-                      </InlineStack>
-                    ))}
+                      </Banner>
+                    )}
+
+                    <DropZone
+                      onDrop={handleDropZoneDrop}
+                      accept=".csv,text/csv"
+                      type="file"
+                      disabled={uploading}
+                    >
+                      {uploadedFiles}
+                      {fileUpload}
+                    </DropZone>
+
+                    <InlineStack align="end">
+                      <Button
+                        variant="primary"
+                        onClick={handleUpload}
+                        loading={uploading}
+                        disabled={selectedStores.length === 0 || !file}
+                      >
+                        Upload & Import to {selectedStores.length} Store{selectedStores.length !== 1 ? 's' : ''}
+                      </Button>
+                    </InlineStack>
+
+                    <Banner tone="info">
+                      <Text as="p">
+                        <strong>CSV Format:</strong> Download the template to see the required columns. The CSV
+                        must include: title, price, sku, and other product details.
+                      </Text>
+                    </Banner>
+
+                    {queueStats && (
+                      <Card>
+                        <BlockStack gap="300">
+                          <InlineStack align="space-between" blockAlign="center">
+                            <Text as="h3" variant="headingSm">
+                              Queue Status
+                            </Text>
+                            <Button
+                              onClick={handleProcessQueue}
+                              loading={processingQueue}
+                              disabled={queueStats.pending === 0}
+                              variant="primary"
+                            >
+                              Process Now
+                            </Button>
+                          </InlineStack>
+                          <InlineStack gap="400">
+                            <BlockStack gap="200">
+                              <Text as="p" variant="bodySm" tone="subdued">
+                                Pending
+                              </Text>
+                              <Text as="p" variant="headingLg">
+                                {queueStats.pending}
+                              </Text>
+                            </BlockStack>
+                            <BlockStack gap="200">
+                              <Text as="p" variant="bodySm" tone="subdued">
+                                Processing
+                              </Text>
+                              <Text as="p" variant="headingLg">
+                                {queueStats.processing}
+                              </Text>
+                            </BlockStack>
+                            <BlockStack gap="200">
+                              <Text as="p" variant="bodySm" tone="subdued">
+                                Completed
+                              </Text>
+                              <Text as="p" variant="headingLg">
+                                {queueStats.completed}
+                              </Text>
+                            </BlockStack>
+                            <BlockStack gap="200">
+                              <Text as="p" variant="bodySm" tone="subdued">
+                                Failed
+                              </Text>
+                              <Text as="p" variant="headingLg">
+                                {queueStats.failed}
+                              </Text>
+                            </BlockStack>
+                          </InlineStack>
+                          <Text as="p" variant="bodySm" tone="subdued">
+                            CronJob runs automatically every minute to process up to 50 products per batch. You can
+                            also process the queue immediately by clicking "Process Now". Stats update automatically
+                            every 30 seconds.
+                          </Text>
+                        </BlockStack>
+                      </Card>
+                    )}
+
+                    {successfulImports.length > 0 && (
+                      <BlockStack gap="300">
+                        <Text as="h3" variant="headingSm">
+                          Recent Successful Imports
+                        </Text>
+                        {successfulImports.map(storeImport => (
+                          <BlockStack key={storeImport.storeId} gap="200">
+                            <Text as="p" variant="headingSm">
+                              {storeImport.storeName} ({storeImport.shopDomain})
+                            </Text>
+                            {storeImport.imports.map(imp => (
+                              <InlineStack key={imp.importId} gap="200">
+                                <Text as="p">
+                                  {imp.fileName} - {imp.successCount} products -{' '}
+                                  {new Date(imp.completedAt).toLocaleDateString()}
+                                </Text>
+                              </InlineStack>
+                            ))}
+                          </BlockStack>
+                        ))}
+                      </BlockStack>
+                    )}
                   </BlockStack>
-                ))}
-              </BlockStack>
-            </Card>
-          </Layout.Section>
-        )}
+                )}
 
-        <Layout.Section>
-          <Card>
-            <BlockStack gap="400">
-              <Text as="h2" variant="headingMd">
-                Import History
-              </Text>
+                {selectedTab === 1 && (
+                  <BlockStack gap="400">
+                    <Text as="h2" variant="headingMd">
+                      Import History
+                    </Text>
 
-              {loading ? (
-                <SkeletonBodyText lines={5} />
-              ) : importHistory.length === 0 ? (
-                <EmptyState
-                  heading="No imports yet"
-                  image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
-                >
-                  <p>Upload a CSV file to start importing products.</p>
-                </EmptyState>
-              ) : (
-                <DataTable
-                  columnContentTypes={['text', 'text', 'text', 'text', 'text', 'text', 'text']}
-                  headings={['File', 'Store', 'Status', 'Progress', 'Results', 'Date', 'Actions']}
-                  rows={historyRows}
-                />
-              )}
-            </BlockStack>
+                    {loading ? (
+                      <SkeletonBodyText lines={5} />
+                    ) : importHistory.length === 0 ? (
+                      <EmptyState
+                        heading="No imports yet"
+                        image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
+                      >
+                        <p>Upload a CSV file to start importing products.</p>
+                      </EmptyState>
+                    ) : (
+                      <DataTable
+                        columnContentTypes={['text', 'text', 'text', 'text', 'text', 'text', 'text']}
+                        headings={['File', 'Store', 'Status', 'Progress', 'Results', 'Date', 'Actions']}
+                        rows={historyRows}
+                      />
+                    )}
+                  </BlockStack>
+                )}
+
+                {selectedTab === 2 && (
+                  <BlockStack gap="400">
+                    <InlineStack align="space-between" blockAlign="center">
+                      <Text as="h2" variant="headingMd">
+                        Imported Products
+                      </Text>
+                      <div style={{minWidth: '200px'}}>
+                        <Select
+                          label="Filter by Store"
+                          labelHidden
+                          options={storeOptions}
+                          value={selectedStore}
+                          onChange={value => {
+                            setSelectedStore(value);
+                          }}
+                        />
+                      </div>
+                    </InlineStack>
+
+                    {products.length === 0 ? (
+                      <EmptyState
+                        heading="No products yet"
+                        image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
+                      >
+                        <p>Import products from CSV to see them here.</p>
+                      </EmptyState>
+                    ) : (
+                      <>
+                        <DataTable
+                          columnContentTypes={[
+                            'text',
+                            'text',
+                            'numeric',
+                            'text',
+                            'text',
+                            'text',
+                            'text',
+                            'text'
+                          ]}
+                          headings={[
+                            'Title',
+                            'SKU',
+                            'Price',
+                            'Vendor',
+                            'Type',
+                            'Action',
+                            'Store',
+                            'Imported At'
+                          ]}
+                          rows={productRows}
+                        />
+                        <Text as="p" variant="bodySm" tone="subdued">
+                          Showing {products.length} product{products.length !== 1 ? 's' : ''}
+                        </Text>
+                      </>
+                    )}
+                  </BlockStack>
+                )}
+              </div>
+            </Tabs>
           </Card>
         </Layout.Section>
       </Layout>

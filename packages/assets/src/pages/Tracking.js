@@ -267,7 +267,7 @@ export default function Tracking() {
           </Layout.Section>
         )}
 
-        <Layout.Section oneHalf>
+        <Layout.Section>
           <Card sectioned>
             <Text variant="headingMd" as="h2">
               Upload Tracking File
@@ -320,45 +320,6 @@ export default function Tracking() {
           </Card>
         </Layout.Section>
 
-        <Layout.Section oneHalf>
-          <Card sectioned>
-            <Text variant="headingMd" as="h2">
-              Excel Format
-            </Text>
-            <div style={{marginTop: '16px'}}>
-              <Text variant="bodySm" as="p">
-                Your Excel file should have these columns:
-              </Text>
-              <ul style={{marginTop: '8px', marginLeft: '20px', fontSize: '14px'}}>
-                <li>
-                  <strong>Order Number *</strong> (e.g., #1001 or 1001)
-                </li>
-                <li>
-                  <strong>Tracking Number *</strong>
-                </li>
-                <li>Carrier (optional, e.g., USPS, FedEx)</li>
-                <li>Tracking URL (optional)</li>
-              </ul>
-              <Text variant="bodySm" as="p" tone="subdued" style={{marginTop: '8px'}}>
-                * Required fields
-              </Text>
-
-              <div style={{marginTop: '16px'}}>
-                <Banner>
-                  <p>
-                    <strong>How it works:</strong>
-                  </p>
-                  <ol style={{marginTop: '8px', marginLeft: '20px'}}>
-                    <li>System finds orders by Order Number</li>
-                    <li>Updates existing fulfillments or creates new ones</li>
-                    <li>Adds tracking information to each order</li>
-                    <li>Customers receive tracking notifications</li>
-                  </ol>
-                </Banner>
-              </div>
-            </div>
-          </Card>
-        </Layout.Section>
 
         <Layout.Section>
           <Card>
@@ -452,6 +413,120 @@ export default function Tracking() {
                   <li>Failed: {selectedImport.failedCount || 0}</li>
                 </ul>
               </div>
+
+              {/* Order Tracking Details Table */}
+              {selectedImport.trackingDetails && selectedImport.trackingDetails.length > 0 && (
+                <div style={{marginBottom: '16px'}}>
+                  <Text variant="bodyMd" as="p" fontWeight="semibold">
+                    Order Tracking Details:
+                  </Text>
+                  <div
+                    style={{
+                      marginTop: '8px',
+                      maxHeight: '300px',
+                      overflow: 'auto',
+                      border: '1px solid #e1e3e5',
+                      borderRadius: '4px'
+                    }}
+                  >
+                    <table
+                      style={{
+                        width: '100%',
+                        borderCollapse: 'collapse',
+                        fontSize: '13px'
+                      }}
+                    >
+                      <thead style={{background: '#f6f6f7', position: 'sticky', top: 0}}>
+                        <tr>
+                          <th style={{padding: '8px', textAlign: 'left', borderBottom: '1px solid #e1e3e5'}}>
+                            Order #
+                          </th>
+                          <th style={{padding: '8px', textAlign: 'left', borderBottom: '1px solid #e1e3e5'}}>
+                            Tracking Number
+                          </th>
+                          <th style={{padding: '8px', textAlign: 'left', borderBottom: '1px solid #e1e3e5'}}>
+                            Carrier
+                          </th>
+                          <th
+                            style={{
+                              padding: '8px',
+                              textAlign: 'center',
+                              borderBottom: '1px solid #e1e3e5',
+                              minWidth: '100px'
+                            }}
+                          >
+                            Status
+                          </th>
+                          <th style={{padding: '8px', textAlign: 'left', borderBottom: '1px solid #e1e3e5'}}>
+                            Error Details
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {selectedImport.trackingDetails.map((detail, idx) => (
+                          <tr
+                            key={idx}
+                            style={{
+                              background: idx % 2 === 0 ? '#fff' : '#fafbfb',
+                              borderBottom: '1px solid #e1e3e5'
+                            }}
+                          >
+                            <td style={{padding: '8px'}}>
+                              <strong>{detail.orderNumber}</strong>
+                            </td>
+                            <td style={{padding: '8px', fontFamily: 'monospace'}}>
+                              {detail.trackingNumber}
+                            </td>
+                            <td style={{padding: '8px'}}>{detail.carrier || '-'}</td>
+                            <td style={{padding: '8px', textAlign: 'center'}}>
+                              {detail.success ? (
+                                <span style={{color: '#008060', fontWeight: 'bold'}}>✅ Success</span>
+                              ) : (
+                                <span style={{color: '#d72c0d', fontWeight: 'bold'}}>❌ Failed</span>
+                              )}
+                            </td>
+                            <td style={{padding: '8px'}}>
+                              {!detail.success && detail.error ? (
+                                <div>
+                                  <Text variant="bodySm" as="p" tone="critical">
+                                    {detail.error}
+                                  </Text>
+                                  {detail.errorType === 'ORDER_NOT_FOUND' && (
+                                    <Text variant="bodySm" as="p" tone="subdued">
+                                      💡 Order number "{detail.orderNumber}" không tồn tại trong store
+                                    </Text>
+                                  )}
+                                  {detail.errorType === 'INVALID_ORDER_NUMBER' && (
+                                    <Text variant="bodySm" as="p" tone="subdued">
+                                      💡 Định dạng Order number không hợp lệ
+                                    </Text>
+                                  )}
+                                  {detail.errorType === 'FULFILLMENT_FAILED' && (
+                                    <Text variant="bodySm" as="p" tone="subdued">
+                                      💡 Không thể tạo/cập nhật fulfillment cho order này
+                                    </Text>
+                                  )}
+                                  {detail.errorType === 'SHOPIFY_API_ERROR' && (
+                                    <Text variant="bodySm" as="p" tone="subdued">
+                                      💡 Lỗi khi gọi Shopify API
+                                    </Text>
+                                  )}
+                                </div>
+                              ) : detail.success ? (
+                                <Text variant="bodySm" as="p" tone="success">
+                                  Tracking updated successfully
+                                </Text>
+                              ) : (
+                                '-'
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
 
               {selectedImport.invalidRecords && selectedImport.invalidRecords.length > 0 && (
                 <div style={{marginBottom: '16px'}}>

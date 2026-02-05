@@ -13,7 +13,7 @@ const router = new Router({
  * Helper to convert Express-style handlers to Koa middleware
  */
 function convertHandler(handler) {
-  return async (ctx) => {
+  return async ctx => {
     const req = {
       method: ctx.method,
       body: ctx.request.body,
@@ -22,11 +22,11 @@ function convertHandler(handler) {
     };
 
     const res = {
-      status: (code) => {
+      status: code => {
         ctx.status = code;
         return res;
       },
-      json: (data) => {
+      json: data => {
         ctx.body = data;
       }
     };

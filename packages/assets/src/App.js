@@ -12,9 +12,10 @@ import {
   DeliveryIcon
 } from '@shopify/polaris-icons';
 
-// Import loadables (code-split pages)
 import Dashboard from './loadables/Dashboard';
 import Stores from './loadables/Stores';
+import StoresOAuth from './loadables/StoresOAuth';
+import OAuthCallback from './loadables/OAuthCallback';
 import Sheets from './loadables/Sheets';
 import Products from './loadables/Products';
 import Orders from './loadables/Orders';
@@ -28,7 +29,13 @@ export default function App() {
   return (
     <AppProvider i18n={enTranslations}>
       <BrowserRouter>
-        <AppFrame />
+        <Routes>
+          {/* OAuth callback route (no navigation frame) */}
+          <Route path="/oauth/callback" element={<OAuthCallback />} />
+
+          {/* Main app routes (with navigation frame) */}
+          <Route path="*" element={<AppFrame />} />
+        </Routes>
       </BrowserRouter>
     </AppProvider>
   );
@@ -81,6 +88,7 @@ function AppFrame() {
       <Routes>
         <Route path="/" element={<Dashboard />} />
         <Route path="/stores" element={<Stores />} />
+        <Route path="/stores/oauth" element={<StoresOAuth />} />
         <Route path="/sheets" element={<Sheets />} />
         <Route path="/products" element={<Products />} />
         <Route path="/orders" element={<Orders />} />

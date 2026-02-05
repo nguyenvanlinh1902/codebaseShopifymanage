@@ -253,4 +253,223 @@ export class GoogleSheetsService {
       throw new Error(`Failed to get spreadsheet info: ${error.message}`);
     }
   }
+
+  /**
+   * Write orders to Google Sheets with headers
+   */
+  async writeOrders(spreadsheetId, sheetName, orders) {
+    try {
+      // Create headers
+      const headers = [
+        'Order Number',
+        'Order ID',
+        'Order Date',
+        'Order Status',
+        'Fulfillment Status',
+        'Total Price',
+        'Currency',
+        'Payment Method',
+        'Customer ID',
+        'Customer Email',
+        'Customer Phone',
+        'Customer First Name',
+        'Customer Last Name',
+        'Customer Full Name',
+        'Shipping Name',
+        'Shipping Address 1',
+        'Shipping Address 2',
+        'Shipping City',
+        'Shipping Province',
+        'Shipping Zip',
+        'Shipping Country',
+        'Shipping Phone',
+        'Billing Name',
+        'Billing Address 1',
+        'Billing City',
+        'Billing Province',
+        'Billing Zip',
+        'Billing Country',
+        'Items Count',
+        'Items',
+        'Tracking Numbers',
+        'Tracking URLs',
+        'Note',
+        'Tags',
+        'Created At',
+        'Updated At'
+      ];
+
+      // Convert orders to rows
+      const rows = orders.map(order => [
+        order.orderNumber,
+        order.orderId,
+        order.orderDate,
+        order.orderStatus,
+        order.fulfillmentStatus,
+        order.totalPrice,
+        order.currency,
+        order.paymentMethod,
+        order.customerId,
+        order.customerEmail,
+        order.customerPhone,
+        order.customerFirstName,
+        order.customerLastName,
+        order.customerFullName,
+        order.shippingName,
+        order.shippingAddress1,
+        order.shippingAddress2,
+        order.shippingCity,
+        order.shippingProvince,
+        order.shippingZip,
+        order.shippingCountry,
+        order.shippingPhone,
+        order.billingName,
+        order.billingAddress1,
+        order.billingCity,
+        order.billingProvince,
+        order.billingZip,
+        order.billingCountry,
+        order.itemsCount,
+        order.items,
+        order.trackingNumbers,
+        order.trackingUrls,
+        order.note,
+        order.tags,
+        order.createdAt,
+        order.updatedAt
+      ]);
+
+      // Write headers + data
+      const allRows = [headers, ...rows];
+      await this.writeSheet(spreadsheetId, `${sheetName}!A1`, allRows);
+
+      return {success: true, rowsWritten: rows.length};
+    } catch (error) {
+      console.error('Error writing orders:', error);
+      throw new Error(`Failed to write orders: ${error.message}`);
+    }
+  }
+
+  /**
+   * Append single order to sheet
+   */
+  async appendOrder(spreadsheetId, sheetName, order) {
+    try {
+      const row = [
+        order.orderNumber,
+        order.orderId,
+        order.orderDate,
+        order.orderStatus,
+        order.fulfillmentStatus,
+        order.totalPrice,
+        order.currency,
+        order.paymentMethod,
+        order.customerId,
+        order.customerEmail,
+        order.customerPhone,
+        order.customerFirstName,
+        order.customerLastName,
+        order.customerFullName,
+        order.shippingName,
+        order.shippingAddress1,
+        order.shippingAddress2,
+        order.shippingCity,
+        order.shippingProvince,
+        order.shippingZip,
+        order.shippingCountry,
+        order.shippingPhone,
+        order.billingName,
+        order.billingAddress1,
+        order.billingCity,
+        order.billingProvince,
+        order.billingZip,
+        order.billingCountry,
+        order.itemsCount,
+        order.items,
+        order.trackingNumbers,
+        order.trackingUrls,
+        order.note,
+        order.tags,
+        order.createdAt,
+        order.updatedAt
+      ];
+
+      await this.appendSheet(spreadsheetId, `${sheetName}!A:AJ`, [row]);
+
+      return {success: true};
+    } catch (error) {
+      console.error('Error appending order:', error);
+      throw new Error(`Failed to append order: ${error.message}`);
+    }
+  }
+
+  /**
+   * Update existing order in sheet by order number
+   */
+  async updateOrder(spreadsheetId, sheetName, orderNumber, order) {
+    try {
+      // Read all data to find the row
+      const data = await this.readSheet(spreadsheetId, `${sheetName}!A:A`);
+
+      // Find row index (column A contains order numbers)
+      let rowIndex = -1;
+      for (let i = 0; i < data.length; i++) {
+        if (data[i][0] === orderNumber) {
+          rowIndex = i + 1; // +1 because sheets are 1-indexed
+          break;
+        }
+      }
+
+      if (rowIndex === -1) {
+        throw new Error(`Order ${orderNumber} not found in sheet`);
+      }
+
+      // Update the row
+      const row = [
+        order.orderNumber,
+        order.orderId,
+        order.orderDate,
+        order.orderStatus,
+        order.fulfillmentStatus,
+        order.totalPrice,
+        order.currency,
+        order.paymentMethod,
+        order.customerId,
+        order.customerEmail,
+        order.customerPhone,
+        order.customerFirstName,
+        order.customerLastName,
+        order.customerFullName,
+        order.shippingName,
+        order.shippingAddress1,
+        order.shippingAddress2,
+        order.shippingCity,
+        order.shippingProvince,
+        order.shippingZip,
+        order.shippingCountry,
+        order.shippingPhone,
+        order.billingName,
+        order.billingAddress1,
+        order.billingCity,
+        order.billingProvince,
+        order.billingZip,
+        order.billingCountry,
+        order.itemsCount,
+        order.items,
+        order.trackingNumbers,
+        order.trackingUrls,
+        order.note,
+        order.tags,
+        order.createdAt,
+        order.updatedAt
+      ];
+
+      await this.writeSheet(spreadsheetId, `${sheetName}!A${rowIndex}:AJ${rowIndex}`, [row]);
+
+      return {success: true};
+    } catch (error) {
+      console.error('Error updating order:', error);
+      throw new Error(`Failed to update order: ${error.message}`);
+    }
+  }
 }

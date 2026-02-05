@@ -4,67 +4,155 @@ import {ShopifyService} from '../services/shopifyService.js';
 const storeRepo = new StoreRepository();
 
 /**
+ * Helper: Validate and normalize shop domain
+ */
+function validateAndNormalizeShopDomain(shopDomain) {
+  if (!shopDomain) {
+    throw new Error('Shop domain is required');
+  }
+
+  const normalized = ShopifyService.normalizeShopDomain(shopDomain);
+
+  if (!normalized) {
+    throw new Error('Invalid shop domain format');
+  }
+
+  return normalized;
+}
+
+/**
+ * Helper: Verify Shopify credentials and get shop info
+ */
+async function verifyAndGetShopInfo(shopDomain, accessToken) {
+  const shopifyService = new ShopifyService({
+    shopDomain,
+    accessToken
+  });
+
+  const isValid = await shopifyService.verifyCredentials();
+  if (!isValid) {
+    throw new Error('Invalid Shopify credentials. Please check your access token and shop domain.');
+  }
+
+  return await shopifyService.getShopInfo();
+}
+
+/**
+ * Helper: Check if store already exists
+ */
+async function checkStoreExists(shopDomain) {
+  const existingStore = await storeRepo.getByShopDomain(shopDomain);
+  if (existingStore) {
+    throw new Error('Store already exists');
+  }
+}
+
+/**
+ * Helper: Build store data object
+ */
+function buildStoreData(userId, shopDomain, accessToken, shopInfo, customName, niche) {
+  return {
+    userId,
+    shopDomain,
+    accessToken,
+    name: customName || shopInfo.name,
+    niche: niche || '',
+    email: shopInfo.email,
+    currency: shopInfo.currency,
+    timezone: shopInfo.timezone,
+    status: 'active'
+  };
+}
+
+/**
  * Store Controller
  * Handles store management operations
  */
 
 /**
+ * Verify access token and get shop info
+ * Requires shop domain for verification
+ */
+export async function verifyToken(req, res) {
+  try {
+    const {accessToken, shopDomain} = req.body;
+
+    // Task 1: Validate input
+    if (!accessToken || !shopDomain) {
+      return res.status(400).json({
+        success: false,
+        error: 'accessToken and shopDomain are required'
+      });
+    }
+
+    // Task 2: Normalize shop domain
+    const finalShopDomain = validateAndNormalizeShopDomain(shopDomain);
+
+    // Task 3: Verify credentials and get shop info
+    const shopInfo = await verifyAndGetShopInfo(finalShopDomain, accessToken);
+
+    return res.json({
+      success: true,
+      data: {
+        shopDomain: finalShopDomain,
+        shopName: shopInfo.name,
+        email: shopInfo.email,
+        currency: shopInfo.currency,
+        timezone: shopInfo.timezone,
+        domain: shopInfo.domain,
+        myshopifyDomain: shopInfo.myshopify_domain
+      }
+    });
+  } catch (error) {
+    console.error('Verify token error:', error);
+    return res.status(400).json({
+      success: false,
+      error: error.message
+    });
+  }
+}
+
+/**
  * Create a new store
+ * Separated into clear tasks for maintainability
  */
 export async function createStore(req, res) {
   try {
     const {userId, shopDomain, accessToken, name, niche} = req.body;
 
+    // Task 1: Validate required input
     if (!userId || !shopDomain || !accessToken) {
       return res.status(400).json({
         success: false,
         error: 'userId, shopDomain, and accessToken are required'
       });
     }
+    const finalShopDomain = validateAndNormalizeShopDomain(shopDomain);
+    const shopInfo = await verifyAndGetShopInfo(finalShopDomain, accessToken);
 
-    // Verify credentials
-    const shopifyService = new ShopifyService({shopDomain, accessToken});
-    const isValid = await shopifyService.verifyCredentials();
+    // Task 4: Check if store already exists in database
+    await checkStoreExists(finalShopDomain);
 
-    if (!isValid) {
-      return res.status(400).json({
-        success: false,
-        error: 'Invalid Shopify credentials'
-      });
-    }
-
-    // Get shop info
-    const shopInfo = await shopifyService.getShopInfo();
-
-    // Check if store already exists
-    const existingStore = await storeRepo.getByShopDomain(shopDomain);
-    if (existingStore) {
-      return res.status(400).json({
-        success: false,
-        error: 'Store already exists'
-      });
-    }
-
-    // Create store
-    const store = await storeRepo.create({
+    // Task 5: Build store data object
+    const storeData = buildStoreData(
       userId,
-      shopDomain,
+      finalShopDomain,
       accessToken,
-      name: name || shopInfo.name,
-      niche: niche || '',
-      email: shopInfo.email,
-      currency: shopInfo.currency,
-      timezone: shopInfo.timezone,
-      status: 'active'
-    });
+      shopInfo,
+      name,
+      niche
+    );
 
-    // Don't send accessToken in response
-    const {accessToken: _, ...storeData} = store;
+    // Task 6: Create store in database
+    const store = await storeRepo.create(storeData);
+
+    // Task 7: Sanitize response (don't send accessToken)
+    const {accessToken: _, ...sanitizedStore} = store;
 
     return res.json({
       success: true,
       message: 'Store created successfully',
-      data: storeData
+      data: sanitizedStore
     });
   } catch (error) {
     console.error('Create store error:', error);

@@ -11,13 +11,15 @@ import {
   DataTable,
   Badge,
   SkeletonBodyText,
-  ProgressBar
+  Modal,
+  List,
+  Collapsible
 } from '@shopify/polaris';
 
 const USER_ID = 'demo-user'; // TODO: Replace with real auth
 
 /**
- * Orders Sync Page
+ * Orders Sync Page - Export orders from Shopify to Google Sheets with customer info
  */
 export default function Orders() {
   const [stores, setStores] = useState([]);
@@ -25,31 +27,26 @@ export default function Orders() {
   const [selectedStore, setSelectedStore] = useState('');
   const [selectedSheet, setSelectedSheet] = useState('');
   const [sheetName, setSheetName] = useState('Orders');
-  const [orderStatus, setOrderStatus] = useState('any');
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
-  const [currentJob, setCurrentJob] = useState(null);
-  const [previewOrders, setPreviewOrders] = useState([]);
+  const [settingUpSync, setSettingUpSync] = useState(false);
+  const [syncConfigs, setSyncConfigs] = useState([]);
+  const [webhookInstructions, setWebhookInstructions] = useState(null);
+  const [showWebhookModal, setShowWebhookModal] = useState(false);
+  const [showInstructionsOpen, setShowInstructionsOpen] = useState(false);
   const [error, setError] = useState(null);
+  const [successMessage, setSuccessMessage] = useState(null);
 
   useEffect(() => {
     fetchData();
   }, []);
 
   useEffect(() => {
-    if (currentJob && currentJob.status === 'processing') {
-      const interval = setInterval(() => {
-        checkJobStatus(currentJob.id);
-      }, 2000);
-      return () => clearInterval(interval);
-    }
-  }, [currentJob]);
-
-  useEffect(() => {
     if (selectedStore) {
-      fetchPreviewOrders();
+      fetchSyncConfigs();
+      fetchWebhookInstructions();
     }
-  }, [selectedStore, orderStatus]);
+  }, [selectedStore]);
 
   const fetchData = async () => {
     try {
@@ -74,71 +71,136 @@ export default function Orders() {
     }
   };
 
-  const fetchPreviewOrders = async () => {
+  const fetchSyncConfigs = async () => {
     try {
       const response = await fetch(
-        `/api/orders?storeId=${selectedStore}&limit=5&status=${orderStatus}`
+        `/api/orders/sync-configs?userId=${USER_ID}&storeId=${selectedStore}`
       );
       const result = await response.json();
 
       if (result.success) {
-        setPreviewOrders(result.data);
+        setSyncConfigs(result.data);
       }
     } catch (err) {
-      console.error('Error fetching orders preview:', err);
+      console.error('Error fetching sync configs:', err);
     }
   };
 
-  const checkJobStatus = async jobId => {
+  const fetchWebhookInstructions = async () => {
     try {
-      const response = await fetch(`/api/products/jobs/${jobId}`);
+      const response = await fetch(`/api/orders/webhook-instructions?storeId=${selectedStore}`);
       const result = await response.json();
 
       if (result.success) {
-        setCurrentJob(result.data);
+        setWebhookInstructions(result.data);
       }
     } catch (err) {
-      console.error('Error checking job status:', err);
+      console.error('Error fetching webhook instructions:', err);
     }
   };
 
-  const handleSync = async () => {
+  const handleSetupSync = async () => {
     if (!selectedStore || !selectedSheet) {
       setError('Please select a store and sheet');
       return;
     }
 
     try {
-      setSyncing(true);
+      setSettingUpSync(true);
       setError(null);
+      setSuccessMessage(null);
 
-      const response = await fetch('/api/orders/sync', {
+      const response = await fetch('/api/orders/setup-sync', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
           userId: USER_ID,
           storeId: selectedStore,
           sheetId: selectedSheet,
-          sheetName,
-          params: {
-            status: orderStatus,
-            limit: 250
-          }
+          sheetName
         })
       });
 
       const result = await response.json();
 
       if (result.success) {
-        setCurrentJob({id: result.data.jobId, status: 'processing'});
+        setSuccessMessage('Order sync configured successfully! Now set up webhooks for real-time sync.');
+        fetchSyncConfigs();
       } else {
-        setError(result.error || 'Failed to start sync');
+        setError(result.error || 'Failed to setup sync');
       }
     } catch (err) {
-      console.error('Error starting sync:', err);
-      setError('Failed to start sync');
+      console.error('Error setting up sync:', err);
+      setError('Failed to setup sync');
+    } finally {
+      setSettingUpSync(false);
+    }
+  };
+
+  const handleManualSync = async () => {
+    if (!selectedStore) {
+      setError('Please select a store');
+      return;
+    }
+
+    try {
+      setSyncing(true);
+      setError(null);
+      setSuccessMessage(null);
+
+      const response = await fetch('/api/orders/manual-sync', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          storeId: selectedStore,
+          limit: 50
+        })
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        setSuccessMessage(result.message);
+        fetchSyncConfigs();
+      } else {
+        setError(result.error || 'Failed to sync orders');
+      }
+    } catch (err) {
+      console.error('Error syncing orders:', err);
+      setError('Failed to sync orders');
     } finally {
       setSyncing(false);
+    }
+  };
+
+  const handleRegisterWebhooks = async () => {
+    if (!selectedStore || !webhookInstructions) {
+      setError('Please select a store first');
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/orders/register-webhook', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          storeId: selectedStore,
+          webhookUrl: webhookInstructions.webhookUrl
+        })
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        setSuccessMessage('Webhooks registered successfully! Orders will now sync automatically.');
+        fetchWebhookInstructions();
+        setShowWebhookModal(false);
+      } else {
+        setError(result.error || 'Failed to register webhooks');
+      }
+    } catch (err) {
+      console.error('Error registering webhooks:', err);
+      setError('Failed to register webhooks');
     }
   };
 
@@ -152,35 +214,21 @@ export default function Orders() {
     value: sheet.id
   }));
 
-  const statusOptions = [
-    {label: 'All Orders', value: 'any'},
-    {label: 'Open Orders', value: 'open'},
-    {label: 'Closed Orders', value: 'closed'}
-  ];
+  const activeConfig = syncConfigs.find(config => config.status === 'active');
 
-  const orderRows = previewOrders.slice(0, 5).map(order => [
-    order.order_number || order.name,
-    order.email || '-',
-    `${order.currency} ${order.total_price}`,
-    <Badge
-      tone={
-        order.financial_status === 'paid'
-          ? 'success'
-          : order.financial_status === 'pending'
-          ? 'info'
-          : 'warning'
-      }
-    >
-      {order.financial_status}
+  const configRows = syncConfigs.map(config => [
+    config.storeName || 'N/A',
+    config.sheetName || 'N/A',
+    config.targetSheet || 'N/A',
+    <Badge key={`status-${config.id}`} tone={config.status === 'active' ? 'success' : 'info'}>
+      {config.status}
     </Badge>,
-    order.fulfillment_status || 'unfulfilled'
+    config.totalOrdersSynced || 0,
+    config.lastSyncAt ? new Date(config.lastSyncAt).toLocaleString() : 'Never'
   ]);
 
   return (
-    <Page
-      title="Orders Sync"
-      subtitle="Export orders from Shopify to Google Sheets"
-    >
+    <Page title="Orders Sync" subtitle="Export orders from Shopify to Google Sheets with customer info">
       <Layout>
         {error && (
           <Layout.Section>
@@ -190,71 +238,18 @@ export default function Orders() {
           </Layout.Section>
         )}
 
-        {currentJob && (
+        {successMessage && (
           <Layout.Section>
-            <Card>
-              <div style={{padding: '16px'}}>
-                <Text variant="headingMd" as="h2">
-                  Sync Progress
-                </Text>
-                <div style={{marginTop: '16px'}}>
-                  <Badge
-                    tone={
-                      currentJob.status === 'completed'
-                        ? 'success'
-                        : currentJob.status === 'failed'
-                        ? 'critical'
-                        : 'info'
-                    }
-                  >
-                    {currentJob.status}
-                  </Badge>
-                </div>
-
-                {currentJob.status === 'processing' && (
-                  <div style={{marginTop: '16px'}}>
-                    <ProgressBar size="small" animated />
-                    <Text variant="bodySm" as="p" tone="subdued">
-                      Syncing orders to Google Sheets...
-                    </Text>
-                  </div>
-                )}
-
-                {currentJob.status === 'completed' && currentJob.result && (
-                  <div style={{marginTop: '16px'}}>
-                    <Text variant="bodyMd" as="p">
-                      ✅ Sync completed successfully!
-                    </Text>
-                    <ul style={{marginTop: '8px', marginLeft: '20px'}}>
-                      <li>Orders synced: {currentJob.result.synced}</li>
-                      <li>Sheet: {currentJob.result.sheetName}</li>
-                      <li>Range: {currentJob.result.range}</li>
-                    </ul>
-                  </div>
-                )}
-
-                {currentJob.status === 'failed' && (
-                  <div style={{marginTop: '16px'}}>
-                    <Text variant="bodyMd" as="p" tone="critical">
-                      ❌ Sync failed: {currentJob.result?.error || 'Unknown error'}
-                    </Text>
-                  </div>
-                )}
-
-                {currentJob.status !== 'processing' && (
-                  <div style={{marginTop: '16px'}}>
-                    <Button onClick={() => setCurrentJob(null)}>Close</Button>
-                  </div>
-                )}
-              </div>
-            </Card>
+            <Banner tone="success" onDismiss={() => setSuccessMessage(null)}>
+              {successMessage}
+            </Banner>
           </Layout.Section>
         )}
 
-        <Layout.Section oneHalf>
+        <Layout.Section oneThird>
           <Card sectioned>
             <Text variant="headingMd" as="h2">
-              Sync Settings
+              Setup Sync
             </Text>
 
             {loading ? (
@@ -273,7 +268,7 @@ export default function Orders() {
 
                 <div style={{marginBottom: '16px'}}>
                   <Select
-                    label="Select Sheet"
+                    label="Select Google Sheet"
                     options={sheetOptions}
                     value={selectedSheet}
                     onChange={setSelectedSheet}
@@ -283,90 +278,285 @@ export default function Orders() {
 
                 <div style={{marginBottom: '16px'}}>
                   <TextField
-                    label="Sheet Name"
+                    label="Sheet Tab Name"
                     value={sheetName}
                     onChange={setSheetName}
                     placeholder="Orders"
-                    helpText="Name of the sheet tab where orders will be written"
+                    helpText="Name of the sheet tab"
                   />
                 </div>
 
-                <div style={{marginBottom: '16px'}}>
-                  <Select
-                    label="Order Status"
-                    options={statusOptions}
-                    value={orderStatus}
-                    onChange={setOrderStatus}
-                  />
-                </div>
+                <div style={{display: 'flex', flexDirection: 'column', gap: '8px'}}>
+                  <Button
+                    primary
+                    fullWidth
+                    onClick={handleSetupSync}
+                    loading={settingUpSync}
+                    disabled={!selectedStore || !selectedSheet}
+                  >
+                    Setup Sync
+                  </Button>
 
-                <Button
-                  primary
-                  fullWidth
-                  onClick={handleSync}
-                  loading={syncing}
-                  disabled={!selectedStore || !selectedSheet}
-                >
-                  Sync Orders
-                </Button>
+                  {activeConfig && (
+                    <Button fullWidth onClick={handleManualSync} loading={syncing}>
+                      Manual Sync Now
+                    </Button>
+                  )}
+                </div>
               </div>
             )}
           </Card>
         </Layout.Section>
 
-        <Layout.Section oneHalf>
+        <Layout.Section oneThird>
           <Card sectioned>
             <Text variant="headingMd" as="h2">
-              Export Format
+              Webhook Setup
             </Text>
+
             <div style={{marginTop: '16px'}}>
-              <Text variant="bodySm" as="p">
-                Orders will be exported with these columns:
-              </Text>
-              <ul style={{marginTop: '8px', marginLeft: '20px', fontSize: '14px'}}>
-                <li>Order ID</li>
-                <li>Order Number</li>
-                <li>Email</li>
-                <li>Customer Name</li>
-                <li>Phone</li>
-                <li>Financial Status</li>
-                <li>Fulfillment Status</li>
-                <li>Total</li>
-                <li>Currency</li>
-                <li>Line Items</li>
-                <li>Shipping Address</li>
-                <li>Created At</li>
-                <li>Store ID</li>
-              </ul>
+              {!selectedStore ? (
+                <Text variant="bodySm" as="p" tone="subdued">
+                  Select a store to view webhook instructions
+                </Text>
+              ) : (
+                <div>
+                  <Banner>
+                    <p>
+                      <strong>Real-time sync:</strong> Setup webhooks to automatically sync new and
+                      updated orders.
+                    </p>
+                  </Banner>
+
+                  <div style={{marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '8px'}}>
+                    <Button fullWidth onClick={() => setShowWebhookModal(true)}>
+                      View Webhook Instructions
+                    </Button>
+
+                    {webhookInstructions?.registeredWebhooks?.length > 0 && (
+                      <Banner tone="success">
+                        ✅ {webhookInstructions.registeredWebhooks.length} webhook(s) registered
+                      </Banner>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </Card>
         </Layout.Section>
 
-        {selectedStore && (
+        <Layout.Section oneThird>
+          <Card sectioned>
+            <Text variant="headingMd" as="h2">
+              Export Format
+            </Text>
+
+            <div style={{marginTop: '16px'}}>
+              <Button
+                plain
+                onClick={() => setShowInstructionsOpen(!showInstructionsOpen)}
+              >
+                {showInstructionsOpen ? 'Hide' : 'Show'} included fields
+              </Button>
+
+              <Collapsible open={showInstructionsOpen}>
+                <div style={{marginTop: '8px'}}>
+                  <Text variant="bodySm" as="p" fontWeight="semibold">
+                    Order Information:
+                  </Text>
+                  <List type="bullet">
+                    <List.Item>Order Number, ID, Date</List.Item>
+                    <List.Item>Status, Fulfillment Status</List.Item>
+                    <List.Item>Total Price, Currency</List.Item>
+                    <List.Item>Payment Method</List.Item>
+                  </List>
+
+                  <div style={{marginTop: '8px'}}>
+                    <Text variant="bodySm" as="p" fontWeight="semibold">
+                      Customer Information:
+                    </Text>
+                    <List type="bullet">
+                      <List.Item>Customer ID, Email, Phone</List.Item>
+                      <List.Item>First Name, Last Name</List.Item>
+                    </List>
+                  </div>
+
+                  <div style={{marginTop: '8px'}}>
+                    <Text variant="bodySm" as="p" fontWeight="semibold">
+                      Addresses:
+                    </Text>
+                    <List type="bullet">
+                      <List.Item>Shipping Address (Full)</List.Item>
+                      <List.Item>Billing Address</List.Item>
+                    </List>
+                  </div>
+
+                  <div style={{marginTop: '8px'}}>
+                    <Text variant="bodySm" as="p" fontWeight="semibold">
+                      Items & Tracking:
+                    </Text>
+                    <List type="bullet">
+                      <List.Item>Line Items</List.Item>
+                      <List.Item>Tracking Numbers & URLs</List.Item>
+                    </List>
+                  </div>
+                </div>
+              </Collapsible>
+            </div>
+          </Card>
+        </Layout.Section>
+
+        {syncConfigs.length > 0 && (
           <Layout.Section>
             <Card>
               <div style={{padding: '16px'}}>
                 <Text variant="headingMd" as="h2">
-                  Recent Orders Preview
+                  Sync History
                 </Text>
               </div>
-              {previewOrders.length === 0 ? (
-                <div style={{padding: '40px', textAlign: 'center'}}>
-                  <Text variant="bodySm" as="p" tone="subdued">
-                    No orders found
-                  </Text>
-                </div>
-              ) : (
-                <DataTable
-                  columnContentTypes={['text', 'text', 'text', 'text', 'text']}
-                  headings={['Order #', 'Email', 'Total', 'Financial', 'Fulfillment']}
-                  rows={orderRows}
-                />
-              )}
+
+              <DataTable
+                columnContentTypes={['text', 'text', 'text', 'text', 'numeric', 'text']}
+                headings={[
+                  'Store',
+                  'Sheet',
+                  'Target Tab',
+                  'Status',
+                  'Orders Synced',
+                  'Last Sync'
+                ]}
+                rows={configRows}
+              />
             </Card>
           </Layout.Section>
         )}
       </Layout>
+
+      {/* Webhook Instructions Modal */}
+      <Modal
+        large
+        open={showWebhookModal}
+        onClose={() => setShowWebhookModal(false)}
+        title="Webhook Setup Instructions"
+        primaryAction={{
+          content: 'Auto-Register Webhooks',
+          onAction: handleRegisterWebhooks
+        }}
+        secondaryActions={[
+          {
+            content: 'Close',
+            onAction: () => setShowWebhookModal(false)
+          }
+        ]}
+      >
+        <Modal.Section>
+          {webhookInstructions && (
+            <div>
+              <Banner tone="info">
+                <p>
+                  <strong>Important:</strong> All stores send webhooks to the same URL. The system
+                  identifies each store by its shop domain.
+                </p>
+              </Banner>
+
+              <div style={{marginTop: '16px'}}>
+                <Text variant="headingMd" as="h3">
+                  Webhook URL:
+                </Text>
+                <div
+                  style={{
+                    marginTop: '8px',
+                    padding: '12px',
+                    background: '#f6f6f7',
+                    borderRadius: '4px',
+                    wordBreak: 'break-all',
+                    fontFamily: 'monospace',
+                    fontSize: '13px'
+                  }}
+                >
+                  {webhookInstructions.webhookUrl}
+                </div>
+              </div>
+
+              <div style={{marginTop: '24px'}}>
+                <Text variant="headingMd" as="h3">
+                  Option 1: Auto-Register (Recommended)
+                </Text>
+                <Text variant="bodySm" as="p" style={{marginTop: '8px'}}>
+                  Click "Auto-Register Webhooks" button above to automatically create webhooks via
+                  Shopify API.
+                </Text>
+              </div>
+
+              <div style={{marginTop: '24px'}}>
+                <Text variant="headingMd" as="h3">
+                  Option 2: Manual Setup
+                </Text>
+                <ol style={{marginTop: '8px', marginLeft: '20px'}}>
+                  {webhookInstructions.steps.map(step => (
+                    <li key={step.step} style={{marginBottom: '12px'}}>
+                      <Text variant="bodySm" as="p" fontWeight="semibold">
+                        {step.title}
+                      </Text>
+                      {step.description && (
+                        <Text variant="bodySm" as="p" tone="subdued">
+                          {step.description}
+                        </Text>
+                      )}
+                      {step.details && (
+                        <div
+                          style={{
+                            marginTop: '4px',
+                            padding: '8px',
+                            background: '#f6f6f7',
+                            borderRadius: '4px'
+                          }}
+                        >
+                          <List type="bullet">
+                            {Object.entries(step.details).map(([key, value]) => (
+                              <List.Item key={key}>
+                                <strong>{key}:</strong> {value}
+                              </List.Item>
+                            ))}
+                          </List>
+                        </div>
+                      )}
+                    </li>
+                  ))}
+                </ol>
+              </div>
+
+              {webhookInstructions.registeredWebhooks?.length > 0 && (
+                <div style={{marginTop: '24px'}}>
+                  <Text variant="headingMd" as="h3">
+                    Registered Webhooks:
+                  </Text>
+                  <List type="bullet">
+                    {webhookInstructions.registeredWebhooks.map(webhook => (
+                      <List.Item key={webhook.id}>
+                        <strong>{webhook.topic}</strong> - ID: {webhook.shopifyWebhookId}
+                      </List.Item>
+                    ))}
+                  </List>
+                </div>
+              )}
+
+              <div style={{marginTop: '24px'}}>
+                <Banner>
+                  <p>
+                    <strong>Key Points:</strong>
+                  </p>
+                  <List type="bullet">
+                    {webhookInstructions.notes.map((note, idx) => (
+                      <List.Item key={idx}>{note}</List.Item>
+                    ))}
+                  </List>
+                </Banner>
+              </div>
+            </div>
+          )}
+        </Modal.Section>
+      </Modal>
     </Page>
   );
 }

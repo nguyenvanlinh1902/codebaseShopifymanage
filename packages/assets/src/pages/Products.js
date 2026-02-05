@@ -1,170 +1,230 @@
-import React, {useState, useEffect} from 'react';
+import React, {useState, useEffect, useCallback} from 'react';
 import {
   Page,
   Layout,
   Card,
-  Select,
-  TextField,
   Button,
-  Banner,
-  ProgressBar,
-  Text,
   DataTable,
+  Select,
+  Banner,
+  Text,
+  DropZone,
+  InlineStack,
   Badge,
-  SkeletonBodyText
+  SkeletonBodyText,
+  EmptyState,
+  Modal,
+  BlockStack
 } from '@shopify/polaris';
 
 const USER_ID = 'demo-user'; // TODO: Replace with real auth
 
 /**
- * Products Import Page
+ * Products Import Page - CSV Upload
  */
 export default function Products() {
   const [stores, setStores] = useState([]);
-  const [sheets, setSheets] = useState([]);
   const [selectedStore, setSelectedStore] = useState('');
-  const [selectedSheet, setSelectedSheet] = useState('');
-  const [range, setRange] = useState('Products!A1:Z1000');
-  const [mode, setMode] = useState('upsert');
+  const [file, setFile] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [importHistory, setImportHistory] = useState([]);
+  const [successfulImports, setSuccessfulImports] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [importing, setImporting] = useState(false);
-  const [currentJob, setCurrentJob] = useState(null);
-  const [jobs, setJobs] = useState([]);
   const [error, setError] = useState(null);
+  const [detailsModal, setDetailsModal] = useState(null);
 
   useEffect(() => {
-    fetchData();
+    fetchStores();
+    fetchImportHistory();
+    fetchSuccessfulImports();
   }, []);
 
-  useEffect(() => {
-    if (currentJob && currentJob.status === 'processing') {
-      const interval = setInterval(() => {
-        checkJobStatus(currentJob.id);
-      }, 2000);
-      return () => clearInterval(interval);
+  const fetchStores = async () => {
+    try {
+      const response = await fetch(`/api/stores?userId=${USER_ID}`);
+      const result = await response.json();
+      if (result.success) {
+        setStores(result.data);
+      }
+    } catch (err) {
+      console.error('Error fetching stores:', err);
     }
-  }, [currentJob]);
+  };
 
-  const fetchData = async () => {
+  const fetchImportHistory = async () => {
     try {
       setLoading(true);
-      const [storesRes, sheetsRes, jobsRes] = await Promise.all([
-        fetch(`/api/stores?userId=${USER_ID}`),
-        fetch(`/api/sheets?userId=${USER_ID}`),
-        fetch(`/api/products/jobs?userId=${USER_ID}`)
-      ]);
-
-      const [storesData, sheetsData, jobsData] = await Promise.all([
-        storesRes.json(),
-        sheetsRes.json(),
-        jobsRes.json()
-      ]);
-
-      if (storesData.success) setStores(storesData.data);
-      if (sheetsData.success) setSheets(sheetsData.data);
-      if (jobsData.success) setJobs(jobsData.data.slice(0, 10));
+      const response = await fetch(`/api/products/import-history?userId=${USER_ID}`);
+      const result = await response.json();
+      if (result.success) {
+        setImportHistory(result.data);
+      }
     } catch (err) {
-      console.error('Error fetching data:', err);
-      setError('Failed to load data');
+      console.error('Error fetching import history:', err);
     } finally {
       setLoading(false);
     }
   };
 
-  const checkJobStatus = async jobId => {
+  const fetchSuccessfulImports = async () => {
     try {
-      const response = await fetch(`/api/products/jobs/${jobId}`);
+      const response = await fetch(`/api/products/successful-imports?userId=${USER_ID}`);
       const result = await response.json();
-
       if (result.success) {
-        setCurrentJob(result.data);
-
-        if (result.data.status === 'completed' || result.data.status === 'failed') {
-          await fetchData(); // Refresh jobs list
-        }
+        setSuccessfulImports(result.data);
       }
     } catch (err) {
-      console.error('Error checking job status:', err);
+      console.error('Error fetching successful imports:', err);
     }
   };
 
-  const handleImport = async () => {
-    if (!selectedStore || !selectedSheet || !range) {
-      setError('Please select a store, sheet, and range');
+  const handleDropZoneDrop = useCallback((_dropFiles, acceptedFiles, _rejectedFiles) => {
+    setFile(acceptedFiles[0]);
+    setError(null);
+  }, []);
+
+  const handleFileRemove = useCallback(() => {
+    setFile(null);
+  }, []);
+
+  const handleUpload = async () => {
+    if (!selectedStore) {
+      setError('Please select a store');
+      return;
+    }
+
+    if (!file) {
+      setError('Please select a CSV file');
       return;
     }
 
     try {
-      setImporting(true);
+      setUploading(true);
       setError(null);
 
-      const response = await fetch('/api/products/import', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
-          userId: USER_ID,
-          storeId: selectedStore,
-          sheetId: selectedSheet,
-          range,
-          mode
-        })
-      });
+      // Read file content
+      const reader = new FileReader();
+      reader.onload = async e => {
+        const csvData = e.target.result;
 
-      const result = await response.json();
+        const response = await fetch('/api/products/upload-csv', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            userId: USER_ID,
+            storeId: selectedStore,
+            csvData,
+            fileName: file.name
+          })
+        });
 
-      if (result.success) {
-        setCurrentJob({id: result.data.jobId, status: 'processing'});
-      } else {
-        setError(result.error || 'Failed to start import');
-      }
+        const result = await response.json();
+
+        if (result.success) {
+          setFile(null);
+          await fetchImportHistory();
+          await fetchSuccessfulImports();
+        } else {
+          setError(result.error || 'Failed to upload CSV');
+        }
+
+        setUploading(false);
+      };
+
+      reader.onerror = () => {
+        setError('Failed to read file');
+        setUploading(false);
+      };
+
+      reader.readAsText(file);
     } catch (err) {
-      console.error('Error starting import:', err);
-      setError('Failed to start import');
-    } finally {
-      setImporting(false);
+      console.error('Error uploading CSV:', err);
+      setError('Failed to upload CSV');
+      setUploading(false);
     }
   };
 
-  const storeOptions = stores.map(store => ({
-    label: store.name,
-    value: store.id
-  }));
+  const handleDownloadTemplate = async () => {
+    try {
+      const response = await fetch('/api/products/template');
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'product-import-template.csv';
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err) {
+      console.error('Error downloading template:', err);
+      setError('Failed to download template');
+    }
+  };
 
-  const sheetOptions = sheets.map(sheet => ({
-    label: sheet.name,
-    value: sheet.id
-  }));
+  const viewImportDetails = async importId => {
+    try {
+      const response = await fetch(`/api/products/imports/${importId}`);
+      const result = await response.json();
+      if (result.success) {
+        setDetailsModal(result.data);
+      }
+    } catch (err) {
+      console.error('Error fetching import details:', err);
+    }
+  };
 
-  const modeOptions = [
-    {label: 'Create only (skip existing)', value: 'create'},
-    {label: 'Update only (skip new)', value: 'update'},
-    {label: 'Create or Update (upsert)', value: 'upsert'}
+  const storeOptions = [
+    {label: 'Select a store', value: ''},
+    ...stores.map(store => ({
+      label: `${store.name} (${store.shopDomain})`,
+      value: store.id
+    }))
   ];
 
-  const jobRows = jobs.map(job => [
-    new Date(job.createdAt).toLocaleString(),
-    <Badge
-      tone={
-        job.status === 'completed'
-          ? 'success'
-          : job.status === 'failed'
-          ? 'critical'
-          : 'info'
-      }
-    >
-      {job.status}
-    </Badge>,
-    job.result
-      ? `${job.result.created || 0} created, ${job.result.updated || 0} updated, ${
-          job.result.errors?.length || 0
-        } errors`
-      : '-'
+  const fileUpload = !file && <DropZone.FileUpload />;
+
+  const uploadedFiles = file && (
+    <InlineStack align="space-between" blockAlign="center">
+      <InlineStack gap="200">
+        <Text as="p" variant="bodyMd">
+          {file.name}
+        </Text>
+        <Text as="p" variant="bodySm" tone="subdued">
+          {(file.size / 1024).toFixed(2)} KB
+        </Text>
+      </InlineStack>
+      <Button onClick={handleFileRemove}>Remove</Button>
+    </InlineStack>
+  );
+
+  const getStatusBadge = status => {
+    const toneMap = {
+      pending: 'info',
+      processing: 'attention',
+      completed: 'success',
+      failed: 'critical'
+    };
+    return <Badge tone={toneMap[status] || 'info'}>{status}</Badge>;
+  };
+
+  const historyRows = importHistory.map(imp => [
+    imp.fileName,
+    stores.find(s => s.id === imp.storeId)?.name || imp.storeName,
+    getStatusBadge(imp.status),
+    `${imp.processedProducts || 0}/${imp.totalProducts}`,
+    `${imp.successCount || 0} success, ${imp.failedCount || 0} failed`,
+    new Date(imp.createdAt).toLocaleString(),
+    <Button size="slim" onClick={() => viewImportDetails(imp.id)}>
+      View Details
+    </Button>
   ]);
 
   return (
     <Page
-      title="Products Import"
-      subtitle="Import products from Google Sheets to Shopify"
+      title="Product Import"
+      subtitle="Import products from CSV file"
+      secondaryActions={[{content: 'Download CSV Template', onAction: handleDownloadTemplate}]}
     >
       <Layout>
         {error && (
@@ -175,186 +235,158 @@ export default function Products() {
           </Layout.Section>
         )}
 
-        {currentJob && (
+        <Layout.Section>
+          <Card>
+            <BlockStack gap="400">
+              <Text as="h2" variant="headingMd">
+                Upload CSV File
+              </Text>
+
+              <Select
+                label="Select Store"
+                options={storeOptions}
+                value={selectedStore}
+                onChange={setSelectedStore}
+                disabled={uploading}
+              />
+
+              <DropZone
+                onDrop={handleDropZoneDrop}
+                accept=".csv,text/csv"
+                type="file"
+                disabled={uploading}
+              >
+                {uploadedFiles}
+                {fileUpload}
+              </DropZone>
+
+              <InlineStack align="end">
+                <Button
+                  variant="primary"
+                  onClick={handleUpload}
+                  loading={uploading}
+                  disabled={!selectedStore || !file}
+                >
+                  Upload & Import
+                </Button>
+              </InlineStack>
+
+              <Banner tone="info">
+                <Text as="p">
+                  <strong>CSV Format:</strong> Download the template to see the required columns. The CSV
+                  must include: title, price, sku, and other product details.
+                </Text>
+              </Banner>
+            </BlockStack>
+          </Card>
+        </Layout.Section>
+
+        {successfulImports.length > 0 && (
           <Layout.Section>
             <Card>
-              <div style={{padding: '16px'}}>
-                <Text variant="headingMd" as="h2">
-                  Import Progress
+              <BlockStack gap="400">
+                <Text as="h2" variant="headingMd">
+                  Successful Imports by Store
                 </Text>
-                <div style={{marginTop: '16px'}}>
-                  <Badge
-                    tone={
-                      currentJob.status === 'completed'
-                        ? 'success'
-                        : currentJob.status === 'failed'
-                        ? 'critical'
-                        : 'info'
-                    }
-                  >
-                    {currentJob.status}
-                  </Badge>
-                </div>
-
-                {currentJob.status === 'processing' && (
-                  <div style={{marginTop: '16px'}}>
-                    <ProgressBar size="small" animated />
-                    <Text variant="bodySm" as="p" tone="subdued">
-                      Processing products...
+                {successfulImports.map(storeImport => (
+                  <BlockStack key={storeImport.storeId} gap="200">
+                    <Text as="p" variant="headingSm">
+                      {storeImport.storeName} ({storeImport.shopDomain})
                     </Text>
-                  </div>
-                )}
-
-                {currentJob.status === 'completed' && currentJob.result && (
-                  <div style={{marginTop: '16px'}}>
-                    <Text variant="bodyMd" as="p">
-                      ✅ Import completed successfully!
-                    </Text>
-                    <ul style={{marginTop: '8px', marginLeft: '20px'}}>
-                      <li>Created: {currentJob.result.created}</li>
-                      <li>Updated: {currentJob.result.updated}</li>
-                      <li>Skipped: {currentJob.result.skipped || 0}</li>
-                      <li>Errors: {currentJob.result.errors?.length || 0}</li>
-                    </ul>
-                  </div>
-                )}
-
-                {currentJob.status === 'failed' && (
-                  <div style={{marginTop: '16px'}}>
-                    <Text variant="bodyMd" as="p" tone="critical">
-                      ❌ Import failed: {currentJob.result?.error || 'Unknown error'}
-                    </Text>
-                  </div>
-                )}
-
-                {currentJob.status !== 'processing' && (
-                  <div style={{marginTop: '16px'}}>
-                    <Button onClick={() => setCurrentJob(null)}>Close</Button>
-                  </div>
-                )}
-              </div>
+                    {storeImport.imports.map(imp => (
+                      <InlineStack key={imp.importId} gap="200">
+                        <Text as="p">
+                          {imp.fileName} - {imp.successCount} products -{' '}
+                          {new Date(imp.completedAt).toLocaleDateString()}
+                        </Text>
+                      </InlineStack>
+                    ))}
+                  </BlockStack>
+                ))}
+              </BlockStack>
             </Card>
           </Layout.Section>
         )}
 
-        <Layout.Section oneHalf>
-          <Card sectioned>
-            <Text variant="headingMd" as="h2">
-              Import Settings
-            </Text>
-
-            {loading ? (
-              <SkeletonBodyText lines={5} />
-            ) : (
-              <div style={{marginTop: '16px'}}>
-                <div style={{marginBottom: '16px'}}>
-                  <Select
-                    label="Select Store"
-                    options={storeOptions}
-                    value={selectedStore}
-                    onChange={setSelectedStore}
-                    placeholder="Choose a store"
-                  />
-                </div>
-
-                <div style={{marginBottom: '16px'}}>
-                  <Select
-                    label="Select Sheet"
-                    options={sheetOptions}
-                    value={selectedSheet}
-                    onChange={setSelectedSheet}
-                    placeholder="Choose a sheet"
-                  />
-                </div>
-
-                <div style={{marginBottom: '16px'}}>
-                  <TextField
-                    label="Sheet Range"
-                    value={range}
-                    onChange={setRange}
-                    placeholder="Products!A1:Z1000"
-                    helpText="A1 notation range (e.g., Products!A1:Z1000)"
-                  />
-                </div>
-
-                <div style={{marginBottom: '16px'}}>
-                  <Select
-                    label="Import Mode"
-                    options={modeOptions}
-                    value={mode}
-                    onChange={setMode}
-                  />
-                </div>
-
-                <Button
-                  primary
-                  fullWidth
-                  onClick={handleImport}
-                  loading={importing}
-                  disabled={!selectedStore || !selectedSheet || !range}
-                >
-                  Start Import
-                </Button>
-              </div>
-            )}
-          </Card>
-        </Layout.Section>
-
-        <Layout.Section oneHalf>
-          <Card sectioned>
-            <Text variant="headingMd" as="h2">
-              Sheet Format
-            </Text>
-            <div style={{marginTop: '16px'}}>
-              <Text variant="bodySm" as="p">
-                Your Google Sheet should have these columns:
-              </Text>
-              <ul style={{marginTop: '8px', marginLeft: '20px', fontSize: '14px'}}>
-                <li>Title *</li>
-                <li>Description</li>
-                <li>Vendor</li>
-                <li>Product Type</li>
-                <li>Tags</li>
-                <li>Price *</li>
-                <li>Compare At Price</li>
-                <li>SKU</li>
-                <li>Barcode</li>
-                <li>Inventory Quantity</li>
-                <li>Image URL</li>
-                <li>Status (draft/active)</li>
-              </ul>
-              <Text variant="bodySm" as="p" tone="subdued" style={{marginTop: '8px'}}>
-                * Required fields
-              </Text>
-            </div>
-          </Card>
-        </Layout.Section>
-
         <Layout.Section>
           <Card>
-            <div style={{padding: '16px'}}>
-              <Text variant="headingMd" as="h2">
-                Recent Import Jobs
+            <BlockStack gap="400">
+              <Text as="h2" variant="headingMd">
+                Import History
               </Text>
-            </div>
-            {loading ? (
-              <SkeletonBodyText lines={5} />
-            ) : jobs.length === 0 ? (
-              <div style={{padding: '40px', textAlign: 'center'}}>
-                <Text variant="bodySm" as="p" tone="subdued">
-                  No import jobs yet
-                </Text>
-              </div>
-            ) : (
-              <DataTable
-                columnContentTypes={['text', 'text', 'text']}
-                headings={['Date', 'Status', 'Results']}
-                rows={jobRows}
-              />
-            )}
+
+              {loading ? (
+                <SkeletonBodyText lines={5} />
+              ) : importHistory.length === 0 ? (
+                <EmptyState
+                  heading="No imports yet"
+                  image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
+                >
+                  <p>Upload a CSV file to start importing products.</p>
+                </EmptyState>
+              ) : (
+                <DataTable
+                  columnContentTypes={['text', 'text', 'text', 'text', 'text', 'text', 'text']}
+                  headings={['File', 'Store', 'Status', 'Progress', 'Results', 'Date', 'Actions']}
+                  rows={historyRows}
+                />
+              )}
+            </BlockStack>
           </Card>
         </Layout.Section>
       </Layout>
+
+      {detailsModal && (
+        <Modal
+          open={!!detailsModal}
+          onClose={() => setDetailsModal(null)}
+          title="Import Details"
+          primaryAction={{content: 'Close', onAction: () => setDetailsModal(null)}}
+        >
+          <Modal.Section>
+            <BlockStack gap="400">
+              <Text as="p">
+                <strong>File:</strong> {detailsModal.fileName}
+              </Text>
+              <Text as="p">
+                <strong>Store:</strong> {detailsModal.storeName}
+              </Text>
+              <Text as="p">
+                <strong>Status:</strong> {getStatusBadge(detailsModal.status)}
+              </Text>
+              <Text as="p">
+                <strong>Total Products:</strong> {detailsModal.totalProducts}
+              </Text>
+              <Text as="p">
+                <strong>Processed:</strong> {detailsModal.processedProducts || 0}
+              </Text>
+              <Text as="p">
+                <strong>Success:</strong> {detailsModal.successCount || 0}
+              </Text>
+              <Text as="p">
+                <strong>Failed:</strong> {detailsModal.failedCount || 0}
+              </Text>
+              {detailsModal.error && (
+                <Banner tone="critical">
+                  <Text as="p">{detailsModal.error}</Text>
+                </Banner>
+              )}
+              {detailsModal.invalidProducts && detailsModal.invalidProducts.length > 0 && (
+                <BlockStack gap="200">
+                  <Text as="p" variant="headingSm">
+                    Invalid Products:
+                  </Text>
+                  {detailsModal.invalidProducts.map((inv, idx) => (
+                    <Text key={idx} as="p" tone="critical">
+                      Row {inv.row}: {inv.errors.join(', ')}
+                    </Text>
+                  ))}
+                </BlockStack>
+              )}
+            </BlockStack>
+          </Modal.Section>
+        </Modal>
+      )}
     </Page>
   );
 }

@@ -1,140 +1,179 @@
-import React, {useState, useEffect} from 'react';
+import React, {useState, useEffect, useCallback} from 'react';
 import {
   Page,
   Layout,
   Card,
   Select,
-  TextField,
   Button,
   Banner,
   Text,
   DataTable,
   Badge,
   SkeletonBodyText,
-  ProgressBar
+  ProgressBar,
+  DropZone,
+  Modal
 } from '@shopify/polaris';
 
 const USER_ID = 'demo-user'; // TODO: Replace with real auth
 
 /**
- * Tracking Update Page
+ * Tracking Import Page - Upload Excel file to update order tracking numbers
  */
 export default function Tracking() {
   const [stores, setStores] = useState([]);
-  const [sheets, setSheets] = useState([]);
   const [selectedStore, setSelectedStore] = useState('');
-  const [selectedSheet, setSelectedSheet] = useState('');
-  const [range, setRange] = useState('Tracking!A1:Z1000');
+  const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [updating, setUpdating] = useState(false);
-  const [currentJob, setCurrentJob] = useState(null);
-  const [previewTracking, setPreviewTracking] = useState([]);
+  const [uploading, setUploading] = useState(false);
+  const [importHistory, setImportHistory] = useState([]);
+  const [selectedImport, setSelectedImport] = useState(null);
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [error, setError] = useState(null);
+  const [successMessage, setSuccessMessage] = useState(null);
 
   useEffect(() => {
     fetchData();
   }, []);
 
   useEffect(() => {
-    if (currentJob && currentJob.status === 'processing') {
+    if (selectedStore) {
+      fetchImportHistory();
+    }
+  }, [selectedStore]);
+
+  // Auto-refresh import history while there are processing jobs
+  useEffect(() => {
+    const hasProcessing = importHistory.some(
+      imp => imp.status === 'processing' || imp.status === 'pending'
+    );
+
+    if (hasProcessing) {
       const interval = setInterval(() => {
-        checkJobStatus(currentJob.id);
-      }, 2000);
+        fetchImportHistory();
+      }, 3000);
       return () => clearInterval(interval);
     }
-  }, [currentJob]);
-
-  useEffect(() => {
-    if (selectedSheet && range) {
-      fetchPreviewTracking();
-    }
-  }, [selectedSheet, range]);
+  }, [importHistory]);
 
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [storesRes, sheetsRes] = await Promise.all([
-        fetch(`/api/stores?userId=${USER_ID}`),
-        fetch(`/api/sheets?userId=${USER_ID}`)
-      ]);
+      const response = await fetch(`/api/stores?userId=${USER_ID}`);
+      const result = await response.json();
 
-      const [storesData, sheetsData] = await Promise.all([
-        storesRes.json(),
-        sheetsRes.json()
-      ]);
-
-      if (storesData.success) setStores(storesData.data);
-      if (sheetsData.success) setSheets(sheetsData.data);
+      if (result.success) {
+        setStores(result.data);
+      }
     } catch (err) {
-      console.error('Error fetching data:', err);
-      setError('Failed to load data');
+      console.error('Error fetching stores:', err);
+      setError('Failed to load stores');
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchPreviewTracking = async () => {
+  const fetchImportHistory = async () => {
     try {
-      const response = await fetch(
-        `/api/tracking/preview?sheetId=${selectedSheet}&range=${encodeURIComponent(range)}`
-      );
+      const url = selectedStore
+        ? `/api/tracking/import-history?userId=${USER_ID}&storeId=${selectedStore}`
+        : `/api/tracking/import-history?userId=${USER_ID}`;
+
+      const response = await fetch(url);
       const result = await response.json();
 
       if (result.success) {
-        setPreviewTracking(result.data.trackingData || []);
+        setImportHistory(result.data);
       }
     } catch (err) {
-      console.error('Error fetching tracking preview:', err);
+      console.error('Error fetching import history:', err);
     }
   };
 
-  const checkJobStatus = async jobId => {
-    try {
-      const response = await fetch(`/api/products/jobs/${jobId}`);
-      const result = await response.json();
+  const handleDropZoneDrop = useCallback((_dropFiles, acceptedFiles, _rejectedFiles) => {
+    setFile(acceptedFiles[0]);
+    setError(null);
+  }, []);
 
-      if (result.success) {
-        setCurrentJob(result.data);
-      }
-    } catch (err) {
-      console.error('Error checking job status:', err);
+  const handleUpload = async () => {
+    if (!selectedStore) {
+      setError('Please select a store first');
+      return;
     }
-  };
 
-  const handleUpdate = async () => {
-    if (!selectedStore || !selectedSheet || !range) {
-      setError('Please select a store, sheet, and range');
+    if (!file) {
+      setError('Please upload an Excel file first');
       return;
     }
 
     try {
-      setUpdating(true);
+      setUploading(true);
       setError(null);
+      setSuccessMessage(null);
 
-      const response = await fetch('/api/tracking/update', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
-          userId: USER_ID,
-          storeId: selectedStore,
-          sheetId: selectedSheet,
-          range
-        })
-      });
+      // Read file as base64
+      const reader = new FileReader();
+      reader.onload = async e => {
+        const base64Data = e.target.result.split(',')[1];
 
-      const result = await response.json();
+        const response = await fetch('/api/tracking/upload-excel', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            userId: USER_ID,
+            storeId: selectedStore,
+            excelBuffer: base64Data,
+            fileName: file.name
+          })
+        });
 
-      if (result.success) {
-        setCurrentJob({id: result.data.jobId, status: 'processing'});
-      } else {
-        setError(result.error || 'Failed to start tracking update');
-      }
+        const result = await response.json();
+
+        if (result.success) {
+          setSuccessMessage(result.message);
+          setFile(null);
+          fetchImportHistory();
+        } else {
+          setError(result.error || 'Failed to upload file');
+        }
+
+        setUploading(false);
+      };
+
+      reader.onerror = () => {
+        setError('Failed to read file');
+        setUploading(false);
+      };
+
+      reader.readAsDataURL(file);
     } catch (err) {
-      console.error('Error starting tracking update:', err);
-      setError('Failed to start tracking update');
-    } finally {
-      setUpdating(false);
+      console.error('Error uploading file:', err);
+      setError('Failed to upload file');
+      setUploading(false);
     }
+  };
+
+  const handleDownloadTemplate = async () => {
+    try {
+      const response = await fetch('/api/tracking/template');
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'tracking-import-template.xlsx';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Error downloading template:', err);
+      setError('Failed to download template');
+    }
+  };
+
+  const handleViewDetails = async importJob => {
+    setSelectedImport(importJob);
+    setShowDetailsModal(true);
   };
 
   const storeOptions = stores.map(store => ({
@@ -142,26 +181,75 @@ export default function Tracking() {
     value: store.id
   }));
 
-  const sheetOptions = sheets.map(sheet => ({
-    label: sheet.name,
-    value: sheet.id
-  }));
-
-  const trackingRows = previewTracking.slice(0, 10).map(tracking => [
-    tracking.orderId || '-',
-    tracking.trackingNumber || '-',
-    tracking.trackingCompany || '-',
-    tracking.trackingUrl ? '✅' : '-',
-    <Badge tone={tracking.status === 'Updated' ? 'success' : 'info'}>
-      {tracking.status || 'Pending'}
-    </Badge>
+  const importRows = importHistory.map(imp => [
+    imp.fileName || 'N/A',
+    imp.storeName || 'N/A',
+    <Badge
+      key={`status-${imp.id}`}
+      tone={
+        imp.status === 'completed'
+          ? 'success'
+          : imp.status === 'failed'
+          ? 'critical'
+          : imp.status === 'processing'
+          ? 'info'
+          : 'attention'
+      }
+    >
+      {imp.status || 'pending'}
+    </Badge>,
+    imp.status === 'processing' ? (
+      <div key={`progress-${imp.id}`} style={{width: '100px'}}>
+        <ProgressBar
+          progress={((imp.processedRecords || 0) / (imp.totalRecords || 1)) * 100}
+          size="small"
+        />
+        <Text variant="bodySm" as="span" tone="subdued">
+          {imp.processedRecords || 0}/{imp.totalRecords || 0}
+        </Text>
+      </div>
+    ) : (
+      `${imp.processedRecords || 0}/${imp.totalRecords || 0}`
+    ),
+    imp.status === 'completed' ? (
+      <div key={`results-${imp.id}`}>
+        <Text variant="bodySm" as="span" tone="success">
+          ✅ {imp.successCount || 0}
+        </Text>
+        {' / '}
+        <Text variant="bodySm" as="span" tone="critical">
+          ❌ {imp.failedCount || 0}
+        </Text>
+      </div>
+    ) : (
+      '-'
+    ),
+    new Date(imp.createdAt).toLocaleString(),
+    <Button key={`btn-${imp.id}`} size="slim" onClick={() => handleViewDetails(imp)}>
+      View Details
+    </Button>
   ]);
 
+  const uploadFileMarkup = file ? (
+    <div style={{padding: '16px', textAlign: 'center'}}>
+      <Text variant="bodyMd" as="p">
+        📄 {file.name}
+      </Text>
+      <Text variant="bodySm" as="p" tone="subdued">
+        {(file.size / 1024).toFixed(2)} KB
+      </Text>
+      <div style={{marginTop: '8px'}}>
+        <Button size="slim" onClick={() => setFile(null)}>
+          Remove
+        </Button>
+      </div>
+    </div>
+  ) : (
+    <DropZone.FileUpload actionHint="Accepts .xlsx, .xls files" />
+  );
+
   return (
-    <Page
-      title="Tracking Update"
-      subtitle="Update fulfillment tracking from Google Sheets to Shopify"
-    >
+    <Page title="Tracking Import" subtitle="Upload Excel file to update order tracking numbers">
       <Layout>
         {error && (
           <Layout.Section>
@@ -171,71 +259,18 @@ export default function Tracking() {
           </Layout.Section>
         )}
 
-        {currentJob && (
+        {successMessage && (
           <Layout.Section>
-            <Card>
-              <div style={{padding: '16px'}}>
-                <Text variant="headingMd" as="h2">
-                  Update Progress
-                </Text>
-                <div style={{marginTop: '16px'}}>
-                  <Badge
-                    tone={
-                      currentJob.status === 'completed'
-                        ? 'success'
-                        : currentJob.status === 'failed'
-                        ? 'critical'
-                        : 'info'
-                    }
-                  >
-                    {currentJob.status}
-                  </Badge>
-                </div>
-
-                {currentJob.status === 'processing' && (
-                  <div style={{marginTop: '16px'}}>
-                    <ProgressBar size="small" animated />
-                    <Text variant="bodySm" as="p" tone="subdued">
-                      Updating tracking information...
-                    </Text>
-                  </div>
-                )}
-
-                {currentJob.status === 'completed' && currentJob.result && (
-                  <div style={{marginTop: '16px'}}>
-                    <Text variant="bodyMd" as="p">
-                      ✅ Tracking update completed!
-                    </Text>
-                    <ul style={{marginTop: '8px', marginLeft: '20px'}}>
-                      <li>Updated: {currentJob.result.updated}</li>
-                      <li>Created: {currentJob.result.created}</li>
-                      <li>Errors: {currentJob.result.errors?.length || 0}</li>
-                    </ul>
-                  </div>
-                )}
-
-                {currentJob.status === 'failed' && (
-                  <div style={{marginTop: '16px'}}>
-                    <Text variant="bodyMd" as="p" tone="critical">
-                      ❌ Update failed: {currentJob.result?.error || 'Unknown error'}
-                    </Text>
-                  </div>
-                )}
-
-                {currentJob.status !== 'processing' && (
-                  <div style={{marginTop: '16px'}}>
-                    <Button onClick={() => setCurrentJob(null)}>Close</Button>
-                  </div>
-                )}
-              </div>
-            </Card>
+            <Banner tone="success" onDismiss={() => setSuccessMessage(null)}>
+              {successMessage}
+            </Banner>
           </Layout.Section>
         )}
 
         <Layout.Section oneHalf>
           <Card sectioned>
             <Text variant="headingMd" as="h2">
-              Update Settings
+              Upload Tracking File
             </Text>
 
             {loading ? (
@@ -253,34 +288,33 @@ export default function Tracking() {
                 </div>
 
                 <div style={{marginBottom: '16px'}}>
-                  <Select
-                    label="Select Sheet"
-                    options={sheetOptions}
-                    value={selectedSheet}
-                    onChange={setSelectedSheet}
-                    placeholder="Choose a sheet"
-                  />
+                  <Text variant="bodyMd" as="p" fontWeight="medium">
+                    Upload Excel File
+                  </Text>
+                  <div style={{marginTop: '8px'}}>
+                    <DropZone
+                      onDrop={handleDropZoneDrop}
+                      accept=".xlsx,.xls"
+                      type="file"
+                      disabled={uploading}
+                    >
+                      {uploadFileMarkup}
+                    </DropZone>
+                  </div>
                 </div>
 
-                <div style={{marginBottom: '16px'}}>
-                  <TextField
-                    label="Sheet Range"
-                    value={range}
-                    onChange={setRange}
-                    placeholder="Tracking!A1:Z1000"
-                    helpText="A1 notation range (e.g., Tracking!A1:Z1000)"
-                  />
+                <div style={{display: 'flex', gap: '8px'}}>
+                  <Button
+                    primary
+                    fullWidth
+                    onClick={handleUpload}
+                    loading={uploading}
+                    disabled={!selectedStore || !file}
+                  >
+                    Upload & Process
+                  </Button>
+                  <Button onClick={handleDownloadTemplate}>Download Template</Button>
                 </div>
-
-                <Button
-                  primary
-                  fullWidth
-                  onClick={handleUpdate}
-                  loading={updating}
-                  disabled={!selectedStore || !selectedSheet || !range}
-                >
-                  Update Tracking
-                </Button>
               </div>
             )}
           </Card>
@@ -289,65 +323,185 @@ export default function Tracking() {
         <Layout.Section oneHalf>
           <Card sectioned>
             <Text variant="headingMd" as="h2">
-              Sheet Format
+              Excel Format
             </Text>
             <div style={{marginTop: '16px'}}>
               <Text variant="bodySm" as="p">
-                Your tracking sheet should have these columns:
+                Your Excel file should have these columns:
               </Text>
               <ul style={{marginTop: '8px', marginLeft: '20px', fontSize: '14px'}}>
-                <li>Order ID * (Shopify order ID)</li>
-                <li>Fulfillment ID (if updating existing)</li>
-                <li>Tracking Number *</li>
-                <li>Tracking Company</li>
-                <li>Tracking URL</li>
-                <li>Status (leave blank for new updates)</li>
+                <li>
+                  <strong>Order Number *</strong> (e.g., #1001 or 1001)
+                </li>
+                <li>
+                  <strong>Tracking Number *</strong>
+                </li>
+                <li>Carrier (optional, e.g., USPS, FedEx)</li>
+                <li>Tracking URL (optional)</li>
               </ul>
               <Text variant="bodySm" as="p" tone="subdued" style={{marginTop: '8px'}}>
                 * Required fields
               </Text>
-              <Text variant="bodySm" as="p" tone="subdued" style={{marginTop: '8px'}}>
-                Note: Only rows with Status ≠ "Updated" will be processed
-              </Text>
+
+              <div style={{marginTop: '16px'}}>
+                <Banner>
+                  <p>
+                    <strong>How it works:</strong>
+                  </p>
+                  <ol style={{marginTop: '8px', marginLeft: '20px'}}>
+                    <li>System finds orders by Order Number</li>
+                    <li>Updates existing fulfillments or creates new ones</li>
+                    <li>Adds tracking information to each order</li>
+                    <li>Customers receive tracking notifications</li>
+                  </ol>
+                </Banner>
+              </div>
             </div>
           </Card>
         </Layout.Section>
 
-        {selectedSheet && range && (
-          <Layout.Section>
-            <Card>
-              <div style={{padding: '16px'}}>
-                <Text variant="headingMd" as="h2">
-                  Tracking Preview ({previewTracking.length} items)
+        <Layout.Section>
+          <Card>
+            <div style={{padding: '16px'}}>
+              <Text variant="headingMd" as="h2">
+                Import History
+              </Text>
+            </div>
+
+            {importHistory.length === 0 ? (
+              <div style={{padding: '40px', textAlign: 'center'}}>
+                <Text variant="bodySm" as="p" tone="subdued">
+                  No import history yet. Upload your first file to get started!
                 </Text>
               </div>
-              {previewTracking.length === 0 ? (
-                <div style={{padding: '40px', textAlign: 'center'}}>
-                  <Text variant="bodySm" as="p" tone="subdued">
-                    No tracking data found or all items already updated
+            ) : (
+              <DataTable
+                columnContentTypes={['text', 'text', 'text', 'text', 'text', 'text', 'text']}
+                headings={[
+                  'File',
+                  'Store',
+                  'Status',
+                  'Progress',
+                  'Results',
+                  'Created At',
+                  'Actions'
+                ]}
+                rows={importRows}
+              />
+            )}
+          </Card>
+        </Layout.Section>
+      </Layout>
+
+      {/* Details Modal */}
+      <Modal
+        open={showDetailsModal}
+        onClose={() => setShowDetailsModal(false)}
+        title="Import Details"
+        primaryAction={{
+          content: 'Close',
+          onAction: () => setShowDetailsModal(false)
+        }}
+      >
+        <Modal.Section>
+          {selectedImport && (
+            <div>
+              <div style={{marginBottom: '16px'}}>
+                <Text variant="bodyMd" as="p" fontWeight="semibold">
+                  File Name:
+                </Text>
+                <Text variant="bodyMd" as="p">
+                  {selectedImport.fileName}
+                </Text>
+              </div>
+
+              <div style={{marginBottom: '16px'}}>
+                <Text variant="bodyMd" as="p" fontWeight="semibold">
+                  Store:
+                </Text>
+                <Text variant="bodyMd" as="p">
+                  {selectedImport.storeName} ({selectedImport.shopDomain})
+                </Text>
+              </div>
+
+              <div style={{marginBottom: '16px'}}>
+                <Text variant="bodyMd" as="p" fontWeight="semibold">
+                  Status:
+                </Text>
+                <Badge
+                  tone={
+                    selectedImport.status === 'completed'
+                      ? 'success'
+                      : selectedImport.status === 'failed'
+                      ? 'critical'
+                      : 'info'
+                  }
+                >
+                  {selectedImport.status}
+                </Badge>
+              </div>
+
+              <div style={{marginBottom: '16px'}}>
+                <Text variant="bodyMd" as="p" fontWeight="semibold">
+                  Records:
+                </Text>
+                <ul style={{marginLeft: '20px'}}>
+                  <li>Total: {selectedImport.totalRecords}</li>
+                  <li>Processed: {selectedImport.processedRecords || 0}</li>
+                  <li>Success: {selectedImport.successCount || 0}</li>
+                  <li>Failed: {selectedImport.failedCount || 0}</li>
+                </ul>
+              </div>
+
+              {selectedImport.invalidRecords && selectedImport.invalidRecords.length > 0 && (
+                <div style={{marginBottom: '16px'}}>
+                  <Text variant="bodyMd" as="p" fontWeight="semibold" tone="critical">
+                    Invalid Records ({selectedImport.invalidRecords.length}):
                   </Text>
-                </div>
-              ) : (
-                <div>
-                  <DataTable
-                    columnContentTypes={['text', 'text', 'text', 'text', 'text']}
-                    headings={['Order ID', 'Tracking #', 'Carrier', 'URL', 'Status']}
-                    rows={trackingRows}
-                  />
-                  {previewTracking.length > 10 && (
-                    <div style={{padding: '16px', textAlign: 'center'}}>
-                      <Text variant="bodySm" as="p" tone="subdued">
-                        Showing first 10 items. {previewTracking.length - 10} more will be
-                        processed.
-                      </Text>
-                    </div>
-                  )}
+                  <div
+                    style={{
+                      marginTop: '8px',
+                      maxHeight: '200px',
+                      overflow: 'auto',
+                      background: '#f6f6f7',
+                      padding: '8px',
+                      borderRadius: '4px'
+                    }}
+                  >
+                    {selectedImport.invalidRecords.map((invalid, idx) => (
+                      <div key={idx} style={{marginBottom: '8px'}}>
+                        <Text variant="bodySm" as="p">
+                          <strong>Row {invalid.row}:</strong> {invalid.errors.join(', ')}
+                        </Text>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
-            </Card>
-          </Layout.Section>
-        )}
-      </Layout>
+
+              <div style={{marginBottom: '16px'}}>
+                <Text variant="bodyMd" as="p" fontWeight="semibold">
+                  Created:
+                </Text>
+                <Text variant="bodyMd" as="p">
+                  {new Date(selectedImport.createdAt).toLocaleString()}
+                </Text>
+              </div>
+
+              {selectedImport.completedAt && (
+                <div>
+                  <Text variant="bodyMd" as="p" fontWeight="semibold">
+                    Completed:
+                  </Text>
+                  <Text variant="bodyMd" as="p">
+                    {new Date(selectedImport.completedAt).toLocaleString()}
+                  </Text>
+                </div>
+              )}
+            </div>
+          )}
+        </Modal.Section>
+      </Modal>
     </Page>
   );
 }

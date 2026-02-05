@@ -30,6 +30,9 @@ export default function Stores() {
     niche: ''
   });
   const [submitting, setSubmitting] = useState(false);
+  const [verifying, setVerifying] = useState(false);
+  const [verified, setVerified] = useState(false);
+  const [verifiedInfo, setVerifiedInfo] = useState(null);
   const [error, setError] = useState(null);
 
   useEffect(() => {
@@ -60,8 +63,58 @@ export default function Stores() {
   const handleModalClose = useCallback(() => {
     setModalActive(false);
     setFormData({shopDomain: '', accessToken: '', name: '', niche: ''});
+    setVerified(false);
+    setVerifiedInfo(null);
     setError(null);
   }, []);
+
+  const handleVerifyToken = async () => {
+    if (!formData.accessToken) {
+      setError('Please enter an access token');
+      return;
+    }
+
+    if (!formData.shopDomain) {
+      setError('Please enter your shop domain');
+      return;
+    }
+
+    try {
+      setVerifying(true);
+      setError(null);
+
+      const response = await fetch('/api/stores/verify-token', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          accessToken: formData.accessToken,
+          shopDomain: formData.shopDomain
+        })
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        setVerified(true);
+        setVerifiedInfo(result.data);
+        // Auto-fill shop domain and name
+        setFormData({
+          ...formData,
+          shopDomain: result.data.shopDomain,
+          name: formData.name || result.data.shopName
+        });
+      } else {
+        setError(result.error || 'Failed to verify token');
+        setVerified(false);
+      }
+    } catch (err) {
+      console.error('Error verifying token:', err);
+      setError('Failed to verify token');
+      setVerified(false);
+    } finally {
+      setVerifying(false);
+    }
+  };
 
   const handleSubmit = async () => {
     try {
@@ -189,30 +242,81 @@ export default function Stores() {
       >
         <Modal.Section>
           <FormLayout>
+            {!verified && (
+              <Banner tone="info">
+                <p>
+                  <strong>How to get credentials:</strong>
+                </p>
+                <p>
+                  1. Go to Shopify Admin → Settings → Apps and sales channels
+                  <br />
+                  2. Click "Develop apps" → "Create an app"
+                  <br />
+                  3. Configure scopes → Install app → Reveal token once
+                  <br />
+                  4. Copy your shop domain and Admin API access token
+                </p>
+              </Banner>
+            )}
+
+            {verified && verifiedInfo && (
+              <Banner tone="success">
+                <p>
+                  <strong>✓ Verified:</strong> {verifiedInfo.shopName}
+                  <br />
+                  Domain: {verifiedInfo.myshopifyDomain}
+                  <br />
+                  Email: {verifiedInfo.email}
+                </p>
+              </Banner>
+            )}
+
+            <TextField
+              label="Shop Domain"
+              value={formData.shopDomain}
+              onChange={value => {
+                setFormData({...formData, shopDomain: value});
+                setVerified(false);
+                setVerifiedInfo(null);
+              }}
+              placeholder="mystore or mystore.myshopify.com"
+              helpText="Enter any format: 'mystore', 'mystore.myshopify.com', or full URL - we'll normalize it"
+              required
+              autoComplete="off"
+            />
+
+            <TextField
+              label="Access Token"
+              value={formData.accessToken}
+              onChange={value => {
+                setFormData({...formData, accessToken: value});
+                setVerified(false);
+                setVerifiedInfo(null);
+              }}
+              placeholder="shpat_..."
+              helpText="Your Shopify Admin API access token from Custom App"
+              type="password"
+              required
+              autoComplete="off"
+              connectedRight={
+                <Button
+                  onClick={handleVerifyToken}
+                  loading={verifying}
+                  disabled={!formData.accessToken || !formData.shopDomain}
+                >
+                  {verified ? 'Re-verify' : 'Verify Store'}
+                </Button>
+              }
+            />
+
             <TextField
               label="Store Name"
               value={formData.name}
               onChange={value => setFormData({...formData, name: value})}
               placeholder="My Store"
-              helpText="A friendly name for your store"
+              helpText="A friendly name for your store (auto-filled from verification)"
             />
-            <TextField
-              label="Shop Domain"
-              value={formData.shopDomain}
-              onChange={value => setFormData({...formData, shopDomain: value})}
-              placeholder="mystore.myshopify.com"
-              helpText="Your Shopify store domain"
-              required
-            />
-            <TextField
-              label="Access Token"
-              value={formData.accessToken}
-              onChange={value => setFormData({...formData, accessToken: value})}
-              placeholder="shpat_..."
-              helpText="Your Shopify Admin API access token"
-              type="password"
-              required
-            />
+
             <TextField
               label="Niche"
               value={formData.niche}

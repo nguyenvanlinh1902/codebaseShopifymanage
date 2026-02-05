@@ -71,6 +71,13 @@ export class StoreRepository {
   }
 
   /**
+   * Alias for getByUserId
+   */
+  async getByUser(userId) {
+    return this.getByUserId(userId);
+  }
+
+  /**
    * Get all stores
    */
   async getAll() {

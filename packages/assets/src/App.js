@@ -85,6 +85,7 @@ function AppFrame() {
         <Route path="/products" element={<Products />} />
         <Route path="/orders" element={<Orders />} />
         <Route path="/tracking" element={<Tracking />} />
+        <Route path="*" element={<NotFound />} />
       </Routes>
     </Frame>
   );

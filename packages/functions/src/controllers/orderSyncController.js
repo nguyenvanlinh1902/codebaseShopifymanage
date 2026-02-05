@@ -354,21 +354,21 @@ export async function registerWebhook(req, res) {
 
     // Check if webhook already exists
     const existingWebhooks = await orderSyncRepo.getWebhooksByStore(storeId);
-    const hasOrderCreateWebhook = existingWebhooks.some(wh => wh.topic === 'orders/create');
+    const hasOrderUpdateWebhook = existingWebhooks.some(wh => wh.topic === 'orders/update');
 
-    if (hasOrderCreateWebhook) {
+    if (hasOrderUpdateWebhook) {
       return res.json({
         success: true,
         message: 'Webhook already registered',
         data: {
-          webhook: existingWebhooks.find(wh => wh.topic === 'orders/create')
+          webhook: existingWebhooks.find(wh => wh.topic === 'orders/update')
         }
       });
     }
 
-    // Register orders/create webhook (single webhook for all orders)
+    // Register orders/update webhook (single webhook for all orders)
     const webhook = await shopifyService.createWebhook({
-      topic: 'orders/create',
+      topic: 'orders/update',
       address: webhookUrl,
       format: 'json'
     });
@@ -378,7 +378,7 @@ export async function registerWebhook(req, res) {
       storeId,
       shopDomain: store.shopDomain,
       shopifyWebhookId: webhook.id,
-      topic: 'orders/create',
+      topic: 'orders/update',
       address: webhookUrl
     });
 
@@ -429,10 +429,10 @@ export async function handleOrderWebhook(req, res) {
       return res.status(200).json({message: 'No sync config, skipping'});
     }
 
-    // Only process orders/create webhook
-    if (topic !== 'orders/create') {
-      console.log('Ignoring non-create webhook:', topic);
-      return res.status(200).json({message: 'Only orders/create is processed'});
+    // Only process orders/update webhook
+    if (topic !== 'orders/update') {
+      console.log('Ignoring non-update webhook:', topic);
+      return res.status(200).json({message: 'Only orders/update is processed'});
     }
 
     // Check if order was already synced (prevent duplicates)
@@ -598,7 +598,7 @@ export async function getWebhookInstructions(req, res) {
           step: 3,
           title: 'Configure Webhook',
           details: {
-            Event: 'Order creation',
+            Topic: 'orders/update',
             Format: 'JSON',
             URL: `${process.env.FUNCTION_URL || 'https://your-function-url'}/api/orders/webhook`,
             'API version': 'Latest'
@@ -616,7 +616,7 @@ export async function getWebhookInstructions(req, res) {
         }
       ],
       notes: [
-        'Only ONE webhook needed for order sync (orders/create)',
+        'Only ONE webhook needed for order sync (orders/update)',
         'All stores send to the same webhook URL',
         'System automatically identifies store by shop domain',
         'HMAC signature verified for security',

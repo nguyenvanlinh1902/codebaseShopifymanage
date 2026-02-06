@@ -61,10 +61,7 @@ export default function OAuthCallback() {
 
       // Send data to parent window (popup flow)
       if (window.opener) {
-        window.opener.postMessage(
-          {type: 'oauth-callback', code, shop, state, hmac},
-          window.location.origin
-        );
+        window.opener.postMessage({type: 'oauth-callback', code, shop, state, hmac}, '*');
         setStatus('success');
         setTimeout(() => window.close(), 2000);
       } else {
@@ -98,7 +95,7 @@ export default function OAuthCallback() {
               success: true,
               googleEmail: result.data?.googleEmail || ''
             },
-            window.location.origin
+            '*'
           );
           setTimeout(() => window.close(), 1500);
         } else {
@@ -111,7 +108,7 @@ export default function OAuthCallback() {
         if (window.opener) {
           window.opener.postMessage(
             {type: 'google-auth-callback', success: false, error: result.error},
-            window.location.origin
+            '*'
           );
         }
       }
@@ -122,7 +119,7 @@ export default function OAuthCallback() {
       if (window.opener) {
         window.opener.postMessage(
           {type: 'google-auth-callback', success: false, error: 'Failed to connect Google account'},
-          window.location.origin
+          '*'
         );
       }
     }
@@ -149,7 +146,7 @@ export default function OAuthCallback() {
               refreshToken: result.data.refreshToken,
               googleEmail: result.data.googleEmail || ''
             },
-            window.location.origin
+            '*'
           );
           setTimeout(() => window.close(), 1500);
         }
@@ -159,7 +156,7 @@ export default function OAuthCallback() {
         if (window.opener) {
           window.opener.postMessage(
             {type: 'google-auth-temp', success: false, error: result.error},
-            window.location.origin
+            '*'
           );
         }
       }
@@ -170,7 +167,7 @@ export default function OAuthCallback() {
       if (window.opener) {
         window.opener.postMessage(
           {type: 'google-auth-temp', success: false, error: 'Failed to authenticate'},
-          window.location.origin
+          '*'
         );
       }
     }

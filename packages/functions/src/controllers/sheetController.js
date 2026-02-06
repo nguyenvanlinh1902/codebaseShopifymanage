@@ -128,7 +128,7 @@ export async function connectSheet(req, res) {
  */
 export async function getSheets(req, res) {
   try {
-    const {userId, page, limit} = req.query;
+    const {userId, page, limit, search} = req.query;
 
     if (!userId) {
       return res.status(400).json({
@@ -140,10 +140,29 @@ export async function getSheets(req, res) {
     const pageNum = Math.max(1, parseInt(page) || 1);
     const limitNum = Math.min(50, Math.max(1, parseInt(limit) || 5));
 
-    const {sheets, total} = await sheetRepo.getByUserIdPaginated(userId, {
-      page: pageNum,
-      limit: limitNum
-    });
+    let sheets;
+    let total;
+
+    if (search) {
+      // Fetch all and filter in memory (Firestore has no text search)
+      const allSheets = await sheetRepo.getByUserId(userId);
+      const searchLower = search.toLowerCase();
+      const filtered = allSheets.filter(
+        s =>
+          s.name?.toLowerCase().includes(searchLower) ||
+          s.title?.toLowerCase().includes(searchLower)
+      );
+      total = filtered.length;
+      const offset = (pageNum - 1) * limitNum;
+      sheets = filtered.slice(offset, offset + limitNum);
+    } else {
+      const result = await sheetRepo.getByUserIdPaginated(userId, {
+        page: pageNum,
+        limit: limitNum
+      });
+      sheets = result.sheets;
+      total = result.total;
+    }
 
     // Remove sensitive/legacy fields
     const sanitizedSheets = sheets.map(
@@ -225,6 +244,47 @@ export async function deleteSheet(req, res) {
     });
   } catch (error) {
     console.error('Delete sheet error:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+}
+
+/**
+ * Bulk delete sheet connections
+ */
+export async function bulkDeleteSheets(req, res) {
+  try {
+    const {sheetIds} = req.body;
+
+    if (!Array.isArray(sheetIds) || sheetIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'sheetIds array is required'
+      });
+    }
+
+    const results = await Promise.allSettled(
+      sheetIds.map(async id => {
+        const sheet = await sheetRepo.getById(id);
+        if (!sheet) return {id, success: false};
+        await sheetRepo.delete(id);
+        return {id, success: true};
+      })
+    );
+
+    const deleted = results.filter(r => r.status === 'fulfilled' && r.value.success).length;
+    const failed = results.length - deleted;
+
+    return res.json({
+      success: true,
+      message: `Deleted ${deleted} sheet(s)${failed > 0 ? `, ${failed} failed` : ''}`,
+      deleted,
+      failed
+    });
+  } catch (error) {
+    console.error('Bulk delete sheets error:', error);
     return res.status(500).json({
       success: false,
       error: error.message

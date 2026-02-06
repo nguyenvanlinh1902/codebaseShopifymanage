@@ -1,11 +1,12 @@
 import React, {useState, useEffect, useCallback, useRef} from 'react';
-import PropTypes from 'prop-types';
-import {useLocation} from 'react-router-dom';
+import {useLocation, useSearchParams} from 'react-router-dom';
 import {
   Page,
   Layout,
   Card,
-  DataTable,
+  IndexTable,
+  IndexFilters,
+  useSetIndexFiltersMode,
   Button,
   Banner,
   SkeletonBodyText,
@@ -15,12 +16,13 @@ import {
   BlockStack,
   Modal,
   Tooltip,
-  Divider,
-  Pagination
+  Pagination,
+  useIndexResourceState
 } from '@shopify/polaris';
-import {DeleteIcon, PlusIcon} from '@shopify/polaris-icons';
+import {DeleteIcon, PlusIcon, ExternalIcon} from '@shopify/polaris-icons';
 import {useGoogleAuth} from '../hooks/useGoogleAuth';
 import {useGooglePicker} from '../hooks/useGooglePicker';
+import {USER_ID} from '../config/user';
 
 const truncateStyle = {
   maxWidth: 200,
@@ -29,55 +31,101 @@ const truncateStyle = {
   whiteSpace: 'nowrap'
 };
 
-import {USER_ID} from '../config/user';
 const PAGE_LIMIT = 10;
+const TAB_KEYS = ['accounts', 'sheets'];
 
 /**
- * Connected Accounts section
+ * Accounts table content (IndexTable only, no IndexFilters)
  */
-function ConnectedAccounts({
+function AccountsContent({
   accounts,
   pagination,
   onAddSheet,
   onDisconnect,
+  onBulkDisconnect,
   onPageChange,
-  loading
+  loading,
+  searchValue
 }) {
-  if (accounts.length === 0) return null;
+  const {
+    selectedResources,
+    allResourcesSelected,
+    handleSelectionChange,
+    clearSelection
+  } = useIndexResourceState(accounts, {resourceIDResolver: account => account.email});
 
   const {page, total, totalPages} = pagination;
   const start = (page - 1) * PAGE_LIMIT + 1;
   const end = Math.min(page * PAGE_LIMIT, total);
 
+  const resourceName = {singular: 'account', plural: 'accounts'};
+
+  const promotedBulkActions = [
+    {
+      content: `Disconnect ${selectedResources.length} account(s)`,
+      onAction: () => {
+        onBulkDisconnect(selectedResources);
+        clearSelection();
+      },
+      destructive: true
+    }
+  ];
+
+  if (accounts.length === 0) {
+    return (
+      <EmptyState
+        heading={searchValue ? 'No accounts found' : 'No accounts connected'}
+        image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
+      >
+        <p>
+          {searchValue
+            ? 'Try a different search term.'
+            : 'Connect a Google account to get started.'}
+        </p>
+      </EmptyState>
+    );
+  }
+
   return (
-    <Card>
-      <BlockStack gap="400">
-        <Text variant="headingMd" as="h2">
-          Connected Accounts
-        </Text>
-        <BlockStack gap="300">
-          {accounts.map(account => (
-            <InlineStack key={account.email} align="space-between" blockAlign="center">
-              <InlineStack gap="200" blockAlign="center">
-                <Text as="span" fontWeight="semibold">
-                  {account.email}
-                </Text>
-                <Text as="span" tone="subdued">
-                  ({account.sheetCount} {account.sheetCount === 1 ? 'sheet' : 'sheets'})
-                </Text>
-              </InlineStack>
-              <InlineStack gap="200">
-                <Button
-                  size="slim"
-                  icon={PlusIcon}
-                  onClick={() => onAddSheet(account.email)}
-                  loading={loading}
-                >
-                  Add Sheet
-                </Button>
+    <>
+      <IndexTable
+        resourceName={resourceName}
+        itemCount={accounts.length}
+        headings={[{title: 'Email'}, {title: 'Sheets'}, {title: 'Actions', alignment: 'center'}]}
+        selectedItemsCount={allResourcesSelected ? 'All' : selectedResources.length}
+        onSelectionChange={handleSelectionChange}
+        promotedBulkActions={promotedBulkActions}
+      >
+        {accounts.map((account, index) => (
+          <IndexTable.Row
+            id={account.email}
+            key={account.email}
+            position={index}
+            selected={selectedResources.includes(account.email)}
+          >
+            <IndexTable.Cell>
+              <Text as="span" fontWeight="semibold">
+                {account.email}
+              </Text>
+            </IndexTable.Cell>
+            <IndexTable.Cell>
+              <Text as="span" tone="subdued">
+                {account.sheetCount} {account.sheetCount === 1 ? 'sheet' : 'sheets'}
+              </Text>
+            </IndexTable.Cell>
+            <IndexTable.Cell>
+              <InlineStack gap="200" align="center">
+                <Tooltip content="Add sheet">
+                  <Button
+                    icon={PlusIcon}
+                    variant="plain"
+                    onClick={() => onAddSheet(account.email)}
+                    loading={loading}
+                    accessibilityLabel="Add sheet"
+                  />
+                </Tooltip>
                 <Tooltip content="Disconnect account">
                   <Button
-                    size="slim"
                     icon={DeleteIcon}
                     variant="plain"
                     tone="critical"
@@ -86,146 +134,214 @@ function ConnectedAccounts({
                   />
                 </Tooltip>
               </InlineStack>
-            </InlineStack>
-          ))}
-        </BlockStack>
-        {totalPages > 1 && (
-          <InlineStack align="center">
+            </IndexTable.Cell>
+          </IndexTable.Row>
+        ))}
+      </IndexTable>
+      {totalPages > 1 && (
+        <div style={{padding: '16px', borderTop: '1px solid #e1e3e5'}}>
+          <InlineStack align="center" blockAlign="center" gap="400">
+            <Text as="span" tone="subdued">
+              {start}-{end} of {total}
+            </Text>
             <Pagination
               hasPrevious={page > 1}
               hasNext={page < totalPages}
               onPrevious={() => onPageChange(page - 1)}
               onNext={() => onPageChange(page + 1)}
-              label={`${start}–${end} of ${total}`}
             />
           </InlineStack>
-        )}
-      </BlockStack>
-    </Card>
+        </div>
+      )}
+    </>
   );
 }
 
-ConnectedAccounts.propTypes = {
-  accounts: PropTypes.arrayOf(PropTypes.object).isRequired,
-  pagination: PropTypes.shape({
-    page: PropTypes.number,
-    total: PropTypes.number,
-    totalPages: PropTypes.number
-  }).isRequired,
-  onAddSheet: PropTypes.func.isRequired,
-  onDisconnect: PropTypes.func.isRequired,
-  onPageChange: PropTypes.func.isRequired,
-  loading: PropTypes.bool
-};
-
 /**
- * Connected Sheets table
+ * Sheets table content (IndexTable only, no IndexFilters)
  */
-function ConnectedSheets({
+function SheetsContent({
   sheets,
   pagination,
   loading,
   onDelete,
+  onBulkDelete,
   onPageChange,
   authenticated,
-  onAuth
+  onAuth,
+  searchValue
 }) {
+  const {
+    selectedResources,
+    allResourcesSelected,
+    handleSelectionChange,
+    clearSelection
+  } = useIndexResourceState(sheets);
+
   const {page, total, totalPages} = pagination;
   const start = (page - 1) * PAGE_LIMIT + 1;
   const end = Math.min(page * PAGE_LIMIT, total);
 
-  const rows = sheets.map(sheet => [
-    <Tooltip content={sheet.name} key="name">
-      <div style={truncateStyle}>{sheet.name}</div>
-    </Tooltip>,
-    sheet.googleEmail || '—',
-    <Tooltip content="Disconnect sheet" key="action">
-      <Button
-        icon={DeleteIcon}
-        variant="plain"
-        tone="critical"
-        onClick={() => onDelete(sheet)}
-        accessibilityLabel="Disconnect"
-      />
-    </Tooltip>
-  ]);
+  const resourceName = {singular: 'sheet', plural: 'sheets'};
+
+  const promotedBulkActions = [
+    {
+      content: `Delete ${selectedResources.length} sheet(s)`,
+      onAction: () => {
+        onBulkDelete(selectedResources);
+        clearSelection();
+      },
+      destructive: true
+    }
+  ];
+
+  if (loading) {
+    return (
+      <div style={{padding: '16px'}}>
+        <SkeletonBodyText lines={5} />
+      </div>
+    );
+  }
+
+  if (sheets.length === 0) {
+    return (
+      <EmptyState
+        heading={searchValue ? 'No sheets found' : 'No sheets connected'}
+        action={
+          !authenticated && !searchValue
+            ? {content: 'Connect Google Account', onAction: onAuth}
+            : undefined
+        }
+        image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
+      >
+        <p>
+          {searchValue
+            ? 'Try a different search term.'
+            : authenticated
+            ? 'Switch to the Accounts tab and use the add icon to connect a Google Sheet.'
+            : 'Connect your Google account first, then add sheets from Google Drive.'}
+        </p>
+      </EmptyState>
+    );
+  }
 
   return (
-    <Card>
-      <BlockStack gap="400">
-        <Text variant="headingMd" as="h2">
-          Connected Sheets
-        </Text>
-        {loading ? (
-          <SkeletonBodyText lines={5} />
-        ) : sheets.length === 0 ? (
-          <EmptyState
-            heading="No sheets connected"
-            action={
-              !authenticated ? {content: 'Connect Google Account', onAction: onAuth} : undefined
-            }
-            image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
+    <>
+      <IndexTable
+        resourceName={resourceName}
+        itemCount={sheets.length}
+        headings={[
+          {title: 'Spreadsheet'},
+          {title: 'Google Account'},
+          {title: 'Actions', alignment: 'center'}
+        ]}
+        selectedItemsCount={allResourcesSelected ? 'All' : selectedResources.length}
+        onSelectionChange={handleSelectionChange}
+        promotedBulkActions={promotedBulkActions}
+      >
+        {sheets.map((sheet, index) => (
+          <IndexTable.Row
+            id={sheet.id}
+            key={sheet.id}
+            position={index}
+            selected={selectedResources.includes(sheet.id)}
           >
-            <p>
-              {authenticated
-                ? 'Use the "Add Sheet" buttons above to connect your first Google Sheet.'
-                : 'Connect your Google account first, then add sheets from Google Drive.'}
-            </p>
-          </EmptyState>
-        ) : (
-          <>
-            <DataTable
-              columnContentTypes={['text', 'text', 'text']}
-              headings={['Spreadsheet', 'Google Account', '']}
-              rows={rows}
-            />
-            {totalPages > 1 && (
-              <InlineStack align="center">
-                <Pagination
-                  hasPrevious={page > 1}
-                  hasNext={page < totalPages}
-                  onPrevious={() => onPageChange(page - 1)}
-                  onNext={() => onPageChange(page + 1)}
-                  label={`${start}–${end} of ${total}`}
-                />
+            <IndexTable.Cell>
+              <Tooltip content={sheet.name}>
+                <div style={truncateStyle}>
+                  <Text variant="bodyMd" fontWeight="bold">
+                    {sheet.name}
+                  </Text>
+                </div>
+              </Tooltip>
+            </IndexTable.Cell>
+            <IndexTable.Cell>{sheet.googleEmail || '\u2014'}</IndexTable.Cell>
+            <IndexTable.Cell>
+              <InlineStack gap="200" align="center">
+                {sheet.spreadsheetId && (
+                  <Tooltip content="Open in Google Sheets">
+                    <Button
+                      icon={ExternalIcon}
+                      variant="plain"
+                      onClick={() =>
+                        window.open(
+                          `https://docs.google.com/spreadsheets/d/${sheet.spreadsheetId}/edit`,
+                          '_blank'
+                        )
+                      }
+                      accessibilityLabel="Open sheet"
+                    />
+                  </Tooltip>
+                )}
+                <Tooltip content="Disconnect sheet">
+                  <Button
+                    icon={DeleteIcon}
+                    variant="plain"
+                    tone="critical"
+                    onClick={() => onDelete(sheet)}
+                    accessibilityLabel="Disconnect"
+                  />
+                </Tooltip>
               </InlineStack>
-            )}
-          </>
-        )}
-      </BlockStack>
-    </Card>
+            </IndexTable.Cell>
+          </IndexTable.Row>
+        ))}
+      </IndexTable>
+      {totalPages > 1 && (
+        <div style={{padding: '16px', borderTop: '1px solid #e1e3e5'}}>
+          <InlineStack align="center" blockAlign="center" gap="400">
+            <Text as="span" tone="subdued">
+              {start}-{end} of {total}
+            </Text>
+            <Pagination
+              hasPrevious={page > 1}
+              hasNext={page < totalPages}
+              onPrevious={() => onPageChange(page - 1)}
+              onNext={() => onPageChange(page + 1)}
+            />
+          </InlineStack>
+        </div>
+      )}
+    </>
   );
 }
-
-ConnectedSheets.propTypes = {
-  sheets: PropTypes.arrayOf(PropTypes.object).isRequired,
-  pagination: PropTypes.shape({
-    page: PropTypes.number,
-    total: PropTypes.number,
-    totalPages: PropTypes.number
-  }).isRequired,
-  loading: PropTypes.bool,
-  onDelete: PropTypes.func.isRequired,
-  onPageChange: PropTypes.func.isRequired,
-  authenticated: PropTypes.bool,
-  onAuth: PropTypes.func
-};
 
 /**
  * Google Sheets Management Page
  */
 export default function Sheets() {
   const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const {
     authenticated,
     loading: authLoading,
     error: authError,
     setError: setAuthError,
     startAuth,
-    startAuthForNewAccount,
     checkAuth
   } = useGoogleAuth();
   const {openPicker, loading: pickerLoading, error: pickerError} = useGooglePicker();
+
+  // Tab state from URL
+  const selectedTab = Math.max(0, TAB_KEYS.indexOf(searchParams.get('tab') || 'accounts'));
+
+  const handleTabChange = useCallback(
+    index => {
+      setSearchParams(prev => {
+        prev.set('tab', TAB_KEYS[index]);
+        return prev;
+      });
+    },
+    [setSearchParams]
+  );
+
+  // IndexFilters tabs (rendered inside the toolbar)
+  const indexFiltersTabs = [
+    {id: 'accounts', content: 'Accounts'},
+    {id: 'sheets', content: 'Sheets'}
+  ];
+
+  const {mode, setMode} = useSetIndexFiltersMode();
 
   const [sheets, setSheets] = useState([]);
   const [sheetsPagination, setSheetsPagination] = useState({page: 1, total: 0, totalPages: 0});
@@ -238,23 +354,38 @@ export default function Sheets() {
   const [accounts, setAccounts] = useState([]);
   const [accountsPagination, setAccountsPagination] = useState({page: 1, total: 0, totalPages: 0});
 
+  // Search state (per tab)
+  const [sheetSearchValue, setSheetSearchValue] = useState('');
+  const [activeSheetSearch, setActiveSheetSearch] = useState('');
+  const sheetSearchTimerRef = useRef(null);
+
+  const [accountSearchValue, setAccountSearchValue] = useState('');
+  const [activeAccountSearch, setActiveAccountSearch] = useState('');
+  const accountSearchTimerRef = useRef(null);
+
   // Delete sheet confirmation modal state
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-  const [pendingDeleteSheet, setPendingDeleteSheet] = useState(null);
+  const [pendingDeleteTarget, setPendingDeleteTarget] = useState(null);
+  const [pendingDeleteIds, setPendingDeleteIds] = useState([]);
   const [deleting, setDeleting] = useState(false);
 
   // Disconnect account confirmation modal state
   const [disconnectModalOpen, setDisconnectModalOpen] = useState(false);
   const [pendingDisconnectEmail, setPendingDisconnectEmail] = useState(null);
+  const [pendingDisconnectEmails, setPendingDisconnectEmails] = useState([]);
   const [disconnecting, setDisconnecting] = useState(false);
+
+  // Ref dedup for StrictMode
+  const lastSheetsFetchKeyRef = useRef(null);
+  const lastAccountsFetchKeyRef = useRef(null);
 
   // Track authenticated state to refetch data when user connects
   const wasAuthenticated = useRef(authenticated);
   useEffect(() => {
     if (authenticated && !wasAuthenticated.current) {
       setSuccessMessage('Google account connected successfully!');
-      fetchSheets(1);
-      fetchAccounts(1);
+      fetchSheets(1, activeSheetSearch);
+      fetchAccounts(1, activeAccountSearch);
     }
     wasAuthenticated.current = authenticated;
   }, [authenticated]);
@@ -264,23 +395,70 @@ export default function Sheets() {
     if (location.state?.authSuccess) {
       setSuccessMessage('Google account connected successfully!');
       checkAuth();
-      fetchAccounts();
-      fetchSheets();
+      fetchAccounts(1, activeAccountSearch);
+      fetchSheets(1, activeSheetSearch);
       window.history.replaceState({}, document.title);
     }
   }, [location.state]);
 
+  // Fetch sheets when search changes (also handles initial load)
   useEffect(() => {
-    fetchSheets();
-    fetchAccounts();
+    const key = `sheets:${activeSheetSearch}`;
+    if (lastSheetsFetchKeyRef.current === key) return;
+    lastSheetsFetchKeyRef.current = key;
+    fetchSheets(1, activeSheetSearch);
+  }, [activeSheetSearch]);
+
+  // Fetch accounts when search changes (also handles initial load)
+  useEffect(() => {
+    const key = `accounts:${activeAccountSearch}`;
+    if (lastAccountsFetchKeyRef.current === key) return;
+    lastAccountsFetchKeyRef.current = key;
+    fetchAccounts(1, activeAccountSearch);
+  }, [activeAccountSearch]);
+
+  // Search handlers
+  const handleSheetSearchChange = useCallback(value => {
+    setSheetSearchValue(value);
+    if (sheetSearchTimerRef.current) clearTimeout(sheetSearchTimerRef.current);
+    sheetSearchTimerRef.current = setTimeout(() => setActiveSheetSearch(value), 400);
   }, []);
 
-  const fetchSheets = async (page = 1) => {
+  const handleSheetSearchClear = useCallback(() => {
+    setSheetSearchValue('');
+    setActiveSheetSearch('');
+  }, []);
+
+  const handleAccountSearchChange = useCallback(value => {
+    setAccountSearchValue(value);
+    if (accountSearchTimerRef.current) clearTimeout(accountSearchTimerRef.current);
+    accountSearchTimerRef.current = setTimeout(() => setActiveAccountSearch(value), 400);
+  }, []);
+
+  const handleAccountSearchClear = useCallback(() => {
+    setAccountSearchValue('');
+    setActiveAccountSearch('');
+  }, []);
+
+  // Active search value/handlers based on current tab
+  const currentSearchValue = selectedTab === 0 ? accountSearchValue : sheetSearchValue;
+  const currentSearchPlaceholder =
+    selectedTab === 0 ? 'Search by email...' : 'Search by sheet name...';
+  const currentSearchChange =
+    selectedTab === 0 ? handleAccountSearchChange : handleSheetSearchChange;
+  const currentSearchClear = selectedTab === 0 ? handleAccountSearchClear : handleSheetSearchClear;
+
+  const fetchSheets = async (page = 1, search = '') => {
     try {
       setLoading(true);
-      const response = await fetch(
-        `/api/sheets?userId=${USER_ID}&page=${page}&limit=${PAGE_LIMIT}`
-      );
+      const params = new URLSearchParams({
+        userId: USER_ID,
+        page: String(page),
+        limit: String(PAGE_LIMIT)
+      });
+      if (search) params.set('search', search);
+
+      const response = await fetch(`/api/sheets?${params}`);
       const result = await response.json();
       if (result.success) {
         setSheets(result.data);
@@ -294,11 +472,16 @@ export default function Sheets() {
     }
   };
 
-  const fetchAccounts = async (page = 1) => {
+  const fetchAccounts = async (page = 1, search = '') => {
     try {
-      const response = await fetch(
-        `/api/google/connected-accounts?userId=${USER_ID}&page=${page}&limit=${PAGE_LIMIT}`
-      );
+      const params = new URLSearchParams({
+        userId: USER_ID,
+        page: String(page),
+        limit: String(PAGE_LIMIT)
+      });
+      if (search) params.set('search', search);
+
+      const response = await fetch(`/api/google/connected-accounts?${params}`);
       const result = await response.json();
       if (result.success) {
         setAccounts(result.data);
@@ -313,9 +496,12 @@ export default function Sheets() {
     async ({resetPage = false} = {}) => {
       const sheetsPage = resetPage ? 1 : sheetsPagination.page;
       const accountsPage = resetPage ? 1 : accountsPagination.page;
-      await Promise.all([fetchSheets(sheetsPage), fetchAccounts(accountsPage)]);
+      await Promise.all([
+        fetchSheets(sheetsPage, activeSheetSearch),
+        fetchAccounts(accountsPage, activeAccountSearch)
+      ]);
     },
-    [sheetsPagination.page, accountsPagination.page]
+    [sheetsPagination.page, accountsPagination.page, activeSheetSearch, activeAccountSearch]
   );
 
   const saveSheet = useCallback(
@@ -360,44 +546,45 @@ export default function Sheets() {
     } catch (err) {
       // user cancelled or auth failed — already handled by useGoogleAuth
     }
-    // Always re-check auth and refetch after popup closes
-    // (covers case where popup closed before postMessage was received)
     await checkAuth();
-    fetchSheets(1);
-    fetchAccounts(1);
-  }, [startAuth, checkAuth]);
+    fetchSheets(1, activeSheetSearch);
+    fetchAccounts(1, activeAccountSearch);
+  }, [startAuth, checkAuth, activeSheetSearch, activeAccountSearch]);
 
-  const handleAddFromAnotherAccount = useCallback(async () => {
+  const handleConnectNewAccount = useCallback(async () => {
     try {
-      setAddingSheet(true);
       setError(null);
-
-      const tempTokens = await startAuthForNewAccount();
-
-      openPicker({
-        accessToken: tempTokens.accessToken,
-        onCancel: () => setAddingSheet(false),
-        onSelect: async selected => {
-          await saveSheet(selected, tempTokens.refreshToken, tempTokens.googleEmail);
-        }
-      });
+      await startAuth();
+      setSuccessMessage('Google account connected successfully!');
     } catch (err) {
-      setError(err.message || 'Failed to add from another account');
-      setAddingSheet(false);
+      // user cancelled or auth failed — already handled by useGoogleAuth
     }
-  }, [startAuthForNewAccount, openPicker, saveSheet]);
+    await checkAuth();
+    fetchAccounts(1, activeAccountSearch);
+  }, [startAuth, checkAuth, activeAccountSearch]);
 
-  const handleDeleteClick = sheet => {
-    setPendingDeleteSheet(sheet);
+  // --- Delete sheet handlers ---
+  const handleDeleteClick = useCallback(sheet => {
+    setPendingDeleteTarget(sheet);
+    setPendingDeleteIds([]);
     setDeleteModalOpen(true);
-  };
+  }, []);
+
+  const handleBulkDeleteClick = useCallback(ids => {
+    setPendingDeleteTarget(null);
+    setPendingDeleteIds(ids);
+    setDeleteModalOpen(true);
+  }, []);
 
   const handleDeleteConfirm = async () => {
-    if (!pendingDeleteSheet) return;
     try {
       setDeleting(true);
-      const response = await fetch(`/api/sheets/${pendingDeleteSheet.id}`, {
-        method: 'DELETE'
+      const idsToDelete = pendingDeleteTarget ? [pendingDeleteTarget.id] : pendingDeleteIds;
+
+      const response = await fetch('/api/sheets/bulk-delete', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({sheetIds: idsToDelete})
       });
 
       const result = await response.json();
@@ -405,51 +592,78 @@ export default function Sheets() {
       if (result.success) {
         await refreshData();
       } else {
-        setError(result.error || 'Failed to delete sheet');
+        setError(result.error || 'Failed to delete sheet(s)');
       }
     } catch (err) {
-      console.error('Error deleting sheet:', err);
-      setError('Failed to delete sheet');
+      console.error('Error deleting sheet(s):', err);
+      setError('Failed to delete sheet(s)');
     } finally {
       setDeleting(false);
       setDeleteModalOpen(false);
-      setPendingDeleteSheet(null);
+      setPendingDeleteTarget(null);
+      setPendingDeleteIds([]);
     }
   };
 
-  const handleDisconnectAccountClick = email => {
+  // --- Disconnect account handlers ---
+  const handleDisconnectAccountClick = useCallback(email => {
     setPendingDisconnectEmail(email);
+    setPendingDisconnectEmails([]);
     setDisconnectModalOpen(true);
-  };
+  }, []);
+
+  const handleBulkDisconnectClick = useCallback(emails => {
+    setPendingDisconnectEmail(null);
+    setPendingDisconnectEmails(emails);
+    setDisconnectModalOpen(true);
+  }, []);
 
   const handleDisconnectAccountConfirm = async () => {
-    if (!pendingDisconnectEmail) return;
+    const isBulk = pendingDisconnectEmails.length > 0;
     try {
       setDisconnecting(true);
-      const response = await fetch('/api/google/disconnect-account', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({userId: USER_ID, googleEmail: pendingDisconnectEmail})
-      });
 
-      const result = await response.json();
-
-      if (result.success) {
-        setSuccessMessage(
-          `Disconnected ${pendingDisconnectEmail}. ${result.data.deletedSheets} sheet(s) removed.`
-        );
-        checkAuth();
-        await refreshData({resetPage: true});
+      if (isBulk) {
+        const response = await fetch('/api/google/bulk-disconnect-accounts', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({userId: USER_ID, emails: pendingDisconnectEmails})
+        });
+        const result = await response.json();
+        if (result.success) {
+          setSuccessMessage(
+            `Disconnected ${result.disconnected} account(s). ${result.totalDeletedSheets} sheet(s) removed.`
+          );
+          checkAuth();
+          await refreshData({resetPage: true});
+        } else {
+          setError(result.error || 'Failed to disconnect accounts');
+        }
       } else {
-        setError(result.error || 'Failed to disconnect account');
+        const response = await fetch('/api/google/disconnect-account', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({userId: USER_ID, googleEmail: pendingDisconnectEmail})
+        });
+        const result = await response.json();
+        if (result.success) {
+          setSuccessMessage(
+            `Disconnected ${pendingDisconnectEmail}. ${result.data.deletedSheets} sheet(s) removed.`
+          );
+          checkAuth();
+          await refreshData({resetPage: true});
+        } else {
+          setError(result.error || 'Failed to disconnect account');
+        }
       }
     } catch (err) {
-      console.error('Error disconnecting account:', err);
-      setError('Failed to disconnect account');
+      console.error('Error disconnecting account(s):', err);
+      setError('Failed to disconnect account(s)');
     } finally {
       setDisconnecting(false);
       setDisconnectModalOpen(false);
       setPendingDisconnectEmail(null);
+      setPendingDisconnectEmails([]);
     }
   };
 
@@ -488,6 +702,15 @@ export default function Sheets() {
 
   const displayError = error || authError || pickerError;
 
+  const deleteModalMessage = pendingDeleteTarget
+    ? `Are you sure you want to disconnect "${pendingDeleteTarget.name}"? This will remove the sheet connection but won't delete any data.`
+    : `Are you sure you want to disconnect ${pendingDeleteIds.length} sheet(s)? This will remove the sheet connections but won't delete any data.`;
+
+  const disconnectModalMessage =
+    pendingDisconnectEmails.length > 0
+      ? `Are you sure you want to disconnect ${pendingDisconnectEmails.length} account(s)? This will remove the accounts and all sheets connected through them.`
+      : `Are you sure you want to disconnect ${pendingDisconnectEmail}? This will remove the account and all sheets connected through it.`;
+
   if (authLoading) {
     return (
       <Page title="Google Sheets">
@@ -510,7 +733,7 @@ export default function Sheets() {
         authenticated
           ? {
               content: 'Connect new account',
-              onAction: handleAddFromAnotherAccount,
+              onAction: handleConnectNewAccount,
               loading: addingSheet || pickerLoading
             }
           : undefined
@@ -560,36 +783,57 @@ export default function Sheets() {
           </Layout.Section>
         )}
 
-        {authenticated && accounts.length > 0 && (
+        {authenticated && (
           <Layout.Section>
-            <ConnectedAccounts
-              accounts={accounts}
-              pagination={accountsPagination}
-              onAddSheet={handleAddSheetFromAccount}
-              onDisconnect={handleDisconnectAccountClick}
-              onPageChange={page => fetchAccounts(page)}
-              loading={addingSheet || pickerLoading}
-            />
+            <Card padding="0">
+              <IndexFilters
+                tabs={indexFiltersTabs}
+                selected={selectedTab}
+                onSelect={handleTabChange}
+                queryValue={currentSearchValue}
+                queryPlaceholder={currentSearchPlaceholder}
+                onQueryChange={currentSearchChange}
+                onQueryClear={currentSearchClear}
+                filters={[]}
+                appliedFilters={[]}
+                onClearAll={currentSearchClear}
+                mode={mode}
+                setMode={setMode}
+                cancelAction={{
+                  onAction: () => {
+                    currentSearchClear();
+                    setMode('DEFAULT');
+                  }
+                }}
+                canCreateNewView={false}
+              />
+              {selectedTab === 0 ? (
+                <AccountsContent
+                  accounts={accounts}
+                  pagination={accountsPagination}
+                  onAddSheet={handleAddSheetFromAccount}
+                  onDisconnect={handleDisconnectAccountClick}
+                  onBulkDisconnect={handleBulkDisconnectClick}
+                  onPageChange={page => fetchAccounts(page, activeAccountSearch)}
+                  loading={addingSheet || pickerLoading}
+                  searchValue={accountSearchValue}
+                />
+              ) : (
+                <SheetsContent
+                  sheets={sheets}
+                  pagination={sheetsPagination}
+                  loading={loading}
+                  onDelete={handleDeleteClick}
+                  onBulkDelete={handleBulkDeleteClick}
+                  onPageChange={page => fetchSheets(page, activeSheetSearch)}
+                  authenticated={authenticated}
+                  onAuth={handleConnectAccount}
+                  searchValue={sheetSearchValue}
+                />
+              )}
+            </Card>
           </Layout.Section>
         )}
-
-        {authenticated && accounts.length > 0 && (
-          <Layout.Section>
-            <Divider />
-          </Layout.Section>
-        )}
-
-        <Layout.Section>
-          <ConnectedSheets
-            sheets={sheets}
-            pagination={sheetsPagination}
-            loading={loading}
-            onDelete={handleDeleteClick}
-            onPageChange={page => fetchSheets(page)}
-            authenticated={authenticated}
-            onAuth={handleConnectAccount}
-          />
-        </Layout.Section>
       </Layout>
 
       {/* Delete sheet confirmation modal */}
@@ -597,9 +841,10 @@ export default function Sheets() {
         open={deleteModalOpen}
         onClose={() => {
           setDeleteModalOpen(false);
-          setPendingDeleteSheet(null);
+          setPendingDeleteTarget(null);
+          setPendingDeleteIds([]);
         }}
-        title="Disconnect sheet"
+        title="Disconnect sheet(s)"
         primaryAction={{
           content: 'Disconnect',
           destructive: true,
@@ -611,19 +856,14 @@ export default function Sheets() {
             content: 'Cancel',
             onAction: () => {
               setDeleteModalOpen(false);
-              setPendingDeleteSheet(null);
+              setPendingDeleteTarget(null);
+              setPendingDeleteIds([]);
             }
           }
         ]}
       >
         <Modal.Section>
-          <Text as="p">
-            Are you sure you want to disconnect{' '}
-            <Text as="span" fontWeight="semibold">
-              {pendingDeleteSheet?.name}
-            </Text>
-            ? This will remove the sheet connection but won&apos;t delete any data.
-          </Text>
+          <Text as="p">{deleteModalMessage}</Text>
         </Modal.Section>
       </Modal>
 
@@ -633,8 +873,9 @@ export default function Sheets() {
         onClose={() => {
           setDisconnectModalOpen(false);
           setPendingDisconnectEmail(null);
+          setPendingDisconnectEmails([]);
         }}
-        title="Disconnect account"
+        title="Disconnect account(s)"
         primaryAction={{
           content: 'Disconnect',
           destructive: true,
@@ -647,18 +888,13 @@ export default function Sheets() {
             onAction: () => {
               setDisconnectModalOpen(false);
               setPendingDisconnectEmail(null);
+              setPendingDisconnectEmails([]);
             }
           }
         ]}
       >
         <Modal.Section>
-          <Text as="p">
-            Are you sure you want to disconnect{' '}
-            <Text as="span" fontWeight="semibold">
-              {pendingDisconnectEmail}
-            </Text>
-            ? This will remove the account and all sheets connected through it.
-          </Text>
+          <Text as="p">{disconnectModalMessage}</Text>
         </Modal.Section>
       </Modal>
     </Page>

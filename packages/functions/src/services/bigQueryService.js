@@ -19,3 +19,8 @@ export const insertBigQueryTable = async (data, tableName) => {
     throw error;
   }
 };
+
+export const queryBigQuery = async (query, params = {}) => {
+  const [rows] = await bigQueryClient.query({query, params});
+  return rows;
+};

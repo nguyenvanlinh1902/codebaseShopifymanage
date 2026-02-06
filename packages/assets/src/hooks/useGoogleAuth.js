@@ -54,9 +54,8 @@ export function useGoogleAuth() {
           `width=${width},height=${height},left=${left},top=${top},scrollbars=yes`
         );
 
-        // Listen for message from popup
+        // Listen for message from popup (no strict origin check — popup may be on a different origin)
         const handleMessage = event => {
-          if (event.origin !== window.location.origin) return;
           if (event.data?.type === 'google-auth-callback') {
             window.removeEventListener('message', handleMessage);
             clearInterval(checkClosed);
@@ -125,7 +124,6 @@ export function useGoogleAuth() {
         );
 
         const handleMessage = event => {
-          if (event.origin !== window.location.origin) return;
           if (event.data?.type === 'google-auth-temp') {
             window.removeEventListener('message', handleMessage);
             clearInterval(checkClosed);

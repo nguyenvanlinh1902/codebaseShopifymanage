@@ -10,6 +10,7 @@ router.get('/preview', sheetController.previewSheetData);
 router.get('/', sheetController.getSheets);
 router.get('/:sheetId/tabs', sheetController.getSheetTabs);
 router.get('/:sheetId', sheetController.getSheet);
+router.post('/bulk-delete', sheetController.bulkDeleteSheets);
 router.delete('/:sheetId', sheetController.deleteSheet);
 
 export default router;

@@ -1,4 +1,3 @@
-import {PubSub} from '@google-cloud/pubsub';
 import {TrackingHistoryRepository} from '../repositories/trackingHistoryRepository.js';
 import {StoreRepository} from '../repositories/storeRepository.js';
 import {ShopifyService} from '../services/shopifyService.js';
@@ -8,8 +7,8 @@ import {
   mapToTrackingData,
   generateTrackingTemplate
 } from '../helpers/excelParser.js';
+import {getOrCreateTopic, publishMessage} from '../helpers/pubsubHelper.js';
 
-const pubsub = new PubSub();
 const trackingHistoryRepo = new TrackingHistoryRepository();
 const storeRepo = new StoreRepository();
 
@@ -103,7 +102,8 @@ export async function uploadAndImport(req, res) {
     });
 
     // Task 6: Publish tracking records to PubSub queue for background processing
-    const topic = pubsub.topic(TRACKING_IMPORT_TOPIC);
+    // Auto-creates topic if it doesn't exist (useful for local emulator)
+    await getOrCreateTopic(TRACKING_IMPORT_TOPIC);
 
     // Publish each record as a separate message for parallel processing
     const publishPromises = validRecords.map((record, index) => {
@@ -117,9 +117,7 @@ export async function uploadAndImport(req, res) {
         totalRecords: validRecords.length
       };
 
-      return topic.publishMessage({
-        json: message
-      });
+      return publishMessage(TRACKING_IMPORT_TOPIC, message);
     });
 
     await Promise.all(publishPromises);

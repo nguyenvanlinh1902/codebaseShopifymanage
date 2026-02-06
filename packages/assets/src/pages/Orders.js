@@ -33,6 +33,9 @@ export default function Orders() {
   const [syncConfigs, setSyncConfigs] = useState([]);
   const [webhookInstructions, setWebhookInstructions] = useState(null);
   const [showWebhookModal, setShowWebhookModal] = useState(false);
+  const [showWebhookListModal, setShowWebhookListModal] = useState(false);
+  const [webhookList, setWebhookList] = useState(null);
+  const [loadingWebhookList, setLoadingWebhookList] = useState(false);
   const [showInstructionsOpen, setShowInstructionsOpen] = useState(false);
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
@@ -240,15 +243,15 @@ export default function Orders() {
       const result = await response.json();
 
       if (result.success) {
-        setSuccessMessage('Webhooks registered successfully! Orders will now sync automatically.');
+        setSuccessMessage('Webhook registered successfully! Orders will now sync automatically.');
         fetchWebhookInstructions();
         setShowWebhookModal(false);
       } else {
-        setError(result.error || 'Failed to register webhooks');
+        setError(result.error || 'Failed to register webhook');
       }
     } catch (err) {
-      console.error('Error registering webhooks:', err);
-      setError('Failed to register webhooks');
+      console.error('Error registering webhook:', err);
+      setError('Failed to register webhook');
     }
   };
 
@@ -383,42 +386,60 @@ export default function Orders() {
         <Layout.Section oneThird>
           <Card sectioned>
             <Text variant="headingMd" as="h2">
-              Webhook Setup
+              Webhook URL
             </Text>
 
             <div style={{marginTop: '16px'}}>
               {!selectedStore ? (
                 <Text variant="bodySm" as="p" tone="subdued">
-                  Select a store to view webhook instructions
+                  Select a store to view webhook URL
                 </Text>
-              ) : (
+              ) : webhookInstructions ? (
                 <div>
-                  <Banner>
-                    <p>
-                      <strong>Real-time sync:</strong> Setup webhooks to automatically sync new and
-                      updated orders.
-                    </p>
-                  </Banner>
+                  <div style={{marginBottom: '12px'}}>
+                    <Text variant="bodySm" as="p" tone="subdued">
+                      Copy this URL and paste it in your Shopify webhook settings:
+                    </Text>
+                  </div>
 
                   <div
                     style={{
-                      marginTop: '16px',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '8px'
+                      padding: '12px',
+                      background: '#f6f6f7',
+                      borderRadius: '4px',
+                      wordBreak: 'break-all',
+                      fontFamily: 'monospace',
+                      fontSize: '12px',
+                      marginBottom: '12px'
                     }}
                   >
-                    <Button fullWidth onClick={() => setShowWebhookModal(true)}>
-                      View Webhook Instructions
+                    {webhookInstructions.webhookUrl}
+                  </div>
+
+                  <div style={{display: 'flex', flexDirection: 'column', gap: '8px'}}>
+                    <Button primary fullWidth onClick={handleRegisterWebhooks}>
+                      Auto-Register Webhook
                     </Button>
 
-                    {webhookInstructions?.registeredWebhooks?.length > 0 && (
-                      <Banner tone="success">
-                        ✅ {webhookInstructions.registeredWebhooks.length} webhook(s) registered
-                      </Banner>
+                    {webhookInstructions.registeredWebhooks?.length > 0 ? (
+                      <Banner tone="success">✅ Webhook registered successfully</Banner>
+                    ) : (
+                      <Banner tone="info">⚠️ Webhook not registered yet</Banner>
                     )}
+
+                    <Button plain fullWidth onClick={() => setShowWebhookModal(true)}>
+                      View Full Instructions
+                    </Button>
+
+                    <Button plain fullWidth onClick={fetchWebhookList} loading={loadingWebhookList}>
+                      View All Webhooks
+                    </Button>
                   </div>
                 </div>
+              ) : (
+                <Text variant="bodySm" as="p" tone="subdued">
+                  Loading webhook information...
+                </Text>
               )}
             </div>
           </Card>
@@ -508,7 +529,7 @@ export default function Orders() {
         onClose={() => setShowWebhookModal(false)}
         title="Webhook Setup Instructions"
         primaryAction={{
-          content: 'Auto-Register Webhooks',
+          content: 'Auto-Register Webhook',
           onAction: handleRegisterWebhooks
         }}
         secondaryActions={[
@@ -620,6 +641,98 @@ export default function Orders() {
                       <List.Item key={idx}>{note}</List.Item>
                     ))}
                   </List>
+                </Banner>
+              </div>
+            </div>
+          )}
+        </Modal.Section>
+      </Modal>
+
+      {/* Webhook List Modal */}
+      <Modal
+        large
+        open={showWebhookListModal}
+        onClose={() => setShowWebhookListModal(false)}
+        title="Webhook List"
+        secondaryActions={[
+          {
+            content: 'Refresh',
+            onAction: fetchWebhookList
+          },
+          {
+            content: 'Close',
+            onAction: () => setShowWebhookListModal(false)
+          }
+        ]}
+      >
+        <Modal.Section>
+          {webhookList && (
+            <div>
+              <div style={{marginBottom: '16px'}}>
+                <Text variant="headingMd" as="h3">
+                  Store: {webhookList.storeName}
+                </Text>
+                <Text variant="bodySm" as="p" tone="subdued">
+                  {webhookList.shopDomain}.myshopify.com
+                </Text>
+              </div>
+
+              {/* Shopify Webhooks */}
+              <div style={{marginTop: '24px'}}>
+                <Text variant="headingMd" as="h3">
+                  Webhooks from Shopify ({webhookList.shopify?.length || 0})
+                </Text>
+                {webhookList.shopify && webhookList.shopify.length > 0 ? (
+                  <div style={{marginTop: '12px'}}>
+                    <DataTable
+                      columnContentTypes={['text', 'text', 'text', 'text']}
+                      headings={['Topic', 'Address', 'Format', 'API Version']}
+                      rows={webhookList.shopify.map(webhook => [
+                        webhook.topic || 'N/A',
+                        webhook.address || 'N/A',
+                        webhook.format || 'JSON',
+                        webhook.api_version || 'N/A'
+                      ])}
+                    />
+                  </div>
+                ) : (
+                  <Banner tone="warning" style={{marginTop: '12px'}}>
+                    No webhooks registered on Shopify
+                  </Banner>
+                )}
+              </div>
+
+              {/* Local Webhooks */}
+              <div style={{marginTop: '24px'}}>
+                <Text variant="headingMd" as="h3">
+                  Locally Registered Webhooks ({webhookList.local?.length || 0})
+                </Text>
+                {webhookList.local && webhookList.local.length > 0 ? (
+                  <div style={{marginTop: '12px'}}>
+                    <DataTable
+                      columnContentTypes={['text', 'text', 'text']}
+                      headings={['Topic', 'Shopify ID', 'Registered At']}
+                      rows={webhookList.local.map(webhook => [
+                        webhook.topic || 'N/A',
+                        webhook.shopifyWebhookId || 'N/A',
+                        webhook.createdAt ? new Date(webhook.createdAt).toLocaleString() : 'N/A'
+                      ])}
+                    />
+                  </div>
+                ) : (
+                  <Banner tone="info" style={{marginTop: '12px'}}>
+                    No locally tracked webhooks
+                  </Banner>
+                )}
+              </div>
+
+              <div style={{marginTop: '24px'}}>
+                <Banner>
+                  <p>
+                    <strong>Note:</strong> Shopify webhooks show all webhooks registered on your
+                    Shopify store via any method (admin panel, API, etc.). Local webhooks show only
+                    those registered through this app.
+                  </p>
                 </Banner>
               </div>
             </div>

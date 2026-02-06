@@ -1,6 +1,7 @@
 import express from 'express';
 import {onRequest} from 'firebase-functions/v2/https';
 import {onMessagePublished} from 'firebase-functions/v2/pubsub';
+import {onSchedule} from 'firebase-functions/v2/scheduler';
 import {initializeApp} from 'firebase-admin/app';
 import {injectUserId} from './middleware/injectUserId.js';
 
@@ -99,5 +100,25 @@ export const processTrackingImportQueue = onMessagePublished(
   },
   async event => {
     await trackingImportController.processTrackingImport(event.data);
+  }
+);
+
+/**
+ * Scheduled Function (CronJob): Process Product Queue
+ * Runs every minute to process pending products from the queue
+ */
+export const productQueueCron = onSchedule(
+  {
+    schedule: 'every 1 minutes',
+    timeZone: 'Asia/Ho_Chi_Minh',
+    memory: '512MiB',
+    timeoutSeconds: 540,
+    retryConfig: {
+      retryCount: 3,
+      maxRetrySeconds: 600
+    }
+  },
+  async () => {
+    await productImportController.processProductQueue();
   }
 );

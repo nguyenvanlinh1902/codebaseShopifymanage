@@ -6,7 +6,9 @@
     "packages/*"
   ],
   "scripts": {
+    "setup:pubsub": "node scripts/setup-pubsub.js",
     "deploy": "./node_modules/.bin/firebase deploy",
+    "deploy:full": "yarn setup:pubsub && yarn deploy",
     "serve": "./node_modules/.bin/firebase serve",
     "logs": "./node_modules/.bin/firebase functions:log",
     "emulators": "GOOGLE_APPLICATION_CREDENTIALS=serviceAccount.development.json NODE_ENV=development ./node_modules/.bin/firebase emulators:start --only hosting,functions",

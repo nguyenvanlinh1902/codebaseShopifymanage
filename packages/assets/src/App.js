@@ -9,7 +9,8 @@ import {
   NoteIcon,
   ProductIcon,
   OrderIcon,
-  DeliveryIcon
+  DeliveryIcon,
+  ChartVerticalFilledIcon
 } from '@shopify/polaris-icons';
 
 import Dashboard from './loadables/Dashboard';
@@ -20,6 +21,7 @@ import Sheets from './loadables/Sheets';
 import Products from './loadables/Products';
 import Orders from './loadables/Orders';
 import Tracking from './loadables/Tracking';
+import Analytics from './loadables/Analytics';
 import NotFound from './loadables/NotFound';
 
 /**
@@ -77,6 +79,11 @@ function AppFrame() {
             label: 'Tracking',
             icon: DeliveryIcon,
             onClick: () => navigate('/tracking')
+          },
+          {
+            label: 'Analytics',
+            icon: ChartVerticalFilledIcon,
+            onClick: () => navigate('/analytics')
           }
         ]}
       />
@@ -93,6 +100,7 @@ function AppFrame() {
         <Route path="/products" element={<Products />} />
         <Route path="/orders" element={<Orders />} />
         <Route path="/tracking" element={<Tracking />} />
+        <Route path="/analytics" element={<Analytics />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </Frame>

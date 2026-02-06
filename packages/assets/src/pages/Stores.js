@@ -83,8 +83,10 @@ export default function Stores() {
       const response = await fetch(`/api/stores?${params}`);
       const result = await response.json();
       if (result.success) {
-        setStores(result.data);
-        setPagination(result.pagination);
+        setStores(result.data || []);
+        if (result.pagination) {
+          setPagination(result.pagination);
+        }
       }
     } catch (err) {
       console.error('Error fetching stores:', err);
@@ -358,7 +360,7 @@ export default function Stores() {
     : `Are you sure you want to delete ${selectedResources.length} store(s)? This will also remove all associated webhooks and sync configurations.`;
 
   const resourceName = {singular: 'store', plural: 'stores'};
-  const {page, total, totalPages} = pagination;
+  const {page = 1, total = 0, totalPages = 0} = pagination || {};
 
   const rowMarkup = stores.map((store, index) => (
     <IndexTable.Row

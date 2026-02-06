@@ -13,6 +13,7 @@ import sheetRoutes from './routes/sheetRoutes.js';
 import productRoutes from './routes/productRoutes.js';
 import orderRoutes from './routes/orderRoutes.js';
 import trackingRoutes from './routes/trackingRoutes.js';
+import analyticsRoutes from './routes/analyticsRoutes.js';
 
 // PubSub controllers
 import * as productImportController from './controllers/productImportController.js';
@@ -51,6 +52,7 @@ app.use('/api/sheets', sheetRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/tracking', trackingRoutes);
+app.use('/api/analytics', analyticsRoutes);
 
 // 404 handler
 app.use((req, res) => {

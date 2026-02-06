@@ -224,6 +224,26 @@ export default function Orders() {
     }
   };
 
+  const fetchWebhookList = async () => {
+    if (!selectedStore) return;
+    try {
+      setLoadingWebhookList(true);
+      const response = await fetch(`/api/orders/webhook-list?storeId=${selectedStore}`);
+      const result = await response.json();
+      if (result.success) {
+        setWebhookList(result.data);
+        setShowWebhookListModal(true);
+      } else {
+        setError(result.error || 'Failed to fetch webhook list');
+      }
+    } catch (err) {
+      console.error('Error fetching webhook list:', err);
+      setError('Failed to fetch webhook list');
+    } finally {
+      setLoadingWebhookList(false);
+    }
+  };
+
   const handleRegisterWebhooks = async () => {
     if (!selectedStore || !webhookInstructions) {
       setError('Please select a store first');

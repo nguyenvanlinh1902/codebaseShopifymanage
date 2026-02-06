@@ -1,4 +1,4 @@
-import React, {useState, useEffect, useCallback} from 'react';
+import React, {useState, useEffect, useCallback, useRef} from 'react';
 import PropTypes from 'prop-types';
 import {useLocation} from 'react-router-dom';
 import {
@@ -248,6 +248,17 @@ export default function Sheets() {
   const [pendingDisconnectEmail, setPendingDisconnectEmail] = useState(null);
   const [disconnecting, setDisconnecting] = useState(false);
 
+  // Track authenticated state to refetch data when user connects
+  const wasAuthenticated = useRef(authenticated);
+  useEffect(() => {
+    if (authenticated && !wasAuthenticated.current) {
+      setSuccessMessage('Google account connected successfully!');
+      fetchSheets(1);
+      fetchAccounts(1);
+    }
+    wasAuthenticated.current = authenticated;
+  }, [authenticated]);
+
   // Handle redirect from OAuth callback
   useEffect(() => {
     if (location.state?.authSuccess) {
@@ -346,11 +357,15 @@ export default function Sheets() {
   const handleConnectAccount = useCallback(async () => {
     try {
       await startAuth();
-      await refreshData({resetPage: true});
     } catch (err) {
       // user cancelled or auth failed — already handled by useGoogleAuth
     }
-  }, [startAuth, refreshData]);
+    // Always re-check auth and refetch after popup closes
+    // (covers case where popup closed before postMessage was received)
+    await checkAuth();
+    fetchSheets(1);
+    fetchAccounts(1);
+  }, [startAuth, checkAuth]);
 
   const handleAddFromAnotherAccount = useCallback(async () => {
     try {

@@ -18,6 +18,14 @@ import trackingRoutes from './routes/trackingRoutes.js';
 import * as productImportController from './controllers/productImportController.js';
 import * as trackingImportController from './controllers/trackingImportController.js';
 
+// BigQuery Firestore triggers
+import {onDocumentWritten} from 'firebase-functions/v2/firestore';
+import {
+  onTriggerStores,
+  onTriggerGoogleAuth,
+  onTriggerGoogleSheets
+} from './handlers/bigQueryTriggers.js';
+
 // Initialize Firebase Admin
 initializeApp();
 
@@ -121,4 +129,22 @@ export const productQueueCron = onSchedule(
   async () => {
     await productImportController.processProductQueue();
   }
+);
+
+/**
+ * BigQuery Firestore Triggers
+ */
+export const onWriteStores = onDocumentWritten(
+  {document: 'shopify_stores/{docId}', memory: '256MiB'},
+  onTriggerStores
+);
+
+export const onWriteGoogleAuth = onDocumentWritten(
+  {document: 'google_auth/{docId}', memory: '256MiB'},
+  onTriggerGoogleAuth
+);
+
+export const onWriteGoogleSheets = onDocumentWritten(
+  {document: 'google_sheets/{docId}', memory: '256MiB'},
+  onTriggerGoogleSheets
 );

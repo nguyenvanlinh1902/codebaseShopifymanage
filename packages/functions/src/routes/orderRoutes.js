@@ -15,6 +15,7 @@ router.post('/manual-sync', orderSyncController.manualSync);
 router.get('/sync-configs', orderSyncController.getSyncConfigs);
 router.post('/register-webhook', orderSyncController.registerWebhook);
 router.get('/webhook-instructions', orderSyncController.getWebhookInstructions);
+router.get('/webhook-list', orderSyncController.getWebhookList);
 router.get('/sync-stats', orderSyncController.getSyncStats);
 router.post('/resync-failed', orderSyncController.resyncFailedOrders);
 

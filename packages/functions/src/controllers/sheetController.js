@@ -1,7 +1,9 @@
 import {SheetRepository} from '../repositories/sheetRepository.js';
 import {GoogleSheetsService} from '../services/googleSheetsService.js';
+import {GoogleAuthRepository} from '../repositories/googleAuthRepository.js';
 
 const sheetRepo = new SheetRepository();
+const authRepo = new GoogleAuthRepository();
 
 /**
  * Sheet Controller
@@ -126,7 +128,7 @@ export async function connectSheet(req, res) {
  */
 export async function getSheets(req, res) {
   try {
-    const {userId} = req.query;
+    const {userId, page, limit} = req.query;
 
     if (!userId) {
       return res.status(400).json({
@@ -135,17 +137,28 @@ export async function getSheets(req, res) {
       });
     }
 
-    const sheets = await sheetRepo.getByUserId(userId);
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const limitNum = Math.min(50, Math.max(1, parseInt(limit) || 5));
 
-    // Remove credentials
-    const sanitizedSheets = sheets.map(sheet => {
-      const {credentials, ...sheetData} = sheet;
-      return sheetData;
+    const {sheets, total} = await sheetRepo.getByUserIdPaginated(userId, {
+      page: pageNum,
+      limit: limitNum
     });
+
+    // Remove sensitive/legacy fields
+    const sanitizedSheets = sheets.map(
+      ({credentials, refreshToken, accessToken, tokenExpiresAt, ...sheetData}) => sheetData
+    );
 
     return res.json({
       success: true,
-      data: sanitizedSheets
+      data: sanitizedSheets,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        totalPages: Math.ceil(total / limitNum)
+      }
     });
   } catch (error) {
     console.error('Get sheets error:', error);
@@ -173,7 +186,7 @@ export async function getSheet(req, res) {
     }
 
     // Remove credentials
-    const {credentials, ...sheetData} = sheet;
+    const {...sheetData} = sheet;
 
     return res.json({
       success: true,
@@ -242,8 +255,12 @@ export async function previewSheetData(req, res) {
       });
     }
 
-    // Initialize Google Sheets service
-    const sheetsService = new GoogleSheetsService(sheet.credentials);
+    // Initialize Google Sheets service (3-tier fallback)
+    const sheetsService = sheet.credentials
+      ? new GoogleSheetsService(sheet.credentials)
+      : sheet.refreshToken
+      ? await GoogleSheetsService.createFromRefreshToken(sheet.refreshToken)
+      : await GoogleSheetsService.createForUser(sheet.userId);
 
     // Read data
     const rows = await sheetsService.readSheet(sheet.spreadsheetId, range);
@@ -257,6 +274,119 @@ export async function previewSheetData(req, res) {
     });
   } catch (error) {
     console.error('Preview sheet data error:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+}
+
+/**
+ * Get live tabs from a connected spreadsheet
+ */
+export async function getSheetTabs(req, res) {
+  try {
+    const {sheetId} = req.params;
+
+    const sheet = await sheetRepo.getById(sheetId);
+
+    if (!sheet) {
+      return res.status(404).json({
+        success: false,
+        error: 'Sheet not found'
+      });
+    }
+
+    // Initialize Google Sheets service (3-tier fallback)
+    const sheetsService = sheet.credentials
+      ? new GoogleSheetsService(sheet.credentials)
+      : sheet.refreshToken
+      ? await GoogleSheetsService.createFromRefreshToken(sheet.refreshToken)
+      : await GoogleSheetsService.createForUser(sheet.userId);
+
+    const spreadsheetInfo = await sheetsService.getSpreadsheetInfo(sheet.spreadsheetId);
+
+    return res.json({
+      success: true,
+      data: spreadsheetInfo.sheets
+    });
+  } catch (error) {
+    console.error('Get sheet tabs error:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+}
+
+/**
+ * Add sheet from Google Picker selection (new flow)
+ */
+export async function addSheetFromPicker(req, res) {
+  try {
+    const {userId, spreadsheetId, name, refreshToken, googleEmail} = req.body;
+
+    if (!userId || !spreadsheetId) {
+      return res.status(400).json({
+        success: false,
+        error: 'userId and spreadsheetId are required'
+      });
+    }
+
+    // Check if already connected
+    const existing = await sheetRepo.getBySpreadsheetId(spreadsheetId);
+    if (existing) {
+      return res.status(400).json({
+        success: false,
+        error: 'This sheet is already connected'
+      });
+    }
+
+    // Determine which token to use and save
+    let tokenToSave = refreshToken;
+    let emailToSave = googleEmail;
+
+    // Fallback 1: centralized auth (primary account)
+    if (!tokenToSave) {
+      const authRecord = await authRepo.getByUserId(userId);
+      if (authRecord && (!emailToSave || authRecord.googleEmail === emailToSave)) {
+        tokenToSave = authRecord.refreshToken;
+        emailToSave = emailToSave || authRecord.googleEmail;
+      }
+    }
+
+    // Fallback 2: copy refreshToken from sibling sheet with same googleEmail
+    if (!tokenToSave && emailToSave) {
+      const userSheets = await sheetRepo.getByUserId(userId);
+      const donor = userSheets.find(s => s.googleEmail === emailToSave && s.refreshToken);
+      if (donor) tokenToSave = donor.refreshToken;
+    }
+
+    // Create service to verify access
+    const sheetsService = tokenToSave
+      ? await GoogleSheetsService.createFromRefreshToken(tokenToSave)
+      : await GoogleSheetsService.createForUser(userId);
+
+    const spreadsheetInfo = await sheetsService.getSpreadsheetInfo(spreadsheetId);
+
+    const sheet = await sheetRepo.create({
+      userId,
+      spreadsheetId,
+      name: name || spreadsheetInfo.title,
+      title: spreadsheetInfo.title,
+      sheets: spreadsheetInfo.sheets,
+      refreshToken: tokenToSave,
+      googleEmail: emailToSave || '',
+      status: 'active'
+    });
+
+    return res.json({
+      success: true,
+      message: 'Sheet connected successfully',
+      data: sheet
+    });
+  } catch (error) {
+    console.error('Add sheet from picker error:', error);
     return res.status(500).json({
       success: false,
       error: error.message

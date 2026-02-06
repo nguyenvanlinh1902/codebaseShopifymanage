@@ -18,8 +18,7 @@ import {
   Tabs,
   ChoiceList
 } from '@shopify/polaris';
-
-const USER_ID = 'demo-user'; // TODO: Replace with real auth
+import {USER_ID} from '../config/user';
 
 /**
  * Products Page - Upload, History, and Products List
@@ -284,7 +283,7 @@ export default function Products() {
     return <Badge tone={toneMap[status] || 'info'}>{status}</Badge>;
   };
 
-  const historyRows = importHistory.map(imp => [
+  const historyRows = importHistory.map((imp, index) => [
     imp.fileName,
     stores.find(s => s.id === imp.storeId)?.name || imp.storeName,
     getStatusBadge(imp.status),
@@ -367,8 +366,8 @@ export default function Products() {
                     {selectedStores.length > 0 && (
                       <Banner tone="info">
                         <Text as="p">
-                          <strong>{selectedStores.length} store(s) selected:</strong> The CSV will be imported to all
-                          selected stores.
+                          <strong>{selectedStores.length} store(s) selected:</strong> The CSV will
+                          be imported to all selected stores.
                         </Text>
                       </Banner>
                     )}
@@ -390,14 +389,15 @@ export default function Products() {
                         loading={uploading}
                         disabled={selectedStores.length === 0 || !file}
                       >
-                        Upload & Import to {selectedStores.length} Store{selectedStores.length !== 1 ? 's' : ''}
+                        Upload & Import to {selectedStores.length} Store
+                        {selectedStores.length !== 1 ? 's' : ''}
                       </Button>
                     </InlineStack>
 
                     <Banner tone="info">
                       <Text as="p">
-                        <strong>CSV Format:</strong> Download the template to see the required columns. The CSV
-                        must include: title, price, sku, and other product details.
+                        <strong>CSV Format:</strong> Download the template to see the required
+                        columns. The CSV must include: title, price, sku, and other product details.
                       </Text>
                     </Banner>
 
@@ -452,9 +452,9 @@ export default function Products() {
                             </BlockStack>
                           </InlineStack>
                           <Text as="p" variant="bodySm" tone="subdued">
-                            CronJob runs automatically every minute to process up to 50 products per batch. You can
-                            also process the queue immediately by clicking "Process Now". Stats update automatically
-                            every 30 seconds.
+                            CronJob runs automatically every minute to process up to 50 products per
+                            batch. You can also process the queue immediately by clicking "Process
+                            Now". Stats update automatically every 30 seconds.
                           </Text>
                         </BlockStack>
                       </Card>
@@ -502,8 +502,24 @@ export default function Products() {
                       </EmptyState>
                     ) : (
                       <DataTable
-                        columnContentTypes={['text', 'text', 'text', 'text', 'text', 'text', 'text']}
-                        headings={['File', 'Store', 'Status', 'Progress', 'Results', 'Date', 'Actions']}
+                        columnContentTypes={[
+                          'text',
+                          'text',
+                          'text',
+                          'text',
+                          'text',
+                          'text',
+                          'text'
+                        ]}
+                        headings={[
+                          'File',
+                          'Store',
+                          'Status',
+                          'Progress',
+                          'Results',
+                          'Date',
+                          'Actions'
+                        ]}
                         rows={historyRows}
                       />
                     )}

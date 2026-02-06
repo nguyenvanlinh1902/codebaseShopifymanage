@@ -1,7 +1,12 @@
 import {TrackingHistoryRepository} from '../repositories/trackingHistoryRepository.js';
 import {StoreRepository} from '../repositories/storeRepository.js';
 import {ShopifyService} from '../services/shopifyService.js';
-import {parseTrackingExcel, validateTrackingRecord, mapToTrackingData, generateTrackingTemplate} from '../helpers/excelParser.js';
+import {
+  parseTrackingExcel,
+  validateTrackingRecord,
+  mapToTrackingData,
+  generateTrackingTemplate
+} from '../helpers/excelParser.js';
 import {getOrCreateTopic, publishMessage} from '../helpers/pubsubHelper.js';
 
 const trackingHistoryRepo = new TrackingHistoryRepository();
@@ -210,7 +215,10 @@ export async function downloadTemplate(req, res) {
   try {
     const template = generateTrackingTemplate();
 
-    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    );
     res.setHeader('Content-Disposition', 'attachment; filename="tracking-import-template.xlsx"');
     return res.send(template);
   } catch (error) {
@@ -229,9 +237,7 @@ export async function downloadTemplate(req, res) {
 export async function processTrackingImport(message) {
   try {
     const data = message.json;
-    const {importId, storeId, shopDomain, accessToken, trackingData, recordIndex, totalRecords} = data;
-
-    console.log(`Processing tracking record ${recordIndex + 1}/${totalRecords} for import ${importId}`);
+    const {importId, shopDomain, accessToken, trackingData, totalRecords} = data;
 
     // Create Shopify service
     const shopifyService = new ShopifyService({
@@ -251,14 +257,11 @@ export async function processTrackingImport(message) {
       }
 
       // Update order with tracking
-      const result = await shopifyService.addOrderTracking(
-        order.id,
-        {
-          trackingNumber,
-          trackingCompany,
-          trackingUrl
-        }
-      );
+      await shopifyService.addOrderTracking(order.id, {
+        trackingNumber,
+        trackingCompany,
+        trackingUrl
+      });
 
       // Update import progress (success)
       const importJob = await trackingHistoryRepo.getById(importId);
@@ -275,7 +278,6 @@ export async function processTrackingImport(message) {
         });
       }
 
-      console.log(`Successfully updated tracking for order ${orderNumber}`);
       message.ack();
     } catch (error) {
       console.error(`Failed to update tracking for order ${trackingData.orderNumber}:`, error);
@@ -306,7 +308,6 @@ export async function processTrackingImport(message) {
     }
   } catch (error) {
     console.error('Process tracking import error:', error);
-    // Nack the message to retry later
     message.nack();
   }
 }

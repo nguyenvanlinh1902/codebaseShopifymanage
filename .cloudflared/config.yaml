@@ -1,0 +1,7 @@
+tunnel: 9142c73a-f3ba-4f36-9a9a-69a884c1e9a4
+credentials-file: /Users/avada/Code/toolTrackingOrder/.cloudflared/9142c73a-f3ba-4f36-9a9a-69a884c1e9a4.json
+
+ingress:
+  - hostname: tool.thanhdd.online
+    service: http://localhost:5173
+  - service: http_status:404

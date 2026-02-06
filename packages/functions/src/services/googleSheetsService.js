@@ -1,5 +1,6 @@
 import {google} from 'googleapis';
-import {GOOGLE_SHEETS_CONFIG} from '../config/googleSheets.js';
+import {GOOGLE_SHEETS_CONFIG, GOOGLE_OAUTH_CONFIG} from '../config/googleSheets.js';
+import {GoogleAuthRepository} from '../repositories/googleAuthRepository.js';
 
 /**
  * Google Sheets Service
@@ -15,6 +16,45 @@ export class GoogleSheetsService {
   }
 
   /**
+   * Factory: create a service instance using centralized per-user auth
+   * googleapis auto-refreshes access_token using the stored refresh_token
+   */
+  static async createForUser(userId) {
+    const authRepo = new GoogleAuthRepository();
+    const authRecord = await authRepo.getByUserId(userId);
+
+    if (!authRecord) {
+      throw new Error('User not authenticated with Google. Please connect your Google account.');
+    }
+
+    const service = new GoogleSheetsService();
+    service.initializeAuth({
+      clientId: GOOGLE_OAUTH_CONFIG.clientId,
+      clientSecret: GOOGLE_OAUTH_CONFIG.clientSecret,
+      redirectUri: GOOGLE_OAUTH_CONFIG.redirectUri,
+      refreshToken: authRecord.refreshToken
+    });
+
+    return service;
+  }
+
+  /**
+   * Factory: create a service instance from a per-sheet refresh token
+   * googleapis auto-refreshes access_token when needed
+   */
+  static async createFromRefreshToken(refreshToken) {
+    const service = new GoogleSheetsService();
+    service.initializeAuth({
+      clientId: GOOGLE_OAUTH_CONFIG.clientId,
+      clientSecret: GOOGLE_OAUTH_CONFIG.clientSecret,
+      redirectUri: GOOGLE_OAUTH_CONFIG.redirectUri,
+      refreshToken
+    });
+
+    return service;
+  }
+
+  /**
    * Initialize Google Sheets API with OAuth2 credentials
    */
   initializeAuth(credentials) {
@@ -24,9 +64,8 @@ export class GoogleSheetsService {
       credentials.redirectUri
     );
 
-    if (credentials.accessToken) {
+    if (credentials.refreshToken) {
       this.auth.setCredentials({
-        access_token: credentials.accessToken,
         refresh_token: credentials.refreshToken
       });
     }
@@ -394,7 +433,10 @@ export class GoogleSheetsService {
         order.updatedAt
       ];
 
-      await this.appendSheet(spreadsheetId, `${sheetName}!A:AJ`, [row]);
+      // Find last row with data, then write at next row
+      const data = await this.readSheet(spreadsheetId, `${sheetName}!A:A`);
+      const nextRow = (data?.length || 0) + 1;
+      await this.writeSheet(spreadsheetId, `${sheetName}!A${nextRow}:AJ${nextRow}`, [row]);
 
       return {success: true};
     } catch (error) {
@@ -468,7 +510,6 @@ export class GoogleSheetsService {
 
       return {success: true};
     } catch (error) {
-      console.error('Error updating order:', error);
       throw new Error(`Failed to update order: ${error.message}`);
     }
   }

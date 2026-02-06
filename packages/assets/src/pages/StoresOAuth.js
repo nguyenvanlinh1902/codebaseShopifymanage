@@ -16,8 +16,7 @@ import {
   BlockStack,
   InlineStack
 } from '@shopify/polaris';
-
-const USER_ID = 'demo-user'; // TODO: Replace with real auth
+import {USER_ID} from '../config/user';
 
 /**
  * Stores Management Page with OAuth Flow
@@ -227,8 +226,10 @@ export default function StoresOAuth() {
     store.name,
     store.shopDomain,
     store.niche || '-',
-    <Badge tone={store.status === 'active' ? 'success' : 'warning'}>{store.status}</Badge>,
-    <Button tone="critical" size="slim" onClick={() => handleDelete(store.id)}>
+    <Badge key="status" tone={store.status === 'active' ? 'success' : 'warning'}>
+      {store.status}
+    </Badge>,
+    <Button key="action" tone="critical" size="slim" onClick={() => handleDelete(store.id)}>
       Delete
     </Button>
   ]);
@@ -287,11 +288,11 @@ export default function StoresOAuth() {
                 disabled: !formData.shopDomain || !formData.apiKey || !formData.apiSecret
               }
             : step === 2
-              ? {
-                  content: 'Authorize Store',
-                  onAction: handleOpenAuthWindow
-                }
-              : null
+            ? {
+                content: 'Authorize Store',
+                onAction: handleOpenAuthWindow
+              }
+            : null
         }
         secondaryActions={[
           {
@@ -309,7 +310,7 @@ export default function StoresOAuth() {
                     <strong>How to get API credentials:</strong>
                   </Text>
                   <Text as="p">1. Go to Shopify Admin → Settings → Apps and sales channels</Text>
-                  <Text as="p">2. Click "Develop apps" → "Create an app"</Text>
+                  <Text as="p">2. Click &quot;Develop apps&quot; → &quot;Create an app&quot;</Text>
                   <Text as="p">3. Configure Admin API scopes (products, orders, fulfillments)</Text>
                   <Text as="p">
                     4. Copy the <strong>API key</strong> and <strong>API secret key</strong>
@@ -371,7 +372,9 @@ export default function StoresOAuth() {
           {step === 2 && (
             <BlockStack gap="400">
               <Banner tone="info">
-                <Text as="p">Click the button below to authorize this app on your Shopify store.</Text>
+                <Text as="p">
+                  Click the button below to authorize this app on your Shopify store.
+                </Text>
               </Banner>
 
               <Text as="p">
@@ -379,8 +382,8 @@ export default function StoresOAuth() {
               </Text>
 
               <Text as="p" tone="subdued">
-                You will be redirected to Shopify to approve the app's permissions. After approval, you'll be
-                redirected back automatically.
+                You will be redirected to Shopify to approve the app&apos;s permissions. After
+                approval, you&apos;ll be redirected back automatically.
               </Text>
             </BlockStack>
           )}
@@ -392,8 +395,8 @@ export default function StoresOAuth() {
               </Banner>
 
               <Text as="p">
-                Please complete the authorization in the popup window. This modal will update automatically when
-                complete.
+                Please complete the authorization in the popup window. This modal will update
+                automatically when complete.
               </Text>
 
               {submitting && (

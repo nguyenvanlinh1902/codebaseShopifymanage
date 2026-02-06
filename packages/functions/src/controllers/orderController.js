@@ -86,7 +86,11 @@ async function processOrderSync(jobId, store, sheet, sheetName, params) {
     await syncJobRepo.updateStatus(jobId, 'processing');
 
     // Initialize services
-    const sheetsService = new GoogleSheetsService(sheet.credentials);
+    const sheetsService = sheet.credentials
+      ? new GoogleSheetsService(sheet.credentials)
+      : sheet.refreshToken
+      ? await GoogleSheetsService.createFromRefreshToken(sheet.refreshToken)
+      : await GoogleSheetsService.createForUser(sheet.userId);
     const shopifyService = new ShopifyService({
       shopDomain: store.shopDomain,
       accessToken: store.accessToken

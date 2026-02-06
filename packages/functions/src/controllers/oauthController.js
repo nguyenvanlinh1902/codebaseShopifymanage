@@ -40,7 +40,8 @@ export async function getAuthUrl(req, res) {
     const state = crypto.randomBytes(32).toString('hex');
 
     // Build authorization URL
-    const authUrl = `https://${normalizedDomain}.myshopify.com/admin/oauth/authorize?` +
+    const authUrl =
+      `https://${normalizedDomain}.myshopify.com/admin/oauth/authorize?` +
       `client_id=${encodeURIComponent(apiKey)}` +
       `&scope=${encodeURIComponent(REQUIRED_SCOPES)}` +
       `&redirect_uri=${encodeURIComponent(redirectUri)}` +
@@ -142,6 +143,7 @@ export async function handleCallback(req, res) {
       // Update existing store
       const updatedStore = await storeRepo.update(existingStore.id, {
         accessToken,
+        apiSecret,
         name: storeName || shopInfo.name,
         niche: niche || existingStore.niche || '',
         email: shopInfo.email,
@@ -151,7 +153,9 @@ export async function handleCallback(req, res) {
         lastConnected: new Date().toISOString()
       });
 
-      const {accessToken: _, ...storeData} = updatedStore;
+      const storeData = {...updatedStore};
+      delete storeData.accessToken;
+      delete storeData.apiSecret;
       return res.json({
         success: true,
         message: 'Store reconnected successfully',
@@ -164,6 +168,7 @@ export async function handleCallback(req, res) {
       userId,
       shopDomain,
       accessToken,
+      apiSecret,
       name: storeName || shopInfo.name,
       niche: niche || '',
       email: shopInfo.email,
@@ -173,8 +178,10 @@ export async function handleCallback(req, res) {
       connectedAt: new Date().toISOString()
     });
 
-    // Don't send accessToken in response
-    const {accessToken: _, ...storeData} = store;
+    // Don't send accessToken/apiSecret in response
+    const storeData = {...store};
+    delete storeData.accessToken;
+    delete storeData.apiSecret;
 
     return res.json({
       success: true,
@@ -212,8 +219,5 @@ export function verifyHmac(query, secret) {
     .update(message)
     .digest('hex');
 
-  return crypto.timingSafeEqual(
-    Buffer.from(hmac),
-    Buffer.from(generatedHmac)
-  );
+  return crypto.timingSafeEqual(Buffer.from(hmac), Buffer.from(generatedHmac));
 }

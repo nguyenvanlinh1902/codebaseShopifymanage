@@ -3,7 +3,12 @@ import {ProductRepository} from '../repositories/productRepository.js';
 import {ProductQueueRepository} from '../repositories/productQueueRepository.js';
 import {StoreRepository} from '../repositories/storeRepository.js';
 import {ShopifyService} from '../services/shopifyService.js';
-import {parseCsv, validateProductData, mapToShopifyProduct, generateCsvTemplate} from '../helpers/csvParser.js';
+import {
+  parseCsv,
+  validateProductData,
+  mapToShopifyProduct,
+  generateCsvTemplate
+} from '../helpers/csvParser.js';
 
 const importHistoryRepo = new ImportHistoryRepository();
 const productRepo = new ProductRepository();
@@ -423,15 +428,23 @@ export async function processProductQueue() {
         // Check max retry attempts
         const MAX_ATTEMPTS = 3;
         if (attempts >= MAX_ATTEMPTS) {
-          console.log(`Queue item ${queueId} exceeded max attempts (${attempts}), marking as failed`);
-          await productQueueRepo.markFailed(queueId, `Exceeded max retry attempts (${MAX_ATTEMPTS})`);
+          console.log(
+            `Queue item ${queueId} exceeded max attempts (${attempts}), marking as failed`
+          );
+          await productQueueRepo.markFailed(
+            queueId,
+            `Exceeded max retry attempts (${MAX_ATTEMPTS})`
+          );
           continue;
         }
 
         // Mark as processing
         await productQueueRepo.updateStatus(queueId, 'processing');
 
-        console.log(`Processing product ${productIndex + 1}/${totalProducts} for import ${importId} (attempt ${attempts + 1})`);
+        console.log(
+          `Processing product ${productIndex +
+            1}/${totalProducts} for import ${importId} (attempt ${attempts + 1})`
+        );
 
         // Create Shopify service
         const shopifyService = new ShopifyService({
@@ -534,7 +547,9 @@ export async function processProductQueue() {
           } else {
             // Reset to pending for retry
             await productQueueRepo.updateStatus(queueId, 'pending', error.message);
-            console.log(`Product ${product.title} will be retried (attempt ${newAttempts}/${MAX_ATTEMPTS})`);
+            console.log(
+              `Product ${product.title} will be retried (attempt ${newAttempts}/${MAX_ATTEMPTS})`
+            );
           }
         }
       } catch (error) {

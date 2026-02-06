@@ -1,7 +1,9 @@
 import {StoreRepository} from '../repositories/storeRepository.js';
+import {OrderSyncRepository} from '../repositories/orderSyncRepository.js';
 import {ShopifyService} from '../services/shopifyService.js';
 
 const storeRepo = new StoreRepository();
+const orderSyncRepo = new OrderSyncRepository();
 
 /**
  * Helper: Validate and normalize shop domain
@@ -50,11 +52,12 @@ async function checkStoreExists(shopDomain) {
 /**
  * Helper: Build store data object
  */
-function buildStoreData(userId, shopDomain, accessToken, shopInfo, customName, niche) {
+function buildStoreData(userId, shopDomain, accessToken, apiSecret, shopInfo, customName, niche) {
   return {
     userId,
     shopDomain,
     accessToken,
+    apiSecret,
     name: customName || shopInfo.name,
     niche: niche || '',
     email: shopInfo.email,
@@ -118,7 +121,7 @@ export async function verifyToken(req, res) {
  */
 export async function createStore(req, res) {
   try {
-    const {userId, shopDomain, accessToken, name, niche} = req.body;
+    const {userId, shopDomain, accessToken, apiSecret, name, niche} = req.body;
 
     // Task 1: Validate required input
     if (!userId || !shopDomain || !accessToken) {
@@ -138,6 +141,7 @@ export async function createStore(req, res) {
       userId,
       finalShopDomain,
       accessToken,
+      apiSecret,
       shopInfo,
       name,
       niche
@@ -146,8 +150,10 @@ export async function createStore(req, res) {
     // Task 6: Create store in database
     const store = await storeRepo.create(storeData);
 
-    // Task 7: Sanitize response (don't send accessToken)
-    const {accessToken: _, ...sanitizedStore} = store;
+    // Task 7: Sanitize response (don't send accessToken/apiSecret)
+    const sanitizedStore = {...store};
+    delete sanitizedStore.accessToken;
+    delete sanitizedStore.apiSecret;
 
     return res.json({
       success: true,
@@ -179,10 +185,12 @@ export async function getStores(req, res) {
 
     const stores = await storeRepo.getByUserId(userId);
 
-    // Remove access tokens
-    const sanitizedStores = stores.map(store => {
-      const {accessToken, ...storeData} = store;
-      return storeData;
+    // Remove access tokens and api secrets
+    const sanitizedStores = stores.map(s => {
+      const copy = {...s};
+      delete copy.accessToken;
+      delete copy.apiSecret;
+      return copy;
     });
 
     return res.json({
@@ -214,8 +222,10 @@ export async function getStore(req, res) {
       });
     }
 
-    // Remove access token
-    const {accessToken, ...storeData} = store;
+    // Remove access token and api secret
+    const storeData = {...store};
+    delete storeData.accessToken;
+    delete storeData.apiSecret;
 
     return res.json({
       success: true,
@@ -254,8 +264,10 @@ export async function updateStore(req, res) {
 
     const updatedStore = await storeRepo.update(storeId, updateData);
 
-    // Remove access token
-    const {accessToken, ...storeData} = updatedStore;
+    // Remove access token and api secret
+    const storeData = {...updatedStore};
+    delete storeData.accessToken;
+    delete storeData.apiSecret;
 
     return res.json({
       success: true,
@@ -285,6 +297,27 @@ export async function deleteStore(req, res) {
         success: false,
         error: 'Store not found'
       });
+    }
+
+    // Cleanup webhooks from Shopify and Firestore
+    const webhooks = await orderSyncRepo.getWebhooksByStore(storeId);
+    for (const webhook of webhooks) {
+      try {
+        const shopifyService = new ShopifyService({
+          shopDomain: store.shopDomain,
+          accessToken: store.accessToken
+        });
+        await shopifyService.deleteWebhook(webhook.shopifyWebhookId);
+      } catch (err) {
+        console.warn('Failed to delete Shopify webhook:', webhook.shopifyWebhookId, err.message);
+      }
+      await orderSyncRepo.deleteWebhook(webhook.id);
+    }
+
+    // Deactivate sync configs
+    const syncConfigs = await orderSyncRepo.getSyncJobsByStore(storeId);
+    for (const config of syncConfigs) {
+      await orderSyncRepo.updateSyncJob(config.id, {status: 'inactive'});
     }
 
     await storeRepo.delete(storeId);

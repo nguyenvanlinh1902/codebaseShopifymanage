@@ -85,7 +85,11 @@ async function processTrackingUpdate(jobId, store, sheet, range) {
     await syncJobRepo.updateStatus(jobId, 'processing');
 
     // Initialize services
-    const sheetsService = new GoogleSheetsService(sheet.credentials);
+    const sheetsService = sheet.credentials
+      ? new GoogleSheetsService(sheet.credentials)
+      : sheet.refreshToken
+      ? await GoogleSheetsService.createFromRefreshToken(sheet.refreshToken)
+      : await GoogleSheetsService.createForUser(sheet.userId);
     const shopifyService = new ShopifyService({
       shopDomain: store.shopDomain,
       accessToken: store.accessToken
@@ -168,8 +172,12 @@ export async function previewTracking(req, res) {
       });
     }
 
-    // Initialize Google Sheets service
-    const sheetsService = new GoogleSheetsService(sheet.credentials);
+    // Initialize Google Sheets service (backward-compat)
+    const sheetsService = sheet.credentials
+      ? new GoogleSheetsService(sheet.credentials)
+      : sheet.refreshToken
+      ? await GoogleSheetsService.createFromRefreshToken(sheet.refreshToken)
+      : await GoogleSheetsService.createForUser(sheet.userId);
 
     // Read tracking data
     const rows = await sheetsService.readSheet(sheet.spreadsheetId, range);

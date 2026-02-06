@@ -16,8 +16,7 @@ import {
   Modal,
   BlockStack
 } from '@shopify/polaris';
-
-const USER_ID = 'demo-user'; // TODO: Replace with real auth
+import {USER_ID} from '../config/user';
 
 /**
  * Products Import Page - CSV Upload
@@ -208,14 +207,14 @@ export default function Products() {
     return <Badge tone={toneMap[status] || 'info'}>{status}</Badge>;
   };
 
-  const historyRows = importHistory.map(imp => [
+  const historyRows = importHistory.map((imp, index) => [
     imp.fileName,
     stores.find(s => s.id === imp.storeId)?.name || imp.storeName,
     getStatusBadge(imp.status),
     `${imp.processedProducts || 0}/${imp.totalProducts}`,
     `${imp.successCount || 0} success, ${imp.failedCount || 0} failed`,
     new Date(imp.createdAt).toLocaleString(),
-    <Button size="slim" onClick={() => viewImportDetails(imp.id)}>
+    <Button key={index} size="slim" onClick={() => viewImportDetails(imp.id)}>
       View Details
     </Button>
   ]);
@@ -273,8 +272,8 @@ export default function Products() {
 
               <Banner tone="info">
                 <Text as="p">
-                  <strong>CSV Format:</strong> Download the template to see the required columns. The CSV
-                  must include: title, price, sku, and other product details.
+                  <strong>CSV Format:</strong> Download the template to see the required columns.
+                  The CSV must include: title, price, sku, and other product details.
                 </Text>
               </Banner>
             </BlockStack>

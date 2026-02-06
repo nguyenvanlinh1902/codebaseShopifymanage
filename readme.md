@@ -29,6 +29,7 @@ packages/
 ## Setup
 
 ### 1. Install dependencies
+
 ```bash
 yarn install
 ```
@@ -36,12 +37,14 @@ yarn install
 ### 2. Firebase Setup
 
 **Get Service Account (for backend):**
+
 1. Go to [Firebase Console](https://console.firebase.google.com/) → ag-survey-staging-3
 2. Project Settings → Service Accounts
 3. Click "Generate New Private Key"
 4. Save as `serviceAccount.development.json` in project root
 
 **Environment variables are already configured:**
+
 - Frontend: `packages/assets/.env`
 - Backend: `packages/functions/.env.example`
 
@@ -56,6 +59,7 @@ yarn dev
 ```
 
 **URLs:**
+
 - Frontend: http://localhost:5173 (Vite)
 - Backend API: http://localhost:5000/api
 - Firebase Emulator UI: http://localhost:4000
@@ -63,11 +67,13 @@ yarn dev
 ## TodoList API
 
 ### Get All Todos
+
 ```bash
 curl http://localhost:5000/api/todos
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -84,6 +90,7 @@ curl http://localhost:5000/api/todos
 ```
 
 ### Create Todo
+
 ```bash
 curl -X POST http://localhost:5000/api/todos \
   -H "Content-Type: application/json" \
@@ -91,6 +98,7 @@ curl -X POST http://localhost:5000/api/todos \
 ```
 
 ### Update Todo
+
 ```bash
 curl -X PUT http://localhost:5000/api/todos/abc123 \
   -H "Content-Type: application/json" \
@@ -98,6 +106,7 @@ curl -X PUT http://localhost:5000/api/todos/abc123 \
 ```
 
 ### Delete Todo
+
 ```bash
 curl -X DELETE http://localhost:5000/api/todos/abc123
 ```
@@ -121,3 +130,10 @@ firebase deploy --only hosting
 - **Frontend:** React 18 + Vite
 - **Database:** Firestore
 - **Hosting:** Firebase Hosting
+
+## tunnel setup
+
+```
+npm install -g @tobigami-com/cftunnel
+cftunnel dev --hostname dev-myapp.yourdomain.com -p 5000
+```

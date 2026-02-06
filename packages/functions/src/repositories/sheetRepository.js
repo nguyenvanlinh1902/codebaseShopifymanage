@@ -71,6 +71,32 @@ export class SheetRepository {
   }
 
   /**
+   * Get sheets for a user with server-side pagination
+   */
+  async getByUserIdPaginated(userId, {page = 1, limit = 5} = {}) {
+    const baseQuery = this.collection.where('userId', '==', userId);
+
+    // Get total count
+    const countSnapshot = await baseQuery.count().get();
+    const total = countSnapshot.data().count;
+
+    // Get paginated results
+    const offset = (page - 1) * limit;
+    const snapshot = await baseQuery
+      .orderBy('createdAt', 'desc')
+      .offset(offset)
+      .limit(limit)
+      .get();
+
+    const sheets = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+
+    return {sheets, total, page, limit};
+  }
+
+  /**
    * Get sheet by spreadsheet ID
    */
   async getBySpreadsheetId(spreadsheetId) {

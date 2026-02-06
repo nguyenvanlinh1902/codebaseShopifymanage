@@ -2,7 +2,12 @@ import {PubSub} from '@google-cloud/pubsub';
 import {ImportHistoryRepository} from '../repositories/importHistoryRepository.js';
 import {StoreRepository} from '../repositories/storeRepository.js';
 import {ShopifyService} from '../services/shopifyService.js';
-import {parseCsv, validateProductData, mapToShopifyProduct, generateCsvTemplate} from '../helpers/csvParser.js';
+import {
+  parseCsv,
+  validateProductData,
+  mapToShopifyProduct,
+  generateCsvTemplate
+} from '../helpers/csvParser.js';
 
 const pubsub = new PubSub();
 const importHistoryRepo = new ImportHistoryRepository();
@@ -275,9 +280,7 @@ export async function downloadTemplate(req, res) {
 export async function processProductImport(message) {
   try {
     const data = message.json;
-    const {importId, storeId, shopDomain, accessToken, product, productIndex, totalProducts} = data;
-
-    console.log(`Processing product ${productIndex + 1}/${totalProducts} for import ${importId}`);
+    const {importId, shopDomain, accessToken, product, totalProducts} = data;
 
     // Create Shopify service
     const shopifyService = new ShopifyService({
@@ -321,7 +324,6 @@ export async function processProductImport(message) {
         });
       }
 
-      console.log(`Successfully ${result.action} product: ${product.title}`);
       message.ack();
     } catch (error) {
       console.error(`Failed to import product ${product.title}:`, error);

@@ -4,7 +4,6 @@ import {
   Layout,
   Card,
   Select,
-  TextField,
   Button,
   Banner,
   Text,
@@ -15,8 +14,7 @@ import {
   List,
   Collapsible
 } from '@shopify/polaris';
-
-const USER_ID = 'demo-user'; // TODO: Replace with real auth
+import {USER_ID} from '../config/user';
 
 /**
  * Orders Sync Page - Export orders from Shopify to Google Sheets with customer info
@@ -26,7 +24,9 @@ export default function Orders() {
   const [sheets, setSheets] = useState([]);
   const [selectedStore, setSelectedStore] = useState('');
   const [selectedSheet, setSelectedSheet] = useState('');
-  const [sheetName, setSheetName] = useState('Orders');
+  const [sheetTabs, setSheetTabs] = useState([]);
+  const [selectedTab, setSelectedTab] = useState('');
+  const [loadingTabs, setLoadingTabs] = useState(false);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [settingUpSync, setSettingUpSync] = useState(false);
@@ -48,6 +48,23 @@ export default function Orders() {
     }
   }, [selectedStore]);
 
+  useEffect(() => {
+    if (selectedSheet) {
+      fetchSheetTabs();
+    } else {
+      setSheetTabs([]);
+      setSelectedTab('');
+    }
+  }, [selectedSheet]);
+
+  // Pre-fill form from active config when syncConfigs load
+  useEffect(() => {
+    const active = syncConfigs.find(c => c.status === 'active');
+    if (active && !selectedSheet) {
+      setSelectedSheet(active.sheetId);
+    }
+  }, [syncConfigs]);
+
   const fetchData = async () => {
     try {
       setLoading(true);
@@ -56,10 +73,7 @@ export default function Orders() {
         fetch(`/api/sheets?userId=${USER_ID}`)
       ]);
 
-      const [storesData, sheetsData] = await Promise.all([
-        storesRes.json(),
-        sheetsRes.json()
-      ]);
+      const [storesData, sheetsData] = await Promise.all([storesRes.json(), sheetsRes.json()]);
 
       if (storesData.success) setStores(storesData.data);
       if (sheetsData.success) setSheets(sheetsData.data);
@@ -99,9 +113,38 @@ export default function Orders() {
     }
   };
 
+  const fetchSheetTabs = async () => {
+    try {
+      setLoadingTabs(true);
+      setSelectedTab('');
+      const response = await fetch(`/api/sheets/${selectedSheet}/tabs`);
+      const result = await response.json();
+
+      if (result.success) {
+        setSheetTabs(result.data);
+        if (result.data.length > 0) {
+          // Try to match active config's tab
+          const active = syncConfigs.find(c => c.status === 'active');
+          let matched = null;
+          if (active && active.sheetId === selectedSheet) {
+            matched = result.data.find(
+              t => t.sheetId === active.targetSheetId || t.title === active.targetSheet
+            );
+          }
+          const tab = matched || result.data[0];
+          setSelectedTab(`${tab.title}|${tab.sheetId}`);
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching sheet tabs:', err);
+    } finally {
+      setLoadingTabs(false);
+    }
+  };
+
   const handleSetupSync = async () => {
-    if (!selectedStore || !selectedSheet) {
-      setError('Please select a store and sheet');
+    if (!selectedStore || !selectedSheet || !selectedTab) {
+      setError('Please select a store, sheet and tab');
       return;
     }
 
@@ -110,6 +153,8 @@ export default function Orders() {
       setError(null);
       setSuccessMessage(null);
 
+      const [tabName, tabId] = selectedTab.split('|');
+
       const response = await fetch('/api/orders/setup-sync', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
@@ -117,14 +162,17 @@ export default function Orders() {
           userId: USER_ID,
           storeId: selectedStore,
           sheetId: selectedSheet,
-          sheetName
+          sheetName: tabName,
+          targetSheetId: parseInt(tabId, 10)
         })
       });
 
       const result = await response.json();
 
       if (result.success) {
-        setSuccessMessage('Order sync configured successfully! Now set up webhooks for real-time sync.');
+        setSuccessMessage(
+          'Order sync configured successfully! Now set up webhooks for real-time sync.'
+        );
         fetchSyncConfigs();
       } else {
         setError(result.error || 'Failed to setup sync');
@@ -228,7 +276,10 @@ export default function Orders() {
   ]);
 
   return (
-    <Page title="Orders Sync" subtitle="Export orders from Shopify to Google Sheets with customer info">
+    <Page
+      title="Orders Sync"
+      subtitle="Export orders from Shopify to Google Sheets with customer info"
+    >
       <Layout>
         {error && (
           <Layout.Section>
@@ -249,8 +300,25 @@ export default function Orders() {
         <Layout.Section oneThird>
           <Card sectioned>
             <Text variant="headingMd" as="h2">
-              Setup Sync
+              {activeConfig ? 'Sync Config' : 'Setup Sync'}
             </Text>
+
+            {activeConfig && (
+              <div style={{marginTop: '12px'}}>
+                <Banner tone="info">
+                  <p>
+                    Sheet: <strong>{activeConfig.sheetName}</strong> — Tab:{' '}
+                    <strong>{activeConfig.targetSheet}</strong>
+                  </p>
+                  <p>
+                    Orders synced: {activeConfig.totalOrdersSynced || 0} | Last sync:{' '}
+                    {activeConfig.lastSyncAt
+                      ? new Date(activeConfig.lastSyncAt).toLocaleString()
+                      : 'Never'}
+                  </p>
+                </Banner>
+              </div>
+            )}
 
             {loading ? (
               <SkeletonBodyText lines={5} />
@@ -277,12 +345,16 @@ export default function Orders() {
                 </div>
 
                 <div style={{marginBottom: '16px'}}>
-                  <TextField
-                    label="Sheet Tab Name"
-                    value={sheetName}
-                    onChange={setSheetName}
-                    placeholder="Orders"
-                    helpText="Name of the sheet tab"
+                  <Select
+                    label="Sheet Tab"
+                    options={sheetTabs.map(tab => ({
+                      label: tab.title,
+                      value: `${tab.title}|${tab.sheetId}`
+                    }))}
+                    value={selectedTab}
+                    onChange={setSelectedTab}
+                    placeholder="Choose a tab"
+                    disabled={loadingTabs || sheetTabs.length === 0}
                   />
                 </div>
 
@@ -292,9 +364,9 @@ export default function Orders() {
                     fullWidth
                     onClick={handleSetupSync}
                     loading={settingUpSync}
-                    disabled={!selectedStore || !selectedSheet}
+                    disabled={!selectedStore || !selectedSheet || !selectedTab}
                   >
-                    Setup Sync
+                    {activeConfig ? 'Update Config' : 'Setup Sync'}
                   </Button>
 
                   {activeConfig && (
@@ -328,7 +400,14 @@ export default function Orders() {
                     </p>
                   </Banner>
 
-                  <div style={{marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '8px'}}>
+                  <div
+                    style={{
+                      marginTop: '16px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '8px'
+                    }}
+                  >
                     <Button fullWidth onClick={() => setShowWebhookModal(true)}>
                       View Webhook Instructions
                     </Button>
@@ -352,10 +431,7 @@ export default function Orders() {
             </Text>
 
             <div style={{marginTop: '16px'}}>
-              <Button
-                plain
-                onClick={() => setShowInstructionsOpen(!showInstructionsOpen)}
-              >
+              <Button plain onClick={() => setShowInstructionsOpen(!showInstructionsOpen)}>
                 {showInstructionsOpen ? 'Hide' : 'Show'} included fields
               </Button>
 
@@ -417,14 +493,7 @@ export default function Orders() {
 
               <DataTable
                 columnContentTypes={['text', 'text', 'text', 'text', 'numeric', 'text']}
-                headings={[
-                  'Store',
-                  'Sheet',
-                  'Target Tab',
-                  'Status',
-                  'Orders Synced',
-                  'Last Sync'
-                ]}
+                headings={['Store', 'Sheet', 'Target Tab', 'Status', 'Orders Synced', 'Last Sync']}
                 rows={configRows}
               />
             </Card>

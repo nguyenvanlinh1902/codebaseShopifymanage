@@ -62,11 +62,12 @@ export class OrderSyncRepository {
   async getSyncJobsByStore(storeId) {
     const snapshot = await this.collection
       .where('storeId', '==', storeId)
-      .orderBy('createdAt', 'desc')
       .limit(50)
       .get();
 
-    return snapshot.docs.map(doc => doc.data());
+    return snapshot.docs
+      .map(doc => doc.data())
+      .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
   }
 
   /**
@@ -124,9 +125,7 @@ export class OrderSyncRepository {
    * Get webhooks for store
    */
   async getWebhooksByStore(storeId) {
-    const snapshot = await this.webhookCollection
-      .where('storeId', '==', storeId)
-      .get();
+    const snapshot = await this.webhookCollection.where('storeId', '==', storeId).get();
 
     return snapshot.docs.map(doc => doc.data());
   }

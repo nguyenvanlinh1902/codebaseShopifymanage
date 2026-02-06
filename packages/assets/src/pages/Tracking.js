@@ -14,8 +14,7 @@ import {
   DropZone,
   Modal
 } from '@shopify/polaris';
-
-const USER_ID = 'demo-user'; // TODO: Replace with real auth
+import {USER_ID} from '../config/user';
 
 /**
  * Tracking Import Page - Upload Excel file to update order tracking numbers

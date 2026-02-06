@@ -13,8 +13,7 @@ import {
   EmptyState,
   Badge
 } from '@shopify/polaris';
-
-const USER_ID = 'demo-user'; // TODO: Replace with real auth
+import {USER_ID} from '../config/user';
 
 /**
  * Stores Management Page
@@ -26,6 +25,7 @@ export default function Stores() {
   const [formData, setFormData] = useState({
     shopDomain: '',
     accessToken: '',
+    apiSecret: '',
     name: '',
     niche: ''
   });
@@ -62,7 +62,7 @@ export default function Stores() {
 
   const handleModalClose = useCallback(() => {
     setModalActive(false);
-    setFormData({shopDomain: '', accessToken: '', name: '', niche: ''});
+    setFormData({shopDomain: '', accessToken: '', apiSecret: '', name: '', niche: ''});
     setVerified(false);
     setVerifiedInfo(null);
     setError(null);
@@ -146,7 +146,7 @@ export default function Stores() {
     }
   };
 
-  const handleDelete = async (storeId) => {
+  const handleDelete = async storeId => {
     if (!confirm('Are you sure you want to delete this store?')) return;
 
     try {
@@ -171,14 +171,10 @@ export default function Stores() {
     store.name,
     store.shopDomain,
     store.niche || '-',
-    <Badge tone={store.status === 'active' ? 'success' : 'warning'}>
+    <Badge key="status" tone={store.status === 'active' ? 'success' : 'warning'}>
       {store.status}
     </Badge>,
-    <Button
-      tone="critical"
-      size="slim"
-      onClick={() => handleDelete(store.id)}
-    >
+    <Button key="action" tone="critical" size="slim" onClick={() => handleDelete(store.id)}>
       Delete
     </Button>
   ]);
@@ -250,7 +246,7 @@ export default function Stores() {
                 <p>
                   1. Go to Shopify Admin → Settings → Apps and sales channels
                   <br />
-                  2. Click "Develop apps" → "Create an app"
+                  2. Click &quot;Develop apps&quot; → &quot;Create an app&quot;
                   <br />
                   3. Configure scopes → Install app → Reveal token once
                   <br />
@@ -307,6 +303,16 @@ export default function Stores() {
                   {verified ? 'Re-verify' : 'Verify Store'}
                 </Button>
               }
+            />
+
+            <TextField
+              label="API Secret Key"
+              value={formData.apiSecret}
+              onChange={value => setFormData({...formData, apiSecret: value})}
+              placeholder="Your Shopify app API secret key"
+              helpText="Found in your Shopify app settings. Required for webhook verification."
+              type="password"
+              autoComplete="off"
             />
 
             <TextField

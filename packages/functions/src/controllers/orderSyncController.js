@@ -16,7 +16,7 @@ const sheetRepo = new SheetRepository();
  */
 export async function setupSync(req, res) {
   try {
-    const {userId, storeId, sheetId, sheetName, webhookUrl} = req.body;
+    const {userId, storeId, sheetId, sheetName, targetSheetId, webhookUrl} = req.body;
 
     // Validate input
     if (!userId || !storeId || !sheetId) {
@@ -58,6 +58,7 @@ export async function setupSync(req, res) {
       sheetName: sheet.name,
       spreadsheetId: sheet.spreadsheetId,
       targetSheet: sheetName || 'Orders',
+      targetSheetId: targetSheetId || null,
       status: 'active',
       webhookUrl: webhookUrl || null,
       totalOrdersSynced: 0
@@ -136,7 +137,11 @@ export async function manualSync(req, res) {
     let syncedToSheet = 0;
     let sheetError = null;
     try {
-      const sheetsService = new GoogleSheetsService(sheet.credentials);
+      const sheetsService = sheet.credentials
+        ? new GoogleSheetsService(sheet.credentials)
+        : sheet.refreshToken
+        ? await GoogleSheetsService.createFromRefreshToken(sheet.refreshToken)
+        : await GoogleSheetsService.createForUser(sheet.userId);
       await sheetsService.writeOrders(
         syncConfig.spreadsheetId,
         syncConfig.targetSheet,
@@ -226,7 +231,11 @@ export async function resyncFailedOrders(req, res) {
 
     // Get sheet
     const sheet = await sheetRepo.getById(syncConfig.sheetId);
-    const sheetsService = new GoogleSheetsService(sheet.credentials);
+    const sheetsService = sheet.credentials
+      ? new GoogleSheetsService(sheet.credentials)
+      : sheet.refreshToken
+      ? await GoogleSheetsService.createFromRefreshToken(sheet.refreshToken)
+      : await GoogleSheetsService.createForUser(sheet.userId);
 
     let resynced = 0;
     let failed = 0;
@@ -234,11 +243,7 @@ export async function resyncFailedOrders(req, res) {
     // Try to sync each order
     for (const order of failedOrders) {
       try {
-        await sheetsService.appendOrder(
-          syncConfig.spreadsheetId,
-          syncConfig.targetSheet,
-          order
-        );
+        await sheetsService.appendOrder(syncConfig.spreadsheetId, syncConfig.targetSheet, order);
 
         // Mark as synced
         await orderRepo.markSyncedToSheet(storeId, order.orderId);
@@ -408,7 +413,7 @@ export async function registerWebhook(req, res) {
  */
 export async function handleOrderWebhook(req, res) {
   try {
-    const shopDomain = req.get('X-Shopify-Shop-Domain');
+    const shopDomain = ShopifyService.normalizeShopDomain(req.get('X-Shopify-Shop-Domain'));
     const hmac = req.get('X-Shopify-Hmac-SHA256');
     const topic = req.get('X-Shopify-Topic');
     const order = req.body;
@@ -420,24 +425,22 @@ export async function handleOrderWebhook(req, res) {
       return res.status(404).json({error: 'Store not found'});
     }
 
-    // Verify HMAC
-    const isValid = verifyWebhookHmac(req.rawBody, hmac, store.accessToken);
+    // Verify HMAC signature
+    const isValid = verifyWebhookHmac(req.rawBody, hmac, store.apiSecret);
     if (!isValid) {
-      console.error('Invalid webhook HMAC');
+      console.error('[WEBHOOK] Invalid HMAC signature');
       return res.status(401).json({error: 'Invalid webhook signature'});
     }
 
     // Get active sync configuration
     const syncConfig = await orderSyncRepo.getActiveSyncConfig(store.id);
     if (!syncConfig) {
-      console.log('No active sync config for store:', store.id);
       return res.status(200).json({message: 'No sync config, skipping'});
     }
 
     // Check if order was already synced (prevent duplicates)
     const alreadySynced = await orderSyncRepo.isOrderSynced(store.id, order.id.toString());
     if (alreadySynced && topic === 'orders/create') {
-      console.log('Order already synced:', order.id);
       return res.status(200).json({message: 'Already synced'});
     }
 
@@ -460,7 +463,12 @@ export async function handleOrderWebhook(req, res) {
     let syncedToSheet = false;
     try {
       const sheet = await sheetRepo.getById(syncConfig.sheetId);
-      const sheetsService = new GoogleSheetsService(sheet.credentials);
+
+      const sheetsService = sheet.credentials
+        ? new GoogleSheetsService(sheet.credentials)
+        : sheet.refreshToken
+        ? await GoogleSheetsService.createFromRefreshToken(sheet.refreshToken)
+        : await GoogleSheetsService.createForUser(sheet.userId);
 
       if (topic === 'orders/create') {
         // Append new order
@@ -477,13 +485,22 @@ export async function handleOrderWebhook(req, res) {
           orderNumber: order.name
         });
       } else if (topic === 'orders/updated') {
-        // Update existing order
-        await sheetsService.updateOrder(
-          syncConfig.spreadsheetId,
-          syncConfig.targetSheet,
-          order.name,
-          formattedOrder
-        );
+        // Update existing order, fallback to append if not found
+        try {
+          await sheetsService.updateOrder(
+            syncConfig.spreadsheetId,
+            syncConfig.targetSheet,
+            order.name,
+            formattedOrder
+          );
+        } catch (updateErr) {
+          if (updateErr.message.includes('not found in sheet')) {
+            // Race condition: orders/updated arrived before orders/create finished
+            // Return early - let orders/create handle adding the order
+            return res.status(200).json({message: 'Order not in sheet yet, skipped'});
+          }
+          throw updateErr;
+        }
       }
 
       syncedToSheet = true;
@@ -500,11 +517,7 @@ export async function handleOrderWebhook(req, res) {
       console.error('Error syncing to Google Sheets:', error);
 
       // Increment sync attempt counter
-      await orderRepo.incrementSyncAttempt(
-        store.id,
-        formattedOrder.orderId,
-        error.message
-      );
+      await orderRepo.incrementSyncAttempt(store.id, formattedOrder.orderId, error.message);
 
       // Still return success since we saved to Firestore
       return res.status(200).json({
@@ -650,19 +663,19 @@ function formatOrderForSheet(order) {
 
     // Line Items
     itemsCount: order.line_items?.length || 0,
-    items: order.line_items
-      ?.map(item => `${item.name} (x${item.quantity})`)
-      .join(', ') || '',
+    items: order.line_items?.map(item => `${item.name} (x${item.quantity})`).join(', ') || '',
 
     // Tracking
-    trackingNumbers: order.fulfillments
-      ?.map(f => f.tracking_number)
-      .filter(Boolean)
-      .join(', ') || '',
-    trackingUrls: order.fulfillments
-      ?.map(f => f.tracking_url)
-      .filter(Boolean)
-      .join(', ') || '',
+    trackingNumbers:
+      order.fulfillments
+        ?.map(f => f.tracking_number)
+        .filter(Boolean)
+        .join(', ') || '',
+    trackingUrls:
+      order.fulfillments
+        ?.map(f => f.tracking_url)
+        .filter(Boolean)
+        .join(', ') || '',
 
     // Notes
     note: order.note || '',
@@ -678,6 +691,9 @@ function formatOrderForSheet(order) {
  * Verify webhook HMAC signature
  */
 function verifyWebhookHmac(data, hmac, secret) {
-  const hash = crypto.createHmac('sha256', secret).update(data).digest('base64');
+  const hash = crypto
+    .createHmac('sha256', secret)
+    .update(data)
+    .digest('base64');
   return hash === hmac;
 }

@@ -214,6 +214,20 @@ export default function Dashboard() {
                 </List.Item>
                 <List.Item>
                   Click <strong>"Develop apps"</strong>, then <strong>"Create an app"</strong>
+                  <br />
+                  <InlineStack gap="100" blockAlign="center">
+                    <Text variant="bodySm" as="span">
+                      Or go directly to:
+                    </Text>
+                    <Button
+                      url="https://admin.shopify.com/settings/apps/development"
+                      external
+                      size="micro"
+                      variant="plain"
+                    >
+                      App Development <Icon source={ExternalIcon} />
+                    </Button>
+                  </InlineStack>
                 </List.Item>
                 <List.Item>
                   Under <strong>API credentials</strong>, configure the required scopes:

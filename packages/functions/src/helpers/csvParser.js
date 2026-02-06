@@ -1,6 +1,7 @@
 /**
  * CSV Parser Helper
  * Parses CSV files for product import
+ * Supports FULL Shopify export format with all columns
  */
 
 /**
@@ -122,12 +123,14 @@ export function validateProductData(product) {
     errors.push('Price must be a valid number');
   }
 
-  const compareAtPrice = product['Variant Compare At Price'] || product.compare_at_price || product.compareAtPrice;
+  const compareAtPrice =
+    product['Variant Compare At Price'] || product.compare_at_price || product.compareAtPrice;
   if (compareAtPrice && isNaN(parseFloat(compareAtPrice))) {
     errors.push('Compare at price must be a valid number');
   }
 
-  const inventoryQty = product['Variant Inventory Qty'] || product.inventory_quantity || product.inventoryQuantity;
+  const inventoryQty =
+    product['Variant Inventory Qty'] || product.inventory_quantity || product.inventoryQuantity;
   if (inventoryQty && isNaN(parseInt(inventoryQty))) {
     errors.push('Inventory quantity must be a valid integer');
   }
@@ -136,107 +139,309 @@ export function validateProductData(product) {
 }
 
 /**
+ * Helper: Parse boolean field (handles TRUE, True, true, 1, yes, etc.)
+ */
+function parseBoolean(value, defaultValue = true) {
+  if (!value || value === '') return defaultValue;
+  const lower = value.toString().toLowerCase();
+  return lower === 'true' || lower === '1' || lower === 'yes' || lower === 'y';
+}
+
+/**
+ * Helper: Get field value with multiple possible names
+ */
+function getField(product, ...names) {
+  for (const name of names) {
+    if (product[name]) return product[name];
+  }
+  return '';
+}
+
+/**
  * Map CSV data to Shopify product format
- * Handles multiple CSV formats:
- * - Shopify export format (Title, Body (HTML), Variant SKU, Variant Price, etc.)
- * - Simplified format (title, description, sku, price, etc.)
+ * Supports FULL Shopify export format with ALL columns:
+ * - Basic product info (Handle, Title, Body, Vendor, Type, Tags, Published)
+ * - Product options (Option1/2/3 Name & Value)
+ * - Variant details (SKU, Price, Compare At Price, Inventory, Weight, etc.)
+ * - Inventory management (Tracker, Policy, Fulfillment Service)
+ * - Images (Src, Position, Alt Text, Variant Image)
+ * - Shipping & Tax (Requires Shipping, Taxable, Tax Code)
+ * - SEO (Title, Description, Hidden)
+ * - Google Shopping (MPN, Age Group, Gender, Product Category, AdWords, Condition, Custom Labels)
+ * - Gift Card
+ * - Cost per item
  */
 export function mapToShopifyProduct(csvProduct) {
-  // Parse Published field - handles TRUE, True, true, or empty (defaults to active)
-  const published = csvProduct.Published || csvProduct.published || '';
-  const isPublished = published.toLowerCase() === 'true' || published === '1' || published === '';
+  const published = getField(csvProduct, 'Published', 'published');
+  const isPublished = parseBoolean(published, true);
 
-  return {
-    title: csvProduct.Title || csvProduct.title || '',
-    description: csvProduct['Body (HTML)'] || csvProduct.description || csvProduct.body_html || '',
-    vendor: csvProduct.Vendor || csvProduct.vendor || '',
-    productType: csvProduct.Type || csvProduct.product_type || csvProduct.productType || '',
-    tags: csvProduct.Tags || csvProduct.tags || '',
+  // Build product object with ALL supported fields
+  const product = {
+    // Basic product information
+    handle: getField(csvProduct, 'Handle', 'handle'),
+    title: getField(csvProduct, 'Title', 'title'),
+    description: getField(csvProduct, 'Body (HTML)', 'description', 'body_html', 'body'),
+    vendor: getField(csvProduct, 'Vendor', 'vendor'),
+    productType: getField(csvProduct, 'Type', 'product_type', 'productType'),
+    tags: getField(csvProduct, 'Tags', 'tags'),
     status: isPublished ? 'active' : 'draft',
-    handle: csvProduct.Handle || csvProduct.handle || '',
 
-    // Variant data
-    price: csvProduct['Variant Price'] || csvProduct.price || csvProduct.variant_price || '0.00',
-    compareAtPrice: csvProduct['Variant Compare At Price'] || csvProduct.compare_at_price || csvProduct.compareAtPrice || null,
-    sku: csvProduct['Variant SKU'] || csvProduct.sku || csvProduct.variant_sku || '',
-    barcode: csvProduct['Variant Barcode'] || csvProduct.barcode || csvProduct.variant_barcode || '',
+    // Product Options (for variants)
+    option1Name: getField(csvProduct, 'Option1 Name', 'option1_name'),
+    option1Value: getField(csvProduct, 'Option1 Value', 'option1_value'),
+    option2Name: getField(csvProduct, 'Option2 Name', 'option2_name'),
+    option2Value: getField(csvProduct, 'Option2 Value', 'option2_value'),
+    option3Name: getField(csvProduct, 'Option3 Name', 'option3_name'),
+    option3Value: getField(csvProduct, 'Option3 Value', 'option3_value'),
+
+    // Variant basic data
+    sku: getField(csvProduct, 'Variant SKU', 'sku', 'variant_sku'),
+    price: getField(csvProduct, 'Variant Price', 'price', 'variant_price') || '0.00',
+    compareAtPrice:
+      getField(csvProduct, 'Variant Compare At Price', 'compare_at_price', 'compareAtPrice') ||
+      null,
+    barcode: getField(csvProduct, 'Variant Barcode', 'barcode', 'variant_barcode'),
+
+    // Inventory management
     inventoryQuantity: parseInt(
-      csvProduct['Variant Inventory Qty'] ||
-      csvProduct.inventory_quantity ||
-      csvProduct.inventoryQuantity ||
-      0
+      getField(csvProduct, 'Variant Inventory Qty', 'inventory_quantity', 'inventoryQuantity') || 0
     ),
-    weight: parseFloat(csvProduct['Variant Grams'] || csvProduct.weight || 0),
-    weightUnit: csvProduct['Variant Weight Unit'] || csvProduct.weight_unit || 'lb',
-    requiresShipping: (csvProduct['Variant Requires Shipping'] || 'True').toLowerCase() === 'true',
-    taxable: (csvProduct['Variant Taxable'] || 'True').toLowerCase() === 'true',
-    cost: parseFloat(csvProduct['Cost per item'] || csvProduct.cost || 0) || null,
+    inventoryTracker:
+      getField(csvProduct, 'Variant Inventory Tracker', 'inventory_tracker') || 'shopify',
+    inventoryPolicy: getField(csvProduct, 'Variant Inventory Policy', 'inventory_policy') || 'deny',
+    fulfillmentService:
+      getField(csvProduct, 'Variant Fulfillment Service', 'fulfillment_service') || 'manual',
 
-    // Image data
-    imageUrl: csvProduct['Image Src'] || csvProduct.image_src || csvProduct.imageUrl || '',
-    imageAlt: csvProduct['Image Alt Text'] || csvProduct.image_alt || csvProduct.imageAlt || '',
+    // Weight and shipping
+    weight: parseFloat(getField(csvProduct, 'Variant Grams', 'weight', 'variant_grams') || 0),
+    weightUnit:
+      getField(csvProduct, 'Variant Weight Unit', 'weight_unit', 'variant_weight_unit') || 'lb',
+    requiresShipping: parseBoolean(
+      getField(
+        csvProduct,
+        'Variant Requires Shipping',
+        'requires_shipping',
+        'variant_requires_shipping'
+      ),
+      true
+    ),
 
-    // SEO data
-    seoTitle: csvProduct['SEO Title'] || csvProduct.seo_title || csvProduct.seoTitle || '',
-    seoDescription: csvProduct['SEO Description'] || csvProduct.seo_description || csvProduct.seoDescription || ''
+    // Tax
+    taxable: parseBoolean(
+      getField(csvProduct, 'Variant Taxable', 'taxable', 'variant_taxable'),
+      true
+    ),
+    taxCode: getField(csvProduct, 'Variant Tax Code', 'tax_code', 'variant_tax_code'),
+
+    // Cost
+    cost: parseFloat(getField(csvProduct, 'Cost per item', 'cost', 'cost_per_item') || 0) || null,
+
+    // Images
+    imageUrl: getField(csvProduct, 'Image Src', 'image_src', 'imageUrl', 'image_url'),
+    imagePosition: getField(csvProduct, 'Image Position', 'image_position'),
+    imageAlt: getField(csvProduct, 'Image Alt Text', 'image_alt', 'imageAlt'),
+    variantImage: getField(csvProduct, 'Variant Image', 'variant_image'),
+
+    // Gift Card
+    giftCard: parseBoolean(getField(csvProduct, 'Gift Card', 'gift_card'), false),
+
+    // Google Shopping / Merchant Center
+    googleShoppingMPN: getField(csvProduct, 'Google Shopping / MPN', 'google_shopping_mpn', 'mpn'),
+    googleShoppingAgeGroup: getField(
+      csvProduct,
+      'Google Shopping / Age Group',
+      'google_shopping_age_group',
+      'age_group'
+    ),
+    googleShoppingGender: getField(
+      csvProduct,
+      'Google Shopping / Gender',
+      'google_shopping_gender',
+      'gender'
+    ),
+    googleShoppingProductCategory: getField(
+      csvProduct,
+      'Google Shopping / Google Product Category',
+      'google_shopping_product_category',
+      'google_product_category'
+    ),
+    googleShoppingAdWordsGrouping: getField(
+      csvProduct,
+      'Google Shopping / AdWords Grouping',
+      'google_shopping_adwords_grouping',
+      'adwords_grouping'
+    ),
+    googleShoppingAdWordsLabels: getField(
+      csvProduct,
+      'Google Shopping / AdWords Labels',
+      'google_shopping_adwords_labels',
+      'adwords_labels'
+    ),
+    googleShoppingCondition: getField(
+      csvProduct,
+      'Google Shopping / Condition',
+      'google_shopping_condition',
+      'condition'
+    ),
+    googleShoppingCustomProduct: getField(
+      csvProduct,
+      'Google Shopping / Custom Product',
+      'google_shopping_custom_product',
+      'custom_product'
+    ),
+    googleShoppingCustomLabel0: getField(
+      csvProduct,
+      'Google Shopping / Custom Label 0',
+      'google_shopping_custom_label_0',
+      'custom_label_0'
+    ),
+    googleShoppingCustomLabel1: getField(
+      csvProduct,
+      'Google Shopping / Custom Label 1',
+      'google_shopping_custom_label_1',
+      'custom_label_1'
+    ),
+    googleShoppingCustomLabel2: getField(
+      csvProduct,
+      'Google Shopping / Custom Label 2',
+      'google_shopping_custom_label_2',
+      'custom_label_2'
+    ),
+    googleShoppingCustomLabel3: getField(
+      csvProduct,
+      'Google Shopping / Custom Label 3',
+      'google_shopping_custom_label_3',
+      'custom_label_3'
+    ),
+    googleShoppingCustomLabel4: getField(
+      csvProduct,
+      'Google Shopping / Custom Label 4',
+      'google_shopping_custom_label_4',
+      'custom_label_4'
+    ),
+
+    // SEO
+    seoTitle: getField(csvProduct, 'SEO Title', 'seo_title', 'seoTitle'),
+    seoDescription: getField(csvProduct, 'SEO Description', 'seo_description', 'seoDescription'),
+    seoHidden: parseBoolean(
+      getField(csvProduct, 'SEO Hidden (product.metafields.seo.hidden)', 'seo_hidden'),
+      false
+    )
   };
+
+  return product;
 }
 
 /**
  * Generate CSV template
- * Provides simplified format (also accepts Shopify export format)
+ * Provides FULL Shopify export format template
  */
 export function generateCsvTemplate() {
   const headers = [
-    'title',
-    'description',
-    'vendor',
-    'product_type',
-    'tags',
-    'published',
-    'handle',
-    'price',
-    'compare_at_price',
-    'sku',
-    'barcode',
-    'inventory_quantity',
-    'weight',
-    'weight_unit',
-    'requires_shipping',
-    'taxable',
-    'cost',
-    'image_src',
-    'image_alt',
-    'seo_title',
-    'seo_description'
+    'Handle',
+    'Title',
+    'Body (HTML)',
+    'Vendor',
+    'Type',
+    'Tags',
+    'Published',
+    'Option1 Name',
+    'Option1 Value',
+    'Option2 Name',
+    'Option2 Value',
+    'Option3 Name',
+    'Option3 Value',
+    'Variant SKU',
+    'Variant Grams',
+    'Variant Inventory Tracker',
+    'Variant Inventory Qty',
+    'Variant Inventory Policy',
+    'Variant Fulfillment Service',
+    'Variant Price',
+    'Variant Compare At Price',
+    'Variant Requires Shipping',
+    'Variant Taxable',
+    'Variant Barcode',
+    'Image Src',
+    'Image Position',
+    'Image Alt Text',
+    'Gift Card',
+    'Google Shopping / MPN',
+    'Google Shopping / Age Group',
+    'Google Shopping / Gender',
+    'Google Shopping / Google Product Category',
+    'SEO Title',
+    'SEO Description',
+    'Google Shopping / AdWords Grouping',
+    'Google Shopping / AdWords Labels',
+    'Google Shopping / Condition',
+    'Google Shopping / Custom Product',
+    'Google Shopping / Custom Label 0',
+    'Google Shopping / Custom Label 1',
+    'Google Shopping / Custom Label 2',
+    'Google Shopping / Custom Label 3',
+    'Google Shopping / Custom Label 4',
+    'Variant Image',
+    'Variant Weight Unit',
+    'Variant Tax Code',
+    'Cost per item',
+    'SEO Hidden (product.metafields.seo.hidden)'
   ];
 
   const exampleRow = [
-    'Example Product',
-    'This is a sample product description',
-    'My Brand',
-    'Electronics',
-    'new, featured',
-    'True',
-    'example-product',
-    '29.99',
-    '39.99',
-    'SKU-001',
-    '123456789',
-    '100',
-    '0',
-    'lb',
-    'True',
-    'True',
-    '20.00',
-    'https://example.com/image.jpg',
-    'Example Product Image',
-    'Buy Example Product - Best Electronics',
-    'High quality example product with free shipping. Perfect for home and office use.'
+    'nfl-cap-cowboys', // Handle
+    'Dallas Cowboys NFL Cap', // Title
+    '<p>Official Dallas Cowboys NFL cap with adjustable strap.</p>', // Body (HTML)
+    'NFL Official', // Vendor
+    'Caps', // Type
+    'nfl, caps, sports, cowboys', // Tags
+    'TRUE', // Published
+    'Size', // Option1 Name
+    'One Size', // Option1 Value
+    'Color', // Option2 Name
+    'Blue', // Option2 Value
+    '', // Option3 Name
+    '', // Option3 Value
+    'NFL-CAP-DAL-001', // Variant SKU
+    '200', // Variant Grams
+    'shopify', // Variant Inventory Tracker
+    '100', // Variant Inventory Qty
+    'deny', // Variant Inventory Policy
+    'manual', // Variant Fulfillment Service
+    '29.99', // Variant Price
+    '39.99', // Variant Compare At Price
+    'TRUE', // Variant Requires Shipping
+    'TRUE', // Variant Taxable
+    '123456789012', // Variant Barcode
+    'https://example.com/images/cowboys-cap.jpg', // Image Src
+    '1', // Image Position
+    'Dallas Cowboys Blue NFL Cap', // Image Alt Text
+    'FALSE', // Gift Card
+    'NFL-CAP-001', // Google Shopping / MPN
+    'Adult', // Google Shopping / Age Group
+    'Unisex', // Google Shopping / Gender
+    'Apparel & Accessories > Clothing Accessories > Hats', // Google Shopping / Google Product Category
+    'Buy Dallas Cowboys NFL Cap - Official Licensed', // SEO Title
+    'Shop official Dallas Cowboys NFL cap. Adjustable, one size fits all. Free shipping on orders over $50.', // SEO Description
+    'NFL Caps', // Google Shopping / AdWords Grouping
+    'Sports, NFL, Cowboys', // Google Shopping / AdWords Labels
+    'new', // Google Shopping / Condition
+    'FALSE', // Google Shopping / Custom Product
+    'Best Seller', // Google Shopping / Custom Label 0
+    'Official Licensed', // Google Shopping / Custom Label 1
+    'Sports Merchandise', // Google Shopping / Custom Label 2
+    '', // Google Shopping / Custom Label 3
+    '', // Google Shopping / Custom Label 4
+    'https://example.com/images/cowboys-cap-variant.jpg', // Variant Image
+    'lb', // Variant Weight Unit
+    '', // Variant Tax Code
+    '15.00', // Cost per item
+    'FALSE' // SEO Hidden
   ];
 
-  // Add header comment explaining format compatibility
-  const comment = '# Simplified format. Shopify product export CSV (with fields like "Title", "Body (HTML)", "Variant Price") is also fully supported.\n';
+  // Add header comment explaining format
+  const comment =
+    '# Full Shopify Product Export Format - All 48 columns supported\n# This template includes all fields from Shopify product export CSV\n';
 
   return comment + headers.join(',') + '\n' + exampleRow.join(',');
 }

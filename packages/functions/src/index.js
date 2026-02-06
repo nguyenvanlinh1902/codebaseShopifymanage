@@ -120,7 +120,6 @@ export const processTrackingImportQueue = onMessagePublished(
 export const productQueueCron = onSchedule(
   {
     schedule: 'every 1 minutes',
-    timeZone: 'Asia/Ho_Chi_Minh',
     memory: '512MiB',
     timeoutSeconds: 540,
     retryConfig: {

@@ -13,100 +13,122 @@ import {
   Badge,
   SkeletonBodyText,
   EmptyState,
-  Modal,
   BlockStack,
   Tabs,
-  ChoiceList
+  ChoiceList,
+  Box,
+  Divider,
+  Icon,
+  ProgressBar,
+  TextField,
+  Checkbox,
+  Modal
 } from '@shopify/polaris';
+import {CheckCircleIcon, ClockIcon, AlertCircleIcon, SearchIcon} from '@shopify/polaris-icons';
 import {USER_ID} from '../config/user';
 
 /**
- * Products Page - Upload, History, and Products List
+ * Products Page - Enhanced version
+ * Features:
+ * - Multi-store CSV import
+ * - Multi-select products with checkboxes
+ * - Search functionality (title, SKU, vendor, type)
+ * - Re-import selected products to other stores
+ * - Real-time import status per store
+ * - Auto CronJob + Manual processing
+ * - Full product field support (48 columns)
  */
 export default function Products() {
   const [selectedTab, setSelectedTab] = useState(0);
   const [stores, setStores] = useState([]);
   const [selectedStore, setSelectedStore] = useState('');
-  const [selectedStores, setSelectedStores] = useState([]); // For multi-store import
+  const [selectedStores, setSelectedStores] = useState([]);
   const [file, setFile] = useState(null);
   const [uploading, setUploading] = useState(false);
-  const [importHistory, setImportHistory] = useState([]);
-  const [successfulImports, setSuccessfulImports] = useState([]);
   const [products, setProducts] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [detailsModal, setDetailsModal] = useState(null);
   const [queueStats, setQueueStats] = useState(null);
   const [processingQueue, setProcessingQueue] = useState(false);
+  const [storeImportStatus, setStoreImportStatus] = useState([]);
+
+  // New states for search and selection
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedProducts, setSelectedProducts] = useState([]);
+  const [showReimportModal, setShowReimportModal] = useState(false);
+  const [reimportStores, setReimportStores] = useState([]);
+  const [reimporting, setReimporting] = useState(false);
+
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(50);
+  const [totalProducts, setTotalProducts] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
 
   useEffect(() => {
     fetchStores();
-    fetchImportHistory();
-    fetchSuccessfulImports();
     fetchProducts();
     fetchQueueStats();
-    // Poll queue stats every 30 seconds
-    const interval = setInterval(fetchQueueStats, 30000);
+    fetchStoreImportStatus();
+
+    // Poll queue stats and store status every 10 seconds
+    const interval = setInterval(() => {
+      fetchQueueStats();
+      fetchStoreImportStatus();
+    }, 10000);
+
     return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
-    if (selectedTab === 2) {
+    if (selectedTab === 1) {
       fetchProducts();
     }
-  }, [selectedStore, selectedTab]);
+  }, [selectedStore, selectedTab, currentPage, itemsPerPage, searchQuery]);
 
   const fetchStores = async () => {
     try {
       const response = await fetch(`/api/stores?userId=${USER_ID}`);
       const result = await response.json();
       if (result.success) {
-        setStores(result.data);
+        setStores(result.data || []);
       }
     } catch (err) {
       console.error('Error fetching stores:', err);
     }
   };
 
-  const fetchImportHistory = async () => {
-    try {
-      setLoading(true);
-      const response = await fetch(`/api/products/import-history?userId=${USER_ID}`);
-      const result = await response.json();
-      if (result.success) {
-        setImportHistory(result.data);
-      }
-    } catch (err) {
-      console.error('Error fetching import history:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchSuccessfulImports = async () => {
-    try {
-      const response = await fetch(`/api/products/successful-imports?userId=${USER_ID}`);
-      const result = await response.json();
-      if (result.success) {
-        setSuccessfulImports(result.data);
-      }
-    } catch (err) {
-      console.error('Error fetching successful imports:', err);
-    }
-  };
-
   const fetchProducts = async () => {
     try {
-      const url = selectedStore
-        ? `/api/products/list?userId=${USER_ID}&storeId=${selectedStore}`
-        : `/api/products/list?userId=${USER_ID}`;
-      const response = await fetch(url);
+      setLoading(true);
+      const params = new URLSearchParams({
+        userId: USER_ID,
+        page: currentPage,
+        limit: itemsPerPage
+      });
+
+      if (selectedStore) {
+        params.append('storeId', selectedStore);
+      }
+
+      if (searchQuery) {
+        params.append('search', searchQuery);
+      }
+
+      const response = await fetch(`/api/products/list?${params.toString()}`);
       const result = await response.json();
+
       if (result.success) {
-        setProducts(result.data);
+        setProducts(result.data || []);
+        if (result.pagination) {
+          setTotalProducts(result.pagination.total);
+          setTotalPages(result.pagination.totalPages);
+        }
       }
     } catch (err) {
       console.error('Error fetching products:', err);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -119,6 +141,18 @@ export default function Products() {
       }
     } catch (err) {
       console.error('Error fetching queue stats:', err);
+    }
+  };
+
+  const fetchStoreImportStatus = async () => {
+    try {
+      const response = await fetch(`/api/products/successful-imports?userId=${USER_ID}`);
+      const result = await response.json();
+      if (result.success) {
+        setStoreImportStatus(result.data || []);
+      }
+    } catch (err) {
+      console.error('Error fetching store import status:', err);
     }
   };
 
@@ -135,11 +169,9 @@ export default function Products() {
       const result = await response.json();
 
       if (result.success) {
-        // Update queue stats with the result
         setQueueStats(result.data);
-        // Refresh other data
-        await fetchImportHistory();
         await fetchProducts();
+        await fetchStoreImportStatus();
       } else {
         setError(result.error || 'Failed to process queue');
       }
@@ -175,7 +207,6 @@ export default function Products() {
       setUploading(true);
       setError(null);
 
-      // Read file content
       const reader = new FileReader();
       reader.onload = async e => {
         const csvData = e.target.result;
@@ -185,7 +216,7 @@ export default function Products() {
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({
             userId: USER_ID,
-            storeIds: selectedStores, // Send array of store IDs
+            storeIds: selectedStores,
             csvData,
             fileName: file.name
           })
@@ -195,10 +226,10 @@ export default function Products() {
 
         if (result.success) {
           setFile(null);
-          setSelectedStores([]); // Clear selection after upload
-          await fetchImportHistory();
-          await fetchSuccessfulImports();
+          setSelectedStores([]);
           await fetchProducts();
+          await fetchStoreImportStatus();
+          await fetchQueueStats();
         } else {
           setError(result.error || 'Failed to upload CSV');
         }
@@ -237,15 +268,99 @@ export default function Products() {
     }
   };
 
-  const viewImportDetails = async importId => {
+  // Reset to first page when search query or store changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, selectedStore]);
+
+  // Handle product selection
+  const handleProductSelect = (productId, checked) => {
+    if (checked) {
+      setSelectedProducts([...selectedProducts, productId]);
+    } else {
+      setSelectedProducts(selectedProducts.filter(id => id !== productId));
+    }
+  };
+
+  const handleSelectAll = checked => {
+    if (checked) {
+      setSelectedProducts(products.map(p => p.id));
+    } else {
+      setSelectedProducts([]);
+    }
+  };
+
+  // Handle re-import to other stores
+  const handleReimport = async () => {
+    if (reimportStores.length === 0) {
+      setError('Please select at least one store to import to');
+      return;
+    }
+
     try {
-      const response = await fetch(`/api/products/imports/${importId}`);
+      setReimporting(true);
+      setError(null);
+
+      // Get selected product details
+      const selectedProductDetails = products.filter(p => selectedProducts.includes(p.id));
+
+      // Convert products to CSV format
+      const csvHeaders = [
+        'Title',
+        'Body (HTML)',
+        'Vendor',
+        'Type',
+        'Tags',
+        'Published',
+        'Variant SKU',
+        'Variant Price',
+        'Variant Compare At Price',
+        'Variant Inventory Qty'
+      ];
+
+      const csvRows = selectedProductDetails.map(p => [
+        p.title || '',
+        p.description || '',
+        p.vendor || '',
+        p.productType || '',
+        p.tags || '',
+        p.status === 'active' ? 'TRUE' : 'FALSE',
+        p.sku || '',
+        p.price || '',
+        p.compareAtPrice || '',
+        p.inventoryQuantity || 0
+      ]);
+
+      const csvData = [csvHeaders.join(','), ...csvRows.map(row => row.join(','))].join('\n');
+
+      const response = await fetch('/api/products/upload-csv', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          userId: USER_ID,
+          storeIds: reimportStores,
+          csvData,
+          fileName: `reimport-${Date.now()}.csv`
+        })
+      });
+
       const result = await response.json();
+
       if (result.success) {
-        setDetailsModal(result.data);
+        setShowReimportModal(false);
+        setReimportStores([]);
+        setSelectedProducts([]);
+        await fetchProducts();
+        await fetchStoreImportStatus();
+        await fetchQueueStats();
+      } else {
+        setError(result.error || 'Failed to reimport products');
       }
     } catch (err) {
-      console.error('Error fetching import details:', err);
+      console.error('Error reimporting products:', err);
+      setError('Failed to reimport products');
+    } finally {
+      setReimporting(false);
     }
   };
 
@@ -283,27 +398,17 @@ export default function Products() {
     return <Badge tone={toneMap[status] || 'info'}>{status}</Badge>;
   };
 
-  const historyRows = importHistory.map((imp, index) => [
-    imp.fileName,
-    stores.find(s => s.id === imp.storeId)?.name || imp.storeName,
-    getStatusBadge(imp.status),
-    `${imp.processedProducts || 0}/${imp.totalProducts}`,
-    `${imp.successCount || 0} success, ${imp.failedCount || 0} failed`,
-    new Date(imp.createdAt).toLocaleString(),
-    <Button key={`btn-${imp.id}`} size="slim" onClick={() => viewImportDetails(imp.id)}>
-      View Details
-    </Button>
-  ]);
-
   const productRows = products.map(product => [
+    <Checkbox
+      key={`checkbox-${product.id}`}
+      checked={selectedProducts.includes(product.id)}
+      onChange={checked => handleProductSelect(product.id, checked)}
+    />,
     product.title,
     product.sku || '-',
     product.price ? `$${product.price}` : '-',
     product.vendor || '-',
     product.productType || '-',
-    <Badge key={`badge-${product.id}`} tone={product.action === 'created' ? 'success' : 'info'}>
-      {product.action || 'unknown'}
-    </Badge>,
     stores.find(s => s.id === product.storeId)?.name || product.storeName || '-',
     new Date(product.createdAt).toLocaleString()
   ]);
@@ -311,17 +416,12 @@ export default function Products() {
   const tabs = [
     {
       id: 'upload',
-      content: 'Upload CSV',
+      content: 'Upload & Import',
       panelID: 'upload-panel'
     },
     {
-      id: 'history',
-      content: 'Import History',
-      panelID: 'history-panel'
-    },
-    {
       id: 'products',
-      content: 'Products',
+      content: 'Products List',
       panelID: 'products-panel'
     }
   ];
@@ -329,7 +429,7 @@ export default function Products() {
   return (
     <Page
       title="Product Management"
-      subtitle="Import products from CSV and manage imported products"
+      subtitle="Import products from CSV to multiple Shopify stores"
       secondaryActions={[{content: 'Download CSV Template', onAction: handleDownloadTemplate}]}
     >
       <Layout>
@@ -347,66 +447,91 @@ export default function Products() {
               <div style={{padding: '16px'}}>
                 {selectedTab === 0 && (
                   <BlockStack gap="400">
-                    <Text as="h2" variant="headingMd">
-                      Upload CSV File
-                    </Text>
-
-                    <ChoiceList
-                      title="Select Stores (can select multiple)"
-                      allowMultiple
-                      choices={stores.map(store => ({
-                        label: `${store.name} (${store.shopDomain})`,
-                        value: store.id
-                      }))}
-                      selected={selectedStores}
-                      onChange={setSelectedStores}
-                      disabled={uploading}
-                    />
-
-                    {selectedStores.length > 0 && (
-                      <Banner tone="info">
-                        <Text as="p">
-                          <strong>{selectedStores.length} store(s) selected:</strong> The CSV will
-                          be imported to all selected stores.
+                    {/* File Upload - Step 1 */}
+                    <Card>
+                      <BlockStack gap="300">
+                        <Text as="h2" variant="headingMd">
+                          Step 1: Upload CSV File
                         </Text>
-                      </Banner>
-                    )}
+                        <DropZone
+                          onDrop={handleDropZoneDrop}
+                          accept=".csv,text/csv"
+                          type="file"
+                          disabled={uploading}
+                        >
+                          {uploadedFiles}
+                          {fileUpload}
+                        </DropZone>
+                      </BlockStack>
+                    </Card>
 
-                    <DropZone
-                      onDrop={handleDropZoneDrop}
-                      accept=".csv,text/csv"
-                      type="file"
-                      disabled={uploading}
-                    >
-                      {uploadedFiles}
-                      {fileUpload}
-                    </DropZone>
+                    {/* Store Selection - Step 2 */}
+                    <Card>
+                      <BlockStack gap="300">
+                        <Text as="h2" variant="headingMd">
+                          Step 2: Select Target Stores
+                        </Text>
 
-                    <InlineStack align="end">
-                      <Button
-                        variant="primary"
-                        onClick={handleUpload}
-                        loading={uploading}
-                        disabled={selectedStores.length === 0 || !file}
-                      >
-                        Upload & Import to {selectedStores.length} Store
-                        {selectedStores.length !== 1 ? 's' : ''}
-                      </Button>
-                    </InlineStack>
+                        {!file && (
+                          <Banner tone="warning">
+                            <Text as="p">
+                              Please upload a CSV file first before selecting stores.
+                            </Text>
+                          </Banner>
+                        )}
 
-                    <Banner tone="info">
-                      <Text as="p">
-                        <strong>CSV Format:</strong> Download the template to see the required
-                        columns. The CSV must include: title, price, sku, and other product details.
-                      </Text>
-                    </Banner>
+                        {file && (
+                          <Banner tone="info">
+                            <Text as="p">
+                              <strong>File ready:</strong> {file.name} (
+                              {(file.size / 1024).toFixed(2)} KB)
+                            </Text>
+                          </Banner>
+                        )}
 
+                        <ChoiceList
+                          title="Import products to these stores (multiple selection allowed)"
+                          allowMultiple
+                          choices={stores.map(store => ({
+                            label: `${store.name} (${store.shopDomain})`,
+                            value: store.id
+                          }))}
+                          selected={selectedStores}
+                          onChange={setSelectedStores}
+                          disabled={uploading || !file}
+                        />
+
+                        {selectedStores.length > 0 && file && (
+                          <Banner tone="success">
+                            <Text as="p">
+                              <strong>{selectedStores.length} store(s) selected:</strong> Products
+                              from <strong>{file.name}</strong> will be imported to all selected
+                              stores simultaneously.
+                            </Text>
+                          </Banner>
+                        )}
+
+                        <InlineStack align="end">
+                          <Button
+                            variant="primary"
+                            onClick={handleUpload}
+                            loading={uploading}
+                            disabled={selectedStores.length === 0 || !file}
+                          >
+                            Upload & Import to {selectedStores.length} Store
+                            {selectedStores.length !== 1 ? 's' : ''}
+                          </Button>
+                        </InlineStack>
+                      </BlockStack>
+                    </Card>
+
+                    {/* Queue Status & Processing */}
                     {queueStats && (
                       <Card>
-                        <BlockStack gap="300">
+                        <BlockStack gap="400">
                           <InlineStack align="space-between" blockAlign="center">
-                            <Text as="h3" variant="headingSm">
-                              Queue Status
+                            <Text as="h2" variant="headingMd">
+                              Import Queue Status
                             </Text>
                             <Button
                               onClick={handleProcessQueue}
@@ -414,143 +539,255 @@ export default function Products() {
                               disabled={queueStats.pending === 0}
                               variant="primary"
                             >
-                              Process Now
+                              Manual Process Now
                             </Button>
                           </InlineStack>
-                          <InlineStack gap="400">
-                            <BlockStack gap="200">
-                              <Text as="p" variant="bodySm" tone="subdued">
-                                Pending
-                              </Text>
-                              <Text as="p" variant="headingLg">
-                                {queueStats.pending}
-                              </Text>
-                            </BlockStack>
-                            <BlockStack gap="200">
-                              <Text as="p" variant="bodySm" tone="subdued">
-                                Processing
-                              </Text>
-                              <Text as="p" variant="headingLg">
-                                {queueStats.processing}
-                              </Text>
-                            </BlockStack>
-                            <BlockStack gap="200">
-                              <Text as="p" variant="bodySm" tone="subdued">
-                                Completed
-                              </Text>
-                              <Text as="p" variant="headingLg">
-                                {queueStats.completed}
-                              </Text>
-                            </BlockStack>
-                            <BlockStack gap="200">
-                              <Text as="p" variant="bodySm" tone="subdued">
-                                Failed
-                              </Text>
-                              <Text as="p" variant="headingLg">
-                                {queueStats.failed}
-                              </Text>
-                            </BlockStack>
+
+                          <InlineStack gap="400" wrap>
+                            <Box
+                              padding="400"
+                              background="bg-surface-secondary"
+                              borderRadius="200"
+                              minWidth="150px"
+                            >
+                              <BlockStack gap="200">
+                                <InlineStack gap="200" blockAlign="center">
+                                  <Icon source={ClockIcon} tone="base" />
+                                  <Text as="p" variant="bodySm" tone="subdued">
+                                    Pending
+                                  </Text>
+                                </InlineStack>
+                                <Text as="p" variant="heading2xl">
+                                  {queueStats.pending}
+                                </Text>
+                              </BlockStack>
+                            </Box>
+
+                            <Box
+                              padding="400"
+                              background="bg-surface-secondary"
+                              borderRadius="200"
+                              minWidth="150px"
+                            >
+                              <BlockStack gap="200">
+                                <InlineStack gap="200" blockAlign="center">
+                                  <Icon source={ClockIcon} tone="caution" />
+                                  <Text as="p" variant="bodySm" tone="subdued">
+                                    Processing
+                                  </Text>
+                                </InlineStack>
+                                <Text as="p" variant="heading2xl">
+                                  {queueStats.processing}
+                                </Text>
+                              </BlockStack>
+                            </Box>
+
+                            <Box
+                              padding="400"
+                              background="bg-surface-secondary"
+                              borderRadius="200"
+                              minWidth="150px"
+                            >
+                              <BlockStack gap="200">
+                                <InlineStack gap="200" blockAlign="center">
+                                  <Icon source={CheckCircleIcon} tone="success" />
+                                  <Text as="p" variant="bodySm" tone="subdued">
+                                    Completed
+                                  </Text>
+                                </InlineStack>
+                                <Text as="p" variant="heading2xl">
+                                  {queueStats.completed}
+                                </Text>
+                              </BlockStack>
+                            </Box>
+
+                            <Box
+                              padding="400"
+                              background="bg-surface-secondary"
+                              borderRadius="200"
+                              minWidth="150px"
+                            >
+                              <BlockStack gap="200">
+                                <InlineStack gap="200" blockAlign="center">
+                                  <Icon source={AlertCircleIcon} tone="critical" />
+                                  <Text as="p" variant="bodySm" tone="subdued">
+                                    Failed
+                                  </Text>
+                                </InlineStack>
+                                <Text as="p" variant="heading2xl">
+                                  {queueStats.failed}
+                                </Text>
+                              </BlockStack>
+                            </Box>
                           </InlineStack>
-                          <Text as="p" variant="bodySm" tone="subdued">
-                            CronJob runs automatically every minute to process up to 50 products per
-                            batch. You can also process the queue immediately by clicking "Process
-                            Now". Stats update automatically every 30 seconds.
-                          </Text>
+
+                          <Divider />
+
+                          <Banner tone="info">
+                            <BlockStack gap="200">
+                              <Text as="p">
+                                <strong>Automatic Processing (CronJob):</strong>
+                              </Text>
+                              <Text as="p" tone="subdued">
+                                • Runs automatically every minute
+                              </Text>
+                              <Text as="p" tone="subdued">
+                                • Processes up to 100 products per batch
+                              </Text>
+                              <Text as="p" tone="subdued">
+                                • Retries failed products up to 3 times
+                              </Text>
+                              <Text as="p" tone="subdued">
+                                • Queue stats update every 10 seconds
+                              </Text>
+                            </BlockStack>
+                          </Banner>
+
+                          <Banner tone="success">
+                            <Text as="p">
+                              <strong>Manual Processing:</strong> Click "Manual Process Now" to
+                              immediately process pending products without waiting for the CronJob.
+                            </Text>
+                          </Banner>
                         </BlockStack>
                       </Card>
                     )}
 
-                    {successfulImports.length > 0 && (
-                      <BlockStack gap="300">
-                        <Text as="h3" variant="headingSm">
-                          Recent Successful Imports
-                        </Text>
-                        {successfulImports.map(storeImport => (
-                          <BlockStack key={storeImport.storeId} gap="200">
-                            <Text as="p" variant="headingSm">
-                              {storeImport.storeName} ({storeImport.shopDomain})
-                            </Text>
-                            {storeImport.imports.map(imp => (
-                              <InlineStack key={imp.importId} gap="200">
-                                <Text as="p">
-                                  {imp.fileName} - {imp.successCount} products -{' '}
-                                  {new Date(imp.completedAt).toLocaleDateString()}
-                                </Text>
-                              </InlineStack>
-                            ))}
-                          </BlockStack>
-                        ))}
-                      </BlockStack>
+                    {/* Store Import Status */}
+                    {storeImportStatus.length > 0 && (
+                      <Card>
+                        <BlockStack gap="400">
+                          <Text as="h2" variant="headingMd">
+                            Import Status by Store
+                          </Text>
+
+                          {storeImportStatus.map(storeImport => {
+                            const totalSuccess = storeImport.imports.reduce(
+                              (sum, imp) => sum + (imp.successCount || 0),
+                              0
+                            );
+                            const latestImport = storeImport.imports[0];
+
+                            return (
+                              <Box
+                                key={storeImport.storeId}
+                                padding="400"
+                                background="bg-surface-secondary"
+                                borderRadius="200"
+                              >
+                                <BlockStack gap="300">
+                                  <InlineStack align="space-between" blockAlign="center">
+                                    <BlockStack gap="100">
+                                      <Text as="p" variant="headingSm" fontWeight="semibold">
+                                        {storeImport.storeName}
+                                      </Text>
+                                      <Text as="p" variant="bodySm" tone="subdued">
+                                        {storeImport.shopDomain}
+                                      </Text>
+                                    </BlockStack>
+                                    <Badge tone="success">{totalSuccess} products imported</Badge>
+                                  </InlineStack>
+
+                                  <Divider />
+
+                                  <Text as="p" variant="bodySm" fontWeight="semibold">
+                                    Recent Imports:
+                                  </Text>
+
+                                  {storeImport.imports.slice(0, 3).map(imp => (
+                                    <Box
+                                      key={imp.importId}
+                                      padding="200"
+                                      background="bg-surface"
+                                      borderRadius="100"
+                                    >
+                                      <InlineStack align="space-between" blockAlign="center">
+                                        <BlockStack gap="050">
+                                          <Text as="p" variant="bodySm">
+                                            {imp.fileName}
+                                          </Text>
+                                          <Text as="p" variant="bodySm" tone="subdued">
+                                            {new Date(imp.completedAt).toLocaleString()}
+                                          </Text>
+                                        </BlockStack>
+                                        <Badge tone="success">{imp.successCount} products</Badge>
+                                      </InlineStack>
+                                    </Box>
+                                  ))}
+                                </BlockStack>
+                              </Box>
+                            );
+                          })}
+                        </BlockStack>
+                      </Card>
                     )}
                   </BlockStack>
                 )}
 
                 {selectedTab === 1 && (
                   <BlockStack gap="400">
-                    <Text as="h2" variant="headingMd">
-                      Import History
-                    </Text>
-
-                    {loading ? (
-                      <SkeletonBodyText lines={5} />
-                    ) : importHistory.length === 0 ? (
-                      <EmptyState
-                        heading="No imports yet"
-                        image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
-                      >
-                        <p>Upload a CSV file to start importing products.</p>
-                      </EmptyState>
-                    ) : (
-                      <DataTable
-                        columnContentTypes={[
-                          'text',
-                          'text',
-                          'text',
-                          'text',
-                          'text',
-                          'text',
-                          'text'
-                        ]}
-                        headings={[
-                          'File',
-                          'Store',
-                          'Status',
-                          'Progress',
-                          'Results',
-                          'Date',
-                          'Actions'
-                        ]}
-                        rows={historyRows}
-                      />
-                    )}
-                  </BlockStack>
-                )}
-
-                {selectedTab === 2 && (
-                  <BlockStack gap="400">
-                    <InlineStack align="space-between" blockAlign="center">
+                    <InlineStack align="space-between" blockAlign="center" wrap={false}>
                       <Text as="h2" variant="headingMd">
                         Imported Products
                       </Text>
-                      <div style={{minWidth: '200px'}}>
-                        <Select
-                          label="Filter by Store"
-                          labelHidden
-                          options={storeOptions}
-                          value={selectedStore}
-                          onChange={value => {
-                            setSelectedStore(value);
-                          }}
-                        />
-                      </div>
+                      <InlineStack gap="200">
+                        {selectedProducts.length > 0 && (
+                          <Button onClick={() => setShowReimportModal(true)} variant="primary">
+                            Import {selectedProducts.length} Selected
+                          </Button>
+                        )}
+                        <div style={{minWidth: '250px'}}>
+                          <Select
+                            label="Filter by Store"
+                            labelHidden
+                            options={storeOptions}
+                            value={selectedStore}
+                            onChange={value => {
+                              setSelectedStore(value);
+                              setSelectedProducts([]);
+                            }}
+                          />
+                        </div>
+                      </InlineStack>
                     </InlineStack>
 
-                    {products.length === 0 ? (
+                    <TextField
+                      label="Search"
+                      labelHidden
+                      value={searchQuery}
+                      onChange={setSearchQuery}
+                      placeholder="Search by title, SKU, vendor, type..."
+                      prefix={<Icon source={SearchIcon} />}
+                      clearButton
+                      onClearButtonClick={() => setSearchQuery('')}
+                    />
+
+                    {selectedProducts.length > 0 && (
+                      <Banner tone="info">
+                        <InlineStack align="space-between" blockAlign="center">
+                          <Text as="p">
+                            <strong>{selectedProducts.length}</strong> product
+                            {selectedProducts.length !== 1 ? 's' : ''} selected
+                          </Text>
+                          <Button onClick={() => setSelectedProducts([])} size="slim">
+                            Clear Selection
+                          </Button>
+                        </InlineStack>
+                      </Banner>
+                    )}
+
+                    {loading ? (
+                      <SkeletonBodyText lines={8} />
+                    ) : products.length === 0 ? (
                       <EmptyState
-                        heading="No products yet"
+                        heading={searchQuery ? 'No products found' : 'No products yet'}
                         image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
                       >
-                        <p>Import products from CSV to see them here.</p>
+                        {searchQuery ? (
+                          <p>Try adjusting your search query</p>
+                        ) : (
+                          <p>Import products from CSV to see them here.</p>
+                        )}
                       </EmptyState>
                     ) : (
                       <>
@@ -558,28 +795,83 @@ export default function Products() {
                           columnContentTypes={[
                             'text',
                             'text',
-                            'numeric',
                             'text',
+                            'numeric',
                             'text',
                             'text',
                             'text',
                             'text'
                           ]}
                           headings={[
+                            <Checkbox
+                              key="select-all"
+                              checked={
+                                selectedProducts.length === products.length && products.length > 0
+                              }
+                              onChange={handleSelectAll}
+                            />,
                             'Title',
                             'SKU',
                             'Price',
                             'Vendor',
                             'Type',
-                            'Action',
                             'Store',
                             'Imported At'
                           ]}
                           rows={productRows}
                         />
-                        <Text as="p" variant="bodySm" tone="subdued">
-                          Showing {products.length} product{products.length !== 1 ? 's' : ''}
-                        </Text>
+
+                        {/* Backend Pagination */}
+                        {totalProducts > 0 && (
+                          <Box padding="400">
+                            <InlineStack align="space-between" blockAlign="center" wrap={false}>
+                              <Text as="p" variant="bodySm" tone="subdued">
+                                Showing {(currentPage - 1) * itemsPerPage + 1}-
+                                {Math.min(currentPage * itemsPerPage, totalProducts)} of{' '}
+                                {totalProducts}
+                                {searchQuery && ` (filtered)`}
+                              </Text>
+
+                              <InlineStack gap="300" blockAlign="center">
+                                <Select
+                                  label="Per page"
+                                  labelInline
+                                  options={[
+                                    {label: '25', value: '25'},
+                                    {label: '50', value: '50'},
+                                    {label: '100', value: '100'},
+                                    {label: '200', value: '200'}
+                                  ]}
+                                  value={String(itemsPerPage)}
+                                  onChange={value => {
+                                    setItemsPerPage(Number(value));
+                                    setCurrentPage(1);
+                                  }}
+                                />
+
+                                <Button
+                                  size="slim"
+                                  onClick={() => setCurrentPage(currentPage - 1)}
+                                  disabled={currentPage === 1 || loading}
+                                >
+                                  ←
+                                </Button>
+
+                                <Text as="span" variant="bodySm">
+                                  {currentPage} / {totalPages}
+                                </Text>
+
+                                <Button
+                                  size="slim"
+                                  onClick={() => setCurrentPage(currentPage + 1)}
+                                  disabled={currentPage === totalPages || loading}
+                                >
+                                  →
+                                </Button>
+                              </InlineStack>
+                            </InlineStack>
+                          </Box>
+                        )}
                       </>
                     )}
                   </BlockStack>
@@ -590,53 +882,57 @@ export default function Products() {
         </Layout.Section>
       </Layout>
 
-      {detailsModal && (
+      {/* Re-import Modal */}
+      {showReimportModal && (
         <Modal
-          open={!!detailsModal}
-          onClose={() => setDetailsModal(null)}
-          title="Import Details"
-          primaryAction={{content: 'Close', onAction: () => setDetailsModal(null)}}
+          open={showReimportModal}
+          onClose={() => {
+            setShowReimportModal(false);
+            setReimportStores([]);
+          }}
+          title="Import Selected Products to Other Stores"
+          primaryAction={{
+            content: `Import to ${reimportStores.length} Store${
+              reimportStores.length !== 1 ? 's' : ''
+            }`,
+            onAction: handleReimport,
+            loading: reimporting,
+            disabled: reimportStores.length === 0
+          }}
+          secondaryActions={[
+            {
+              content: 'Cancel',
+              onAction: () => {
+                setShowReimportModal(false);
+                setReimportStores([]);
+              }
+            }
+          ]}
         >
           <Modal.Section>
             <BlockStack gap="400">
               <Text as="p">
-                <strong>File:</strong> {detailsModal.fileName}
+                You have selected <strong>{selectedProducts.length}</strong> product
+                {selectedProducts.length !== 1 ? 's' : ''}. Choose which stores to import them to:
               </Text>
-              <Text as="p">
-                <strong>Store:</strong> {detailsModal.storeName}
-              </Text>
-              <Text as="p">
-                <strong>Status:</strong> {getStatusBadge(detailsModal.status)}
-              </Text>
-              <Text as="p">
-                <strong>Total Products:</strong> {detailsModal.totalProducts}
-              </Text>
-              <Text as="p">
-                <strong>Processed:</strong> {detailsModal.processedProducts || 0}
-              </Text>
-              <Text as="p">
-                <strong>Success:</strong> {detailsModal.successCount || 0}
-              </Text>
-              <Text as="p">
-                <strong>Failed:</strong> {detailsModal.failedCount || 0}
-              </Text>
-              {detailsModal.error && (
-                <Banner tone="critical">
-                  <Text as="p">{detailsModal.error}</Text>
-                </Banner>
-              )}
-              {detailsModal.invalidProducts && detailsModal.invalidProducts.length > 0 && (
-                <BlockStack gap="200">
-                  <Text as="p" variant="headingSm">
-                    Invalid Products:
-                  </Text>
-                  {detailsModal.invalidProducts.map((inv, idx) => (
-                    <Text key={idx} as="p" tone="critical">
-                      Row {inv.row}: {inv.errors.join(', ')}
-                    </Text>
-                  ))}
-                </BlockStack>
-              )}
+
+              <ChoiceList
+                title="Select target stores"
+                allowMultiple
+                choices={stores.map(store => ({
+                  label: `${store.name} (${store.shopDomain})`,
+                  value: store.id
+                }))}
+                selected={reimportStores}
+                onChange={setReimportStores}
+              />
+
+              <Banner tone="warning">
+                <Text as="p">
+                  <strong>Note:</strong> If products with the same SKU already exist in the target
+                  stores, they will be updated. Otherwise, new products will be created.
+                </Text>
+              </Banner>
             </BlockStack>
           </Modal.Section>
         </Modal>

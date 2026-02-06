@@ -279,11 +279,11 @@ export async function getSuccessfulImports(req, res) {
 }
 
 /**
- * Get imported products
+ * Get imported products with pagination
  */
 export async function getProducts(req, res) {
   try {
-    const {userId, storeId, importId} = req.query;
+    const {userId, storeId, importId, page, limit, search} = req.query;
 
     if (!userId && !storeId && !importId) {
       return res.status(400).json({
@@ -292,18 +292,37 @@ export async function getProducts(req, res) {
       });
     }
 
-    let products;
+    // Handle import ID separately (no pagination needed usually)
     if (importId) {
-      products = await productRepo.getByImportId(importId);
-    } else if (storeId) {
-      products = await productRepo.getByStore(storeId);
-    } else if (userId) {
-      products = await productRepo.getByUser(userId);
+      const products = await productRepo.getByImportId(importId);
+      return res.json({
+        success: true,
+        data: products
+      });
     }
+
+    // Use pagination for user/store queries
+    const pageNum = parseInt(page) || 1;
+    const limitNum = parseInt(limit) || 50;
+    const searchQuery = search || '';
+
+    const result = await productRepo.getWithPagination({
+      userId,
+      storeId,
+      page: pageNum,
+      limit: limitNum,
+      search: searchQuery
+    });
 
     return res.json({
       success: true,
-      data: products
+      data: result.products,
+      pagination: {
+        page: result.page,
+        limit: result.limit,
+        total: result.total,
+        totalPages: result.totalPages
+      }
     });
   } catch (error) {
     console.error('Get products error:', error);
@@ -398,8 +417,8 @@ export async function processProductQueue() {
       console.log(`Reset ${resetCount} stuck items back to pending`);
     }
 
-    // Get pending products (batch of 50)
-    const pendingProducts = await productQueueRepo.getPendingBatch(50);
+    // Get pending products (batch of 100)
+    const pendingProducts = await productQueueRepo.getPendingBatch(100);
 
     if (pendingProducts.length === 0) {
       console.log('No pending products in queue');
@@ -454,24 +473,44 @@ export async function processProductQueue() {
 
         // Import product to Shopify
         let result;
+        let action = 'created';
         try {
           // Check if product with SKU already exists
           if (product.sku) {
             const existing = await shopifyService.getProductBySku(product.sku);
             if (existing) {
-              // Update existing product
-              result = await shopifyService.updateProduct(existing.product.id, product);
-              result.action = 'updated';
-            } else {
-              // Create new product
-              result = await shopifyService.createProduct(product);
-              result.action = 'created';
+              // Product already exists in this store - SKIP (do not update)
+              console.log(
+                `Product with SKU ${product.sku} already exists in store ${storeName}, skipping...`
+              );
+
+              // Mark queue item as completed (skipped)
+              await productQueueRepo.updateStatus(queueId, 'completed');
+
+              // Update import progress (skipped counts as success but not imported)
+              const importJob = await importHistoryRepo.getById(importId);
+              await importHistoryRepo.updateProgress(importId, {
+                processedProducts: (importJob.processedProducts || 0) + 1,
+                successCount: (importJob.successCount || 0) + 1,
+                status: 'processing'
+              });
+
+              // Check if this is the last product
+              if ((importJob.processedProducts || 0) + 1 >= totalProducts) {
+                await importHistoryRepo.markCompleted(importId, {
+                  successCount: (importJob.successCount || 0) + 1,
+                  failedCount: importJob.failedCount || 0
+                });
+              }
+
+              console.log(`Skipped product: ${product.title} (already exists)`);
+              continue; // Skip to next product
             }
-          } else {
-            // Create new product (no SKU to check)
-            result = await shopifyService.createProduct(product);
-            result.action = 'created';
           }
+
+          // Product does not exist - Create new product
+          result = await shopifyService.createProduct(product);
+          action = 'created';
 
           // Save product to Firestore for tracking
           await productRepo.save({
@@ -489,7 +528,7 @@ export async function processProductQueue() {
             productType: product.productType,
             tags: product.tags,
             status: product.status || 'active',
-            action: result.action,
+            action,
             importedAt: new Date().toISOString()
           });
 
@@ -512,7 +551,7 @@ export async function processProductQueue() {
             });
           }
 
-          console.log(`Successfully ${result.action} product: ${product.title}`);
+          console.log(`Successfully ${action} product: ${product.title}`);
         } catch (error) {
           console.error(`Failed to import product ${product.title}:`, error);
 

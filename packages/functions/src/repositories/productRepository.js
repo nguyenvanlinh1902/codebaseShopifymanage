@@ -156,4 +156,79 @@ export class ProductRepository {
 
     return products;
   }
+
+  /**
+   * Get products with pagination and search
+   * @param {Object} options - Query options
+   * @param {string} options.userId - User ID
+   * @param {string} options.storeId - Store ID (optional)
+   * @param {number} options.page - Page number (1-indexed)
+   * @param {number} options.limit - Items per page
+   * @param {string} options.search - Search query (optional)
+   * @returns {Promise<{products: Array, total: number, page: number, totalPages: number}>}
+   */
+  async getWithPagination({userId, storeId, page = 1, limit = 50, search = ''}) {
+    let query = this.collection;
+
+    // Build base query
+    if (storeId) {
+      query = query.where('storeId', '==', storeId);
+    } else if (userId) {
+      query = query.where('userId', '==', userId);
+    }
+
+    // Get total count for the base query
+    const countSnapshot = await query.count().get();
+    const total = countSnapshot.data().count;
+
+    // If search query exists, fetch all and filter client-side
+    // (Firestore doesn't support full-text search natively)
+    if (search) {
+      const allSnapshot = await query.orderBy('createdAt', 'desc').get();
+      const allProducts = allSnapshot.docs.map(doc => doc.data());
+
+      // Filter by search query (case-insensitive)
+      const searchLower = search.toLowerCase();
+      const filteredProducts = allProducts.filter(
+        p =>
+          p.title?.toLowerCase().includes(searchLower) ||
+          p.sku?.toLowerCase().includes(searchLower) ||
+          p.vendor?.toLowerCase().includes(searchLower) ||
+          p.productType?.toLowerCase().includes(searchLower)
+      );
+
+      const filteredTotal = filteredProducts.length;
+      const totalPages = Math.ceil(filteredTotal / limit);
+      const offset = (page - 1) * limit;
+      const paginatedProducts = filteredProducts.slice(offset, offset + limit);
+
+      return {
+        products: paginatedProducts,
+        total: filteredTotal,
+        page,
+        limit,
+        totalPages
+      };
+    }
+
+    // No search: use Firestore pagination
+    const offset = (page - 1) * limit;
+
+    // Get documents with offset (fetch offset + limit, then skip first offset)
+    const snapshot = await query
+      .orderBy('createdAt', 'desc')
+      .limit(offset + limit)
+      .get();
+
+    const allDocs = snapshot.docs.map(doc => doc.data());
+    const products = allDocs.slice(offset);
+
+    return {
+      products,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit)
+    };
+  }
 }

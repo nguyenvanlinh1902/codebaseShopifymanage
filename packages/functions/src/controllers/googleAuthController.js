@@ -31,7 +31,7 @@ export async function getGoogleAuthUrl(req, res) {
     const authUrl = oauth2Client.generateAuthUrl({
       access_type: 'offline',
       scope: GOOGLE_SHEETS_CONFIG.scopes,
-      prompt: mode === 'temp' ? 'select_account consent' : 'consent',
+      prompt: 'select_account consent',
       state
     });
 
@@ -44,7 +44,7 @@ export async function getGoogleAuthUrl(req, res) {
 
 /**
  * POST /api/google/exchange
- * Exchange authorization code for tokens and save
+ * Exchange authorization code for tokens and save (multi-account)
  */
 export async function exchangeGoogleCode(req, res) {
   try {
@@ -68,10 +68,9 @@ export async function exchangeGoogleCode(req, res) {
       // email is optional
     }
 
-    await authRepo.upsert(userId, {
+    await authRepo.upsertByEmail(userId, googleEmail, {
       refreshToken: tokens.refresh_token,
-      scopes: GOOGLE_SHEETS_CONFIG.scopes,
-      googleEmail
+      scopes: GOOGLE_SHEETS_CONFIG.scopes
     });
 
     return res.json({success: true, message: 'Google account connected', data: {googleEmail}});
@@ -84,7 +83,6 @@ export async function exchangeGoogleCode(req, res) {
 /**
  * POST /api/google/exchange-temp
  * Exchange authorization code for tokens WITHOUT saving to DB
- * Used for "Add from another account" flow
  */
 export async function exchangeGoogleCodeTemp(req, res) {
   try {
@@ -124,7 +122,7 @@ export async function exchangeGoogleCodeTemp(req, res) {
 
 /**
  * GET /api/google/status
- * Check if user has valid Google auth (refresh_token is permanent)
+ * Check if user has any valid Google auth
  */
 export async function checkGoogleAuth(req, res) {
   try {
@@ -134,9 +132,10 @@ export async function checkGoogleAuth(req, res) {
       return res.status(400).json({success: false, error: 'userId is required'});
     }
 
-    const authRecord = await authRepo.getByUserId(userId);
+    const allRecords = await authRepo.getAllByUserId(userId);
+    const validRecord = allRecords.find(r => r.refreshToken);
 
-    if (!authRecord || !authRecord.refreshToken) {
+    if (!validRecord) {
       return res.json({success: true, data: {authenticated: false}});
     }
 
@@ -144,7 +143,7 @@ export async function checkGoogleAuth(req, res) {
       success: true,
       data: {
         authenticated: true,
-        googleEmail: authRecord.googleEmail
+        googleEmail: validRecord.googleEmail
       }
     });
   } catch (error) {
@@ -176,7 +175,6 @@ export async function disconnectGoogle(req, res) {
 /**
  * GET /api/google/picker-token
  * Get fresh access token + config for Google Picker
- * Always fetches a new access_token on-demand using the permanent refresh_token
  */
 export async function getPickerToken(req, res) {
   try {
@@ -215,8 +213,7 @@ export async function getPickerToken(req, res) {
 
 /**
  * GET /api/google/account-token
- * Get fresh access token for a specific Google account (primary or secondary)
- * Always fetches a new access_token on-demand using the permanent refresh_token
+ * Get fresh access token for a specific Google account
  */
 export async function getAccountToken(req, res) {
   try {
@@ -228,11 +225,11 @@ export async function getAccountToken(req, res) {
 
     const appId = GOOGLE_OAUTH_CONFIG.clientId?.split('-')[0] || '';
 
-    // Find refresh_token: primary account first, then secondary
+    // Find refresh_token: auth records first, then sheet records
     let refreshToken = null;
 
-    const authRecord = await authRepo.getByUserId(userId);
-    if (authRecord && authRecord.googleEmail === googleEmail) {
+    const authRecord = await authRepo.getByUserIdAndEmail(userId, googleEmail);
+    if (authRecord) {
       refreshToken = authRecord.refreshToken;
     }
 
@@ -269,7 +266,7 @@ export async function getAccountToken(req, res) {
 
 /**
  * POST /api/google/disconnect-account
- * Disconnect a specific Google account: remove auth record (if primary) + delete all its sheets
+ * Disconnect a specific Google account: remove auth record + delete all its sheets
  */
 export async function disconnectAccount(req, res) {
   try {
@@ -279,11 +276,8 @@ export async function disconnectAccount(req, res) {
       return res.status(400).json({success: false, error: 'userId and googleEmail are required'});
     }
 
-    // Remove centralized auth if this is the primary account
-    const authRecord = await authRepo.getByUserId(userId);
-    if (authRecord && authRecord.googleEmail === googleEmail) {
-      await authRepo.delete(userId);
-    }
+    // Remove auth record for this email
+    await authRepo.deleteByEmail(userId, googleEmail);
 
     // Remove all sheets belonging to this Google account
     const userSheets = await sheetRepo.getByUserId(userId);
@@ -304,12 +298,59 @@ export async function disconnectAccount(req, res) {
 }
 
 /**
+ * POST /api/google/bulk-disconnect-accounts
+ * Disconnect multiple Google accounts at once
+ */
+export async function bulkDisconnectAccounts(req, res) {
+  try {
+    const {userId, emails} = req.body;
+
+    if (!userId || !Array.isArray(emails) || emails.length === 0) {
+      return res.status(400).json({success: false, error: 'userId and emails array are required'});
+    }
+
+    let totalDeletedSheets = 0;
+
+    const results = await Promise.allSettled(
+      emails.map(async googleEmail => {
+        // Remove auth record for this email
+        await authRepo.deleteByEmail(userId, googleEmail);
+
+        // Remove all sheets belonging to this Google account
+        const userSheets = await sheetRepo.getByUserId(userId);
+        const sheetsToDelete = userSheets.filter(s => s.googleEmail === googleEmail);
+        for (const sheet of sheetsToDelete) {
+          await sheetRepo.delete(sheet.id);
+        }
+
+        totalDeletedSheets += sheetsToDelete.length;
+        return {email: googleEmail, success: true, deletedSheets: sheetsToDelete.length};
+      })
+    );
+
+    const disconnected = results.filter(r => r.status === 'fulfilled' && r.value.success).length;
+    const failed = results.length - disconnected;
+
+    return res.json({
+      success: true,
+      message: `Disconnected ${disconnected} account(s)${failed > 0 ? `, ${failed} failed` : ''}`,
+      disconnected,
+      failed,
+      totalDeletedSheets
+    });
+  } catch (error) {
+    console.error('Bulk disconnect accounts error:', error);
+    return res.status(500).json({success: false, error: error.message});
+  }
+}
+
+/**
  * GET /api/google/connected-accounts
  * Get paginated list of connected Google accounts with sheet counts
  */
 export async function getConnectedAccounts(req, res) {
   try {
-    const {userId, page, limit} = req.query;
+    const {userId, page, limit, search} = req.query;
 
     if (!userId) {
       return res.status(400).json({success: false, error: 'userId is required'});
@@ -318,13 +359,15 @@ export async function getConnectedAccounts(req, res) {
     const pageNum = Math.max(1, parseInt(page) || 1);
     const limitNum = Math.min(50, Math.max(1, parseInt(limit) || 5));
 
-    // Build accounts map from primary auth + sheets
+    // Build accounts map from ALL auth records + sheets
     const accountMap = new Map();
 
-    const authRecord = await authRepo.getByUserId(userId);
-    if (authRecord && authRecord.googleEmail) {
-      accountMap.set(authRecord.googleEmail, {email: authRecord.googleEmail, sheetCount: 0});
-    }
+    const allAuthRecords = await authRepo.getAllByUserId(userId);
+    allAuthRecords.forEach(record => {
+      if (record.googleEmail) {
+        accountMap.set(record.googleEmail, {email: record.googleEmail, sheetCount: 0});
+      }
+    });
 
     const userSheets = await sheetRepo.getByUserId(userId);
     userSheets.forEach(sheet => {
@@ -336,10 +379,16 @@ export async function getConnectedAccounts(req, res) {
       }
     });
 
-    const allAccounts = Array.from(accountMap.values());
-    const total = allAccounts.length;
+    let filteredAccounts = Array.from(accountMap.values());
+
+    if (search) {
+      const searchLower = search.toLowerCase();
+      filteredAccounts = filteredAccounts.filter(a => a.email.toLowerCase().includes(searchLower));
+    }
+
+    const total = filteredAccounts.length;
     const offset = (pageNum - 1) * limitNum;
-    const accounts = allAccounts.slice(offset, offset + limitNum);
+    const accounts = filteredAccounts.slice(offset, offset + limitNum);
 
     return res.json({
       success: true,

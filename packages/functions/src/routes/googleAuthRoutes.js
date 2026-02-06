@@ -9,6 +9,7 @@ router.post('/exchange-temp', googleAuthController.exchangeGoogleCodeTemp);
 router.get('/status', googleAuthController.checkGoogleAuth);
 router.post('/disconnect', googleAuthController.disconnectGoogle);
 router.post('/disconnect-account', googleAuthController.disconnectAccount);
+router.post('/bulk-disconnect-accounts', googleAuthController.bulkDisconnectAccounts);
 router.get('/picker-token', googleAuthController.getPickerToken);
 router.get('/account-token', googleAuthController.getAccountToken);
 router.get('/connected-accounts', googleAuthController.getConnectedAccounts);

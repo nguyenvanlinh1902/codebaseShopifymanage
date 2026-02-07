@@ -21,7 +21,6 @@ router.post('/resync-failed', orderSyncController.resyncFailedOrders);
 router.get('/queue-stats', orderSyncController.getOrderSyncQueueStats);
 router.post('/process-queue', orderSyncController.processOrderSyncQueueManual);
 
-// Webhook endpoint - receives orders from ALL stores
-router.post('/webhook', orderSyncController.handleOrderWebhook);
+// Webhook endpoint moved to index.js (must bypass auth middleware)
 
 export default router;

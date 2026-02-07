@@ -22,7 +22,7 @@ import {
 import {DeleteIcon, PlusIcon, ExternalIcon} from '@shopify/polaris-icons';
 import {useGoogleAuth} from '../hooks/useGoogleAuth';
 import {useGooglePicker} from '../hooks/useGooglePicker';
-import {USER_ID} from '../config/user';
+import {fetchApi} from '../helpers/fetchApi';
 
 const truncateStyle = {
   maxWidth: 200,
@@ -462,13 +462,12 @@ export default function Sheets() {
     try {
       setLoading(true);
       const params = new URLSearchParams({
-        userId: USER_ID,
         page: String(page),
         limit: String(PAGE_LIMIT)
       });
       if (search) params.set('search', search);
 
-      const response = await fetch(`/api/sheets?${params}`);
+      const response = await fetchApi(`/api/sheets?${params}`);
       const result = await response.json();
       if (result.success) {
         setSheets(result.data);
@@ -485,13 +484,12 @@ export default function Sheets() {
   const fetchAccounts = async (page = 1, search = '') => {
     try {
       const params = new URLSearchParams({
-        userId: USER_ID,
         page: String(page),
         limit: String(PAGE_LIMIT)
       });
       if (search) params.set('search', search);
 
-      const response = await fetch(`/api/google/connected-accounts?${params}`);
+      const response = await fetchApi(`/api/google/connected-accounts?${params}`);
       const result = await response.json();
       if (result.success) {
         setAccounts(result.data);
@@ -519,14 +517,13 @@ export default function Sheets() {
       try {
         setAddingSheet(true);
         const body = {
-          userId: USER_ID,
           spreadsheetId: spreadsheet.spreadsheetId,
           name: spreadsheet.name
         };
         if (refreshToken) body.refreshToken = refreshToken;
         if (googleEmail) body.googleEmail = googleEmail;
 
-        const response = await fetch('/api/sheets/add', {
+        const response = await fetchApi('/api/sheets/add', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify(body)
@@ -591,7 +588,7 @@ export default function Sheets() {
       setDeleting(true);
       const idsToDelete = pendingDeleteTarget ? [pendingDeleteTarget.id] : pendingDeleteIds;
 
-      const response = await fetch('/api/sheets/bulk-delete', {
+      const response = await fetchApi('/api/sheets/bulk-delete', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({sheetIds: idsToDelete})
@@ -634,10 +631,10 @@ export default function Sheets() {
       setDisconnecting(true);
 
       if (isBulk) {
-        const response = await fetch('/api/google/bulk-disconnect-accounts', {
+        const response = await fetchApi('/api/google/bulk-disconnect-accounts', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({userId: USER_ID, emails: pendingDisconnectEmails})
+          body: JSON.stringify({emails: pendingDisconnectEmails})
         });
         const result = await response.json();
         if (result.success) {
@@ -650,10 +647,10 @@ export default function Sheets() {
           setError(result.error || 'Failed to disconnect accounts');
         }
       } else {
-        const response = await fetch('/api/google/disconnect-account', {
+        const response = await fetchApi('/api/google/disconnect-account', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({userId: USER_ID, googleEmail: pendingDisconnectEmail})
+          body: JSON.stringify({googleEmail: pendingDisconnectEmail})
         });
         const result = await response.json();
         if (result.success) {
@@ -683,8 +680,8 @@ export default function Sheets() {
         setAddingSheet(true);
         setError(null);
 
-        const res = await fetch(
-          `/api/google/account-token?userId=${USER_ID}&googleEmail=${encodeURIComponent(email)}`
+        const res = await fetchApi(
+          `/api/google/account-token?googleEmail=${encodeURIComponent(email)}`
         );
         const result = await res.json();
 

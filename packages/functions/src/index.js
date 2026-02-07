@@ -3,9 +3,10 @@ import {onRequest} from 'firebase-functions/v2/https';
 import {onMessagePublished} from 'firebase-functions/v2/pubsub';
 import {onSchedule} from 'firebase-functions/v2/scheduler';
 import {initializeApp} from 'firebase-admin/app';
-import {injectUserId} from './middleware/injectUserId.js';
+import {authentication} from './middleware/authentication.js';
 
 // Route modules
+import authRoutes from './routes/authRoutes.js';
 import oauthRoutes from './routes/oauthRoutes.js';
 import storeRoutes from './routes/storeRoutes.js';
 import googleAuthRoutes from './routes/googleAuthRoutes.js';
@@ -34,9 +35,6 @@ initializeApp();
 
 const app = express();
 
-// Global middleware
-app.use(injectUserId);
-
 // Health check
 app.get('/', (req, res) => {
   res.json({
@@ -46,7 +44,23 @@ app.get('/', (req, res) => {
   });
 });
 
-// Mount routers
+// ============ PUBLIC ROUTES (no auth required) ============
+app.use('/api/auth', authRoutes);
+app.post('/api/orders/webhook', orderSyncController.handleOrderWebhook);
+
+// ============ AUTH WALL ============
+app.use(authentication);
+
+// Inject userId from JWT into query/body for backward compatibility
+app.use((req, res, next) => {
+  if (req.userId) {
+    if (!req.query.userId) req.query.userId = req.userId;
+    if (req.body && !req.body.userId) req.body.userId = req.userId;
+  }
+  next();
+});
+
+// ============ PROTECTED ROUTES ============
 app.use('/api/oauth', oauthRoutes);
 app.use('/api/stores', storeRoutes);
 app.use('/api/google', googleAuthRoutes);

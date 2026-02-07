@@ -1,7 +1,7 @@
 import React, {forwardRef} from 'react';
 import PropTypes from 'prop-types';
 import {BrowserRouter, Routes, Route, Link as RouterLink, useLocation} from 'react-router-dom';
-import {AppProvider, Frame, Navigation} from '@shopify/polaris';
+import {AppProvider, Frame, Navigation, Spinner} from '@shopify/polaris';
 import '@shopify/polaris/build/esm/styles.css';
 import enTranslations from '@shopify/polaris/locales/en.json';
 import {
@@ -11,9 +11,12 @@ import {
   ProductIcon,
   OrderIcon,
   DeliveryIcon,
-  ChartVerticalFilledIcon
+  ChartVerticalFilledIcon,
+  ExitIcon
 } from '@shopify/polaris-icons';
 
+import {AuthProvider, useAuth} from './context/AuthContext';
+import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Stores from './pages/Stores';
 import StoresOAuth from './pages/StoresOAuth';
@@ -46,20 +49,48 @@ export default function App() {
   return (
     <BrowserRouter>
       <AppProvider i18n={enTranslations} linkComponent={PolarisLink}>
-        <Routes>
-          {/* OAuth callback route (no navigation frame) */}
-          <Route path="/oauth/callback" element={<OAuthCallback />} />
+        <AuthProvider>
+          <Routes>
+            {/* OAuth callback route (no navigation frame, no auth required) */}
+            <Route path="/oauth/callback" element={<OAuthCallback />} />
 
-          {/* Main app routes (with navigation frame) */}
-          <Route path="*" element={<AppFrame />} />
-        </Routes>
+            {/* All other routes require auth */}
+            <Route path="*" element={<ProtectedApp />} />
+          </Routes>
+        </AuthProvider>
       </AppProvider>
     </BrowserRouter>
   );
 }
 
+function ProtectedApp() {
+  const {isAuthenticated, loading} = useAuth();
+
+  if (loading) {
+    return (
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          minHeight: '100vh'
+        }}
+      >
+        <Spinner size="large" />
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <Login />;
+  }
+
+  return <AppFrame />;
+}
+
 function AppFrame() {
   const location = useLocation();
+  const {logout} = useAuth();
 
   const navigationMarkup = (
     <Navigation location={location.pathname}>
@@ -74,6 +105,7 @@ function AppFrame() {
           {label: 'Analytics', icon: ChartVerticalFilledIcon, url: '/analytics'}
         ]}
       />
+      <Navigation.Section items={[{label: 'Logout', icon: ExitIcon, onClick: logout}]} />
     </Navigation>
   );
 

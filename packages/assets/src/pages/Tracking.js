@@ -14,7 +14,7 @@ import {
   DropZone,
   Modal
 } from '@shopify/polaris';
-import {USER_ID} from '../config/user';
+import {fetchApi} from '../helpers/fetchApi';
 
 /**
  * Tracking Import Page - Upload Excel file to update order tracking numbers
@@ -58,7 +58,7 @@ export default function Tracking() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/stores?userId=${USER_ID}`);
+      const response = await fetchApi(`/api/stores`);
       const result = await response.json();
 
       if (result.success) {
@@ -75,10 +75,10 @@ export default function Tracking() {
   const fetchImportHistory = async () => {
     try {
       const url = selectedStore
-        ? `/api/tracking/import-history?userId=${USER_ID}&storeId=${selectedStore}`
-        : `/api/tracking/import-history?userId=${USER_ID}`;
+        ? `/api/tracking/import-history?storeId=${selectedStore}`
+        : `/api/tracking/import-history`;
 
-      const response = await fetch(url);
+      const response = await fetchApi(url);
       const result = await response.json();
 
       if (result.success) {
@@ -115,11 +115,10 @@ export default function Tracking() {
       reader.onload = async e => {
         const base64Data = e.target.result.split(',')[1];
 
-        const response = await fetch('/api/tracking/upload-excel', {
+        const response = await fetchApi('/api/tracking/upload-excel', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({
-            userId: USER_ID,
             storeId: selectedStore,
             excelBuffer: base64Data,
             fileName: file.name
@@ -154,7 +153,7 @@ export default function Tracking() {
 
   const handleDownloadTemplate = async () => {
     try {
-      const response = await fetch('/api/tracking/template');
+      const response = await fetchApi('/api/tracking/template');
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -319,7 +318,6 @@ export default function Tracking() {
           </Card>
         </Layout.Section>
 
-
         <Layout.Section>
           <Card>
             <div style={{padding: '16px'}}>
@@ -437,13 +435,31 @@ export default function Tracking() {
                     >
                       <thead style={{background: '#f6f6f7', position: 'sticky', top: 0}}>
                         <tr>
-                          <th style={{padding: '8px', textAlign: 'left', borderBottom: '1px solid #e1e3e5'}}>
+                          <th
+                            style={{
+                              padding: '8px',
+                              textAlign: 'left',
+                              borderBottom: '1px solid #e1e3e5'
+                            }}
+                          >
                             Order #
                           </th>
-                          <th style={{padding: '8px', textAlign: 'left', borderBottom: '1px solid #e1e3e5'}}>
+                          <th
+                            style={{
+                              padding: '8px',
+                              textAlign: 'left',
+                              borderBottom: '1px solid #e1e3e5'
+                            }}
+                          >
                             Tracking Number
                           </th>
-                          <th style={{padding: '8px', textAlign: 'left', borderBottom: '1px solid #e1e3e5'}}>
+                          <th
+                            style={{
+                              padding: '8px',
+                              textAlign: 'left',
+                              borderBottom: '1px solid #e1e3e5'
+                            }}
+                          >
                             Carrier
                           </th>
                           <th
@@ -456,7 +472,13 @@ export default function Tracking() {
                           >
                             Status
                           </th>
-                          <th style={{padding: '8px', textAlign: 'left', borderBottom: '1px solid #e1e3e5'}}>
+                          <th
+                            style={{
+                              padding: '8px',
+                              textAlign: 'left',
+                              borderBottom: '1px solid #e1e3e5'
+                            }}
+                          >
                             Error Details
                           </th>
                         </tr>
@@ -479,9 +501,13 @@ export default function Tracking() {
                             <td style={{padding: '8px'}}>{detail.carrier || '-'}</td>
                             <td style={{padding: '8px', textAlign: 'center'}}>
                               {detail.success ? (
-                                <span style={{color: '#008060', fontWeight: 'bold'}}>✅ Success</span>
+                                <span style={{color: '#008060', fontWeight: 'bold'}}>
+                                  ✅ Success
+                                </span>
                               ) : (
-                                <span style={{color: '#d72c0d', fontWeight: 'bold'}}>❌ Failed</span>
+                                <span style={{color: '#d72c0d', fontWeight: 'bold'}}>
+                                  ❌ Failed
+                                </span>
                               )}
                             </td>
                             <td style={{padding: '8px'}}>
@@ -492,7 +518,8 @@ export default function Tracking() {
                                   </Text>
                                   {detail.errorType === 'ORDER_NOT_FOUND' && (
                                     <Text variant="bodySm" as="p" tone="subdued">
-                                      💡 Order number "{detail.orderNumber}" không tồn tại trong store
+                                      💡 Order number "{detail.orderNumber}" không tồn tại trong
+                                      store
                                     </Text>
                                   )}
                                   {detail.errorType === 'INVALID_ORDER_NUMBER' && (

@@ -21,7 +21,7 @@ import {
   DeliveryIcon,
   ProductIcon
 } from '@shopify/polaris-icons';
-import {USER_ID} from '../config/user';
+import {fetchApi} from '../helpers/fetchApi';
 
 function StatCard({title, value, icon, color, subtitle}) {
   return (
@@ -89,7 +89,7 @@ export default function Analytics() {
   const fetchAnalytics = async () => {
     try {
       setLoading(true);
-      const res = await fetch(`/api/analytics/stats?userId=${USER_ID}`);
+      const res = await fetchApi('/api/analytics/stats');
       const result = await res.json();
       if (result.success) {
         setData(result.data);
@@ -159,9 +159,7 @@ export default function Analytics() {
     s.total,
     s.syncedToSheet,
     s.failedToSync,
-    s.total - s.syncedToSheet - s.failedToSync > 0
-      ? s.total - s.syncedToSheet - s.failedToSync
-      : 0
+    s.total - s.syncedToSheet - s.failedToSync > 0 ? s.total - s.syncedToSheet - s.failedToSync : 0
   ]);
 
   // Order trend (last 30 days) - simple table
@@ -423,12 +421,8 @@ export default function Analytics() {
                     </Text>
                     {/* Tracking Import Status Summary */}
                     <InlineStack gap="300" wrap>
-                      <Badge tone="success">
-                        Completed: {trackingImportStats.completed}
-                      </Badge>
-                      <Badge tone="attention">
-                        Processing: {trackingImportStats.processing}
-                      </Badge>
+                      <Badge tone="success">Completed: {trackingImportStats.completed}</Badge>
+                      <Badge tone="attention">Processing: {trackingImportStats.processing}</Badge>
                       <Badge tone="critical">Failed: {trackingImportStats.failed}</Badge>
                       <Badge tone="info">Pending: {trackingImportStats.pending}</Badge>
                     </InlineStack>
@@ -444,15 +438,7 @@ export default function Analytics() {
                           'numeric',
                           'text'
                         ]}
-                        headings={[
-                          'Store',
-                          'File',
-                          'Status',
-                          'Total',
-                          'Success',
-                          'Failed',
-                          'Date'
-                        ]}
+                        headings={['Store', 'File', 'Status', 'Total', 'Success', 'Failed', 'Date']}
                         rows={trackingRows}
                       />
                     ) : (
@@ -468,12 +454,8 @@ export default function Analytics() {
                     </Text>
                     {/* Product Import Status Summary */}
                     <InlineStack gap="300" wrap>
-                      <Badge tone="success">
-                        Completed: {productImportStats.completed}
-                      </Badge>
-                      <Badge tone="attention">
-                        Processing: {productImportStats.processing}
-                      </Badge>
+                      <Badge tone="success">Completed: {productImportStats.completed}</Badge>
+                      <Badge tone="attention">Processing: {productImportStats.processing}</Badge>
                       <Badge tone="critical">Failed: {productImportStats.failed}</Badge>
                       <Badge tone="info">Pending: {productImportStats.pending}</Badge>
                     </InlineStack>
@@ -489,15 +471,7 @@ export default function Analytics() {
                           'numeric',
                           'text'
                         ]}
-                        headings={[
-                          'Store',
-                          'File',
-                          'Status',
-                          'Total',
-                          'Success',
-                          'Failed',
-                          'Date'
-                        ]}
+                        headings={['Store', 'File', 'Status', 'Total', 'Success', 'Failed', 'Date']}
                         rows={productRows}
                       />
                     ) : (

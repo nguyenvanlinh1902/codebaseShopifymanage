@@ -30,7 +30,7 @@ import {
   AlertCircleIcon,
   ExternalIcon
 } from '@shopify/polaris-icons';
-import {USER_ID} from '../config/user';
+import {fetchApi} from '../helpers/fetchApi';
 
 export default function Dashboard() {
   const [loading, setLoading] = useState(true);
@@ -43,13 +43,10 @@ export default function Dashboard() {
     try {
       setLoading(true);
       const [storesRes, sheetsRes] = await Promise.all([
-        fetch(`/api/stores?userId=${USER_ID}`),
-        fetch(`/api/sheets?userId=${USER_ID}`)
+        fetchApi('/api/stores'),
+        fetchApi('/api/sheets')
       ]);
-      const [storesData, sheetsData] = await Promise.all([
-        storesRes.json(),
-        sheetsRes.json()
-      ]);
+      const [storesData, sheetsData] = await Promise.all([storesRes.json(), sheetsRes.json()]);
 
       const storeList = storesData.data || [];
       setStores(storeList);
@@ -58,9 +55,7 @@ export default function Dashboard() {
       // Fetch sync configs for all stores
       if (storeList.length > 0) {
         try {
-          const configRes = await fetch(
-            `/api/orders/sync-configs?userId=${USER_ID}`
-          );
+          const configRes = await fetchApi('/api/orders/sync-configs');
           const configData = await configRes.json();
           if (configData.success) setSyncConfigs(configData.data || []);
         } catch (e) {
@@ -110,7 +105,9 @@ export default function Dashboard() {
             </InlineStack>
           </Layout.Section>
           <Layout.Section>
-            <Card><SkeletonBodyText lines={10} /></Card>
+            <Card>
+              <SkeletonBodyText lines={10} />
+            </Card>
           </Layout.Section>
         </Layout>
       </Page>
@@ -118,10 +115,7 @@ export default function Dashboard() {
   }
 
   return (
-    <Page
-      title="Dashboard"
-      subtitle="Shopify - Google Sheets Integration"
-    >
+    <Page title="Dashboard" subtitle="Shopify - Google Sheets Integration">
       <Layout>
         {/* Overview Stats */}
         <Layout.Section>
@@ -156,7 +150,9 @@ export default function Dashboard() {
           <Card>
             <BlockStack gap="300">
               <InlineStack align="space-between" blockAlign="center">
-                <Text variant="headingMd" as="h2">Setup Progress</Text>
+                <Text variant="headingMd" as="h2">
+                  Setup Progress
+                </Text>
                 <Badge tone={completedSteps >= 3 ? 'success' : 'attention'}>
                   {completedSteps}/{totalSteps} completed
                 </Badge>
@@ -190,7 +186,9 @@ export default function Dashboard() {
             actionUrl="/stores"
           >
             <BlockStack gap="300">
-              <Text variant="bodySm" as="p" fontWeight="semibold">How to connect a store:</Text>
+              <Text variant="bodySm" as="p" fontWeight="semibold">
+                How to connect a store:
+              </Text>
               <List type="number">
                 <List.Item>
                   Go to <strong>Stores</strong> page and click <strong>"Add Store"</strong>
@@ -199,7 +197,8 @@ export default function Dashboard() {
                   Enter your Shopify store domain (e.g. <code>my-store.myshopify.com</code>)
                 </List.Item>
                 <List.Item>
-                  Provide your <strong>Admin API Access Token</strong> from Shopify Admin {'->'} Settings {'->'} Apps and sales channels {'->'} Develop apps
+                  Provide your <strong>Admin API Access Token</strong> from Shopify Admin {'->'}{' '}
+                  Settings {'->'} Apps and sales channels {'->'} Develop apps
                 </List.Item>
                 <List.Item>
                   Click <strong>"Verify & Connect"</strong> to validate the credentials
@@ -207,7 +206,9 @@ export default function Dashboard() {
               </List>
 
               <Divider />
-              <Text variant="bodySm" as="p" fontWeight="semibold">How to get your Access Token:</Text>
+              <Text variant="bodySm" as="p" fontWeight="semibold">
+                How to get your Access Token:
+              </Text>
               <List type="number">
                 <List.Item>
                   In Shopify Admin, go to <strong>Settings {'->'} Apps and sales channels</strong>
@@ -232,7 +233,10 @@ export default function Dashboard() {
                 <List.Item>
                   Under <strong>API credentials</strong>, configure the required scopes:
                   <br />
-                  <code>read_orders, write_orders, read_products, write_products, read_shipping, write_shipping</code>
+                  <code>
+                    read_orders, write_orders, read_products, write_products, read_shipping,
+                    write_shipping
+                  </code>
                 </List.Item>
                 <List.Item>
                   Install the app and copy the <strong>Admin API access token</strong>
@@ -242,14 +246,25 @@ export default function Dashboard() {
               {hasStores && (
                 <>
                   <Divider />
-                  <Text variant="bodySm" as="p" fontWeight="semibold">Your stores:</Text>
+                  <Text variant="bodySm" as="p" fontWeight="semibold">
+                    Your stores:
+                  </Text>
                   <BlockStack gap="200">
                     {stores.map(store => (
-                      <Box key={store.id} padding="200" background="bg-surface-secondary" borderRadius="200">
+                      <Box
+                        key={store.id}
+                        padding="200"
+                        background="bg-surface-secondary"
+                        borderRadius="200"
+                      >
                         <InlineStack align="space-between" blockAlign="center">
                           <BlockStack gap="050">
-                            <Text variant="bodySm" as="p" fontWeight="semibold">{store.name}</Text>
-                            <Text variant="bodySm" as="p" tone="subdued">{store.shopDomain}.myshopify.com</Text>
+                            <Text variant="bodySm" as="p" fontWeight="semibold">
+                              {store.name}
+                            </Text>
+                            <Text variant="bodySm" as="p" tone="subdued">
+                              {store.shopDomain}.myshopify.com
+                            </Text>
                           </BlockStack>
                           <Badge tone="success">Connected</Badge>
                         </InlineStack>
@@ -279,7 +294,9 @@ export default function Dashboard() {
             actionUrl="/sheets"
           >
             <BlockStack gap="300">
-              <Text variant="bodySm" as="p" fontWeight="semibold">How to connect Google Sheets:</Text>
+              <Text variant="bodySm" as="p" fontWeight="semibold">
+                How to connect Google Sheets:
+              </Text>
               <List type="number">
                 <List.Item>
                   Go to <strong>Google Sheets</strong> page
@@ -288,18 +305,17 @@ export default function Dashboard() {
                   Click <strong>"Connect Google Account"</strong> and authorize access
                 </List.Item>
                 <List.Item>
-                  Once connected, click <strong>"Add Sheet"</strong> and select a spreadsheet using the Google Picker
+                  Once connected, click <strong>"Add Sheet"</strong> and select a spreadsheet using
+                  the Google Picker
                 </List.Item>
-                <List.Item>
-                  The sheet will appear in your connected sheets list
-                </List.Item>
+                <List.Item>The sheet will appear in your connected sheets list</List.Item>
               </List>
 
               <Divider />
               <Banner tone="info">
                 <p>
-                  You can connect multiple Google accounts and add sheets from each.
-                  Sheets are used as the destination for order exports and the source for product/tracking imports.
+                  You can connect multiple Google accounts and add sheets from each. Sheets are used
+                  as the destination for order exports and the source for product/tracking imports.
                 </p>
               </Banner>
             </BlockStack>
@@ -315,7 +331,9 @@ export default function Dashboard() {
             icon={OrderIcon}
             color="#9c6ade"
             done={hasOrderSync}
-            doneText={`${syncConfigs.filter(c => c.status === 'active').length} active sync config(s)`}
+            doneText={`${
+              syncConfigs.filter(c => c.status === 'active').length
+            } active sync config(s)`}
             pendingText="Not configured"
             open={openGuide === 'orders'}
             onToggle={() => toggleGuide('orders')}
@@ -323,13 +341,16 @@ export default function Dashboard() {
             actionUrl="/orders"
           >
             <BlockStack gap="300">
-              <Text variant="bodySm" as="p" fontWeight="semibold">How to setup order sync:</Text>
+              <Text variant="bodySm" as="p" fontWeight="semibold">
+                How to setup order sync:
+              </Text>
               <List type="number">
                 <List.Item>
                   Go to <strong>Orders</strong> page
                 </List.Item>
                 <List.Item>
-                  Select a <strong>Store</strong> and a <strong>Google Sheet</strong> + tab to sync to
+                  Select a <strong>Store</strong> and a <strong>Google Sheet</strong> + tab to sync
+                  to
                 </List.Item>
                 <List.Item>
                   Click <strong>"Setup Sync"</strong> to create the configuration
@@ -343,10 +364,14 @@ export default function Dashboard() {
               </List>
 
               <Divider />
-              <Text variant="bodySm" as="p" fontWeight="semibold">Data exported to sheets:</Text>
+              <Text variant="bodySm" as="p" fontWeight="semibold">
+                Data exported to sheets:
+              </Text>
               <InlineStack gap="400" wrap>
                 <BlockStack gap="100">
-                  <Text variant="bodySm" as="p" fontWeight="semibold">Order Info</Text>
+                  <Text variant="bodySm" as="p" fontWeight="semibold">
+                    Order Info
+                  </Text>
                   <List type="bullet">
                     <List.Item>Order Number, ID, Date</List.Item>
                     <List.Item>Status, Fulfillment Status</List.Item>
@@ -355,7 +380,9 @@ export default function Dashboard() {
                   </List>
                 </BlockStack>
                 <BlockStack gap="100">
-                  <Text variant="bodySm" as="p" fontWeight="semibold">Customer Info</Text>
+                  <Text variant="bodySm" as="p" fontWeight="semibold">
+                    Customer Info
+                  </Text>
                   <List type="bullet">
                     <List.Item>Customer ID, Email, Phone</List.Item>
                     <List.Item>First Name, Last Name</List.Item>
@@ -363,7 +390,9 @@ export default function Dashboard() {
                   </List>
                 </BlockStack>
                 <BlockStack gap="100">
-                  <Text variant="bodySm" as="p" fontWeight="semibold">Items & Tracking</Text>
+                  <Text variant="bodySm" as="p" fontWeight="semibold">
+                    Items & Tracking
+                  </Text>
                   <List type="bullet">
                     <List.Item>Line Items (name x qty)</List.Item>
                     <List.Item>Tracking Numbers & URLs</List.Item>
@@ -375,26 +404,36 @@ export default function Dashboard() {
               <Divider />
               <Banner tone="warning">
                 <p>
-                  <strong>Important:</strong> You need to complete Step 1 (Stores) and Step 2 (Sheets)
-                  before setting up order sync. Each store can have one active sync configuration.
+                  <strong>Important:</strong> You need to complete Step 1 (Stores) and Step 2
+                  (Sheets) before setting up order sync. Each store can have one active sync
+                  configuration.
                 </p>
               </Banner>
 
               {syncConfigs.length > 0 && (
                 <>
                   <Divider />
-                  <Text variant="bodySm" as="p" fontWeight="semibold">Your sync configs:</Text>
+                  <Text variant="bodySm" as="p" fontWeight="semibold">
+                    Your sync configs:
+                  </Text>
                   <BlockStack gap="200">
                     {syncConfigs.map(config => (
-                      <Box key={config.id} padding="200" background="bg-surface-secondary" borderRadius="200">
+                      <Box
+                        key={config.id}
+                        padding="200"
+                        background="bg-surface-secondary"
+                        borderRadius="200"
+                      >
                         <InlineStack align="space-between" blockAlign="center" wrap={false}>
                           <BlockStack gap="050">
                             <Text variant="bodySm" as="p" fontWeight="semibold">
-                              {config.storeName || 'Store'} → {config.sheetName || 'Sheet'} / {config.targetSheet || 'Tab'}
+                              {config.storeName || 'Store'} → {config.sheetName || 'Sheet'} /{' '}
+                              {config.targetSheet || 'Tab'}
                             </Text>
                             <Text variant="bodySm" as="p" tone="subdued">
                               {config.totalOrdersSynced || 0} orders synced
-                              {config.lastSyncAt && ` · Last: ${new Date(config.lastSyncAt).toLocaleString()}`}
+                              {config.lastSyncAt &&
+                                ` · Last: ${new Date(config.lastSyncAt).toLocaleString()}`}
                             </Text>
                           </BlockStack>
                           <Badge tone={config.status === 'active' ? 'success' : 'info'}>
@@ -426,7 +465,9 @@ export default function Dashboard() {
             actionUrl="/products"
           >
             <BlockStack gap="300">
-              <Text variant="bodySm" as="p" fontWeight="semibold">How to import products:</Text>
+              <Text variant="bodySm" as="p" fontWeight="semibold">
+                How to import products:
+              </Text>
               <List type="number">
                 <List.Item>
                   Go to <strong>Products</strong> page
@@ -435,10 +476,12 @@ export default function Dashboard() {
                   Select the target <strong>Store(s)</strong> to import to
                 </List.Item>
                 <List.Item>
-                  Upload a <strong>CSV file</strong> with your product data (or download the template first)
+                  Upload a <strong>CSV file</strong> with your product data (or download the
+                  template first)
                 </List.Item>
                 <List.Item>
-                  Products are queued and processed asynchronously — you can track progress in real-time
+                  Products are queued and processed asynchronously — you can track progress in
+                  real-time
                 </List.Item>
                 <List.Item>
                   Check <strong>Import History</strong> tab for past imports and their results
@@ -446,17 +489,23 @@ export default function Dashboard() {
               </List>
 
               <Divider />
-              <Text variant="bodySm" as="p" fontWeight="semibold">CSV template columns:</Text>
+              <Text variant="bodySm" as="p" fontWeight="semibold">
+                CSV template columns:
+              </Text>
               <Box padding="200" background="bg-surface-secondary" borderRadius="200">
                 <Text variant="bodySm" as="p">
-                  <code>Title, Body HTML, Vendor, Product Type, Tags, Published, Option1 Name, Option1 Value, Variant SKU, Variant Price, Variant Compare At Price, Variant Inventory Qty, Image Src</code>
+                  <code>
+                    Title, Body HTML, Vendor, Product Type, Tags, Published, Option1 Name, Option1
+                    Value, Variant SKU, Variant Price, Variant Compare At Price, Variant Inventory
+                    Qty, Image Src
+                  </code>
                 </Text>
               </Box>
 
               <Banner tone="info">
                 <p>
-                  Products can be imported to multiple stores at once. The import uses a background queue
-                  (Pub/Sub) so large imports won't time out.
+                  Products can be imported to multiple stores at once. The import uses a background
+                  queue (Pub/Sub) so large imports won't time out.
                 </p>
               </Banner>
             </BlockStack>
@@ -479,7 +528,9 @@ export default function Dashboard() {
             actionUrl="/tracking"
           >
             <BlockStack gap="300">
-              <Text variant="bodySm" as="p" fontWeight="semibold">How to update tracking:</Text>
+              <Text variant="bodySm" as="p" fontWeight="semibold">
+                How to update tracking:
+              </Text>
               <List type="number">
                 <List.Item>
                   Go to <strong>Tracking</strong> page
@@ -488,7 +539,8 @@ export default function Dashboard() {
                   Select the <strong>Store</strong> to update tracking for
                 </List.Item>
                 <List.Item>
-                  Upload an <strong>Excel file</strong> with tracking data (or download the template)
+                  Upload an <strong>Excel file</strong> with tracking data (or download the
+                  template)
                 </List.Item>
                 <List.Item>
                   The system will match orders by order number and update fulfillment tracking
@@ -499,17 +551,21 @@ export default function Dashboard() {
               </List>
 
               <Divider />
-              <Text variant="bodySm" as="p" fontWeight="semibold">Excel template columns:</Text>
+              <Text variant="bodySm" as="p" fontWeight="semibold">
+                Excel template columns:
+              </Text>
               <Box padding="200" background="bg-surface-secondary" borderRadius="200">
                 <Text variant="bodySm" as="p">
-                  <code>Order Number, Tracking Number, Carrier (optional), Tracking URL (optional)</code>
+                  <code>
+                    Order Number, Tracking Number, Carrier (optional), Tracking URL (optional)
+                  </code>
                 </Text>
               </Box>
 
               <Banner tone="info">
                 <p>
-                  Tracking updates are processed asynchronously. You'll see a progress bar and can view
-                  per-order results including any errors with helpful context messages.
+                  Tracking updates are processed asynchronously. You'll see a progress bar and can
+                  view per-order results including any errors with helpful context messages.
                 </p>
               </Banner>
             </BlockStack>
@@ -528,7 +584,9 @@ function StatCard({title, value, icon, color, done, label}) {
       <Card>
         <BlockStack gap="200">
           <InlineStack align="space-between" blockAlign="center">
-            <Text variant="bodySm" as="p" tone="subdued">{title}</Text>
+            <Text variant="bodySm" as="p" tone="subdued">
+              {title}
+            </Text>
             <div
               style={{
                 width: 36,
@@ -548,7 +606,10 @@ function StatCard({title, value, icon, color, done, label}) {
           </Text>
           <InlineStack gap="200" blockAlign="center">
             {done !== null && done !== undefined && (
-              <Icon source={done ? CheckCircleIcon : AlertCircleIcon} tone={done ? 'success' : 'caution'} />
+              <Icon
+                source={done ? CheckCircleIcon : AlertCircleIcon}
+                tone={done ? 'success' : 'caution'}
+              />
             )}
             <Text variant="bodySm" as="p" tone={done ? 'success' : 'subdued'}>
               {label || (done ? 'Configured' : 'Not configured')}
@@ -560,7 +621,21 @@ function StatCard({title, value, icon, color, done, label}) {
   );
 }
 
-function GuideCard({step, title, description, icon, color, done, doneText, pendingText, open, onToggle, actionLabel, actionUrl, children}) {
+function GuideCard({
+  step,
+  title,
+  description,
+  icon,
+  color,
+  done,
+  doneText,
+  pendingText,
+  open,
+  onToggle,
+  actionLabel,
+  actionUrl,
+  children
+}) {
   return (
     <Card>
       <BlockStack gap="300">
@@ -590,11 +665,15 @@ function GuideCard({step, title, description, icon, color, done, doneText, pendi
                 {done === false && <Badge tone="attention">{pendingText}</Badge>}
                 {done === null && <Badge>{pendingText}</Badge>}
               </InlineStack>
-              <Text variant="bodySm" as="p" tone="subdued">{description}</Text>
+              <Text variant="bodySm" as="p" tone="subdued">
+                {description}
+              </Text>
             </BlockStack>
           </InlineStack>
           <InlineStack gap="200">
-            <Button url={actionUrl} size="slim">{actionLabel}</Button>
+            <Button url={actionUrl} size="slim">
+              {actionLabel}
+            </Button>
             <Button
               onClick={onToggle}
               icon={open ? ChevronUpIcon : ChevronDownIcon}

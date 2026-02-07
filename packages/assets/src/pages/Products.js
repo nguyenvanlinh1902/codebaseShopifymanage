@@ -25,7 +25,7 @@ import {
   Modal
 } from '@shopify/polaris';
 import {CheckCircleIcon, ClockIcon, AlertCircleIcon, SearchIcon} from '@shopify/polaris-icons';
-import {USER_ID} from '../config/user';
+import {fetchApi} from '../helpers/fetchApi';
 
 /**
  * Products Page - Enhanced version
@@ -99,7 +99,7 @@ export default function Products() {
 
   const fetchStores = async () => {
     try {
-      const response = await fetch(`/api/stores?userId=${USER_ID}`);
+      const response = await fetchApi('/api/stores');
       const result = await response.json();
       if (result.success) {
         setStores(result.data || []);
@@ -113,7 +113,6 @@ export default function Products() {
     try {
       setLoading(true);
       const params = new URLSearchParams({
-        userId: USER_ID,
         page: currentPage,
         limit: itemsPerPage
       });
@@ -126,7 +125,7 @@ export default function Products() {
         params.append('search', debouncedSearch);
       }
 
-      const response = await fetch(`/api/products/list?${params.toString()}`);
+      const response = await fetchApi(`/api/products/list?${params.toString()}`);
       const result = await response.json();
 
       if (result.success) {
@@ -145,7 +144,7 @@ export default function Products() {
 
   const fetchQueueStats = async () => {
     try {
-      const response = await fetch('/api/products/queue-stats');
+      const response = await fetchApi('/api/products/queue-stats');
       const result = await response.json();
       if (result.success) {
         setQueueStats(result.data);
@@ -157,7 +156,7 @@ export default function Products() {
 
   const fetchStoreImportStatus = async () => {
     try {
-      const response = await fetch(`/api/products/successful-imports?userId=${USER_ID}`);
+      const response = await fetchApi('/api/products/successful-imports');
       const result = await response.json();
       if (result.success) {
         setStoreImportStatus(result.data || []);
@@ -172,7 +171,7 @@ export default function Products() {
       setProcessingQueue(true);
       setError(null);
 
-      const response = await fetch('/api/products/process-queue', {
+      const response = await fetchApi('/api/products/process-queue', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'}
       });
@@ -222,11 +221,10 @@ export default function Products() {
       reader.onload = async e => {
         const csvData = e.target.result;
 
-        const response = await fetch('/api/products/upload-csv', {
+        const response = await fetchApi('/api/products/upload-csv', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({
-            userId: USER_ID,
             storeIds: selectedStores,
             csvData,
             fileName: file.name
@@ -263,7 +261,7 @@ export default function Products() {
 
   const handleDownloadTemplate = async () => {
     try {
-      const response = await fetch('/api/products/template');
+      const response = await fetchApi('/api/products/template');
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -344,11 +342,10 @@ export default function Products() {
 
       const csvData = [csvHeaders.join(','), ...csvRows.map(row => row.join(','))].join('\n');
 
-      const response = await fetch('/api/products/upload-csv', {
+      const response = await fetchApi('/api/products/upload-csv', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
-          userId: USER_ID,
           storeIds: reimportStores,
           csvData,
           fileName: `reimport-${Date.now()}.csv`

@@ -1,7 +1,7 @@
 import React, {useEffect, useState, useRef} from 'react';
 import {useNavigate} from 'react-router-dom';
 import {Page, Layout, Card, Banner, Text, Spinner, BlockStack} from '@shopify/polaris';
-import {USER_ID} from '../config/user';
+import {fetchApi} from '../helpers/fetchApi';
 
 /**
  * OAuth Callback Page
@@ -77,10 +77,10 @@ export default function OAuthCallback() {
 
   const handleGoogleCallback = async code => {
     try {
-      const response = await fetch('/api/google/exchange', {
+      const response = await fetchApi('/api/google/exchange', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({code, userId: USER_ID})
+        body: JSON.stringify({code})
       });
 
       const result = await response.json();
@@ -127,7 +127,7 @@ export default function OAuthCallback() {
 
   const handleGoogleCallbackTemp = async code => {
     try {
-      const response = await fetch('/api/google/exchange-temp', {
+      const response = await fetchApi('/api/google/exchange-temp', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({code})

@@ -23,7 +23,7 @@ import {
   useIndexResourceState
 } from '@shopify/polaris';
 import {DeleteIcon} from '@shopify/polaris-icons';
-import {USER_ID} from '../config/user';
+import {fetchApi} from '../helpers/fetchApi';
 
 const PAGE_LIMIT = 10;
 
@@ -73,14 +73,13 @@ export default function Stores() {
     try {
       setLoading(true);
       const params = new URLSearchParams({
-        userId: USER_ID,
         page: String(page),
         limit: String(PAGE_LIMIT)
       });
       if (search) params.set('search', search);
       if (niches.length > 0) params.set('niche', niches.join(','));
 
-      const response = await fetch(`/api/stores?${params}`);
+      const response = await fetchApi(`/api/stores?${params}`);
       const result = await response.json();
       if (result.success) {
         setStores(result.data || []);
@@ -98,7 +97,7 @@ export default function Stores() {
 
   const fetchNiches = async () => {
     try {
-      const response = await fetch(`/api/stores/niches?userId=${USER_ID}`);
+      const response = await fetchApi('/api/stores/niches');
       const result = await response.json();
       if (result.success) {
         setAllNiches(result.data);
@@ -240,7 +239,7 @@ export default function Stores() {
       setVerifying(true);
       setError(null);
 
-      const response = await fetch('/api/stores/verify-token', {
+      const response = await fetchApi('/api/stores/verify-token', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
@@ -277,11 +276,10 @@ export default function Stores() {
       setSubmitting(true);
       setError(null);
 
-      const response = await fetch('/api/stores', {
+      const response = await fetchApi('/api/stores', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
-          userId: USER_ID,
           ...formData
         })
       });
@@ -323,7 +321,7 @@ export default function Stores() {
       setDeleting(true);
       const idsToDelete = deleteTarget ? [deleteTarget] : selectedResources;
 
-      const response = await fetch('/api/stores/bulk-delete', {
+      const response = await fetchApi('/api/stores/bulk-delete', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({storeIds: idsToDelete})

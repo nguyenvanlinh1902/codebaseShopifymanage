@@ -15,7 +15,7 @@ import {
   Collapsible,
   Spinner
 } from '@shopify/polaris';
-import {USER_ID} from '../config/user';
+import {fetchApi} from '../helpers/fetchApi';
 
 /**
  * Orders Sync Page - Export orders from Shopify to Google Sheets with customer info
@@ -46,7 +46,7 @@ export default function Orders() {
   const fetchQueueStats = useCallback(async () => {
     if (!selectedStore) return;
     try {
-      const response = await fetch(`/api/orders/queue-stats?storeId=${selectedStore}`);
+      const response = await fetchApi(`/api/orders/queue-stats?storeId=${selectedStore}`);
       const result = await response.json();
       if (result.success) {
         setSyncJob(result.data.activeJob);
@@ -128,8 +128,8 @@ export default function Orders() {
     try {
       setLoading(true);
       const [storesRes, sheetsRes] = await Promise.all([
-        fetch(`/api/stores?userId=${USER_ID}`),
-        fetch(`/api/sheets?userId=${USER_ID}`)
+        fetchApi('/api/stores'),
+        fetchApi('/api/sheets')
       ]);
 
       const [storesData, sheetsData] = await Promise.all([storesRes.json(), sheetsRes.json()]);
@@ -146,9 +146,7 @@ export default function Orders() {
 
   const fetchSyncConfigs = async () => {
     try {
-      const response = await fetch(
-        `/api/orders/sync-configs?userId=${USER_ID}&storeId=${selectedStore}`
-      );
+      const response = await fetchApi(`/api/orders/sync-configs?storeId=${selectedStore}`);
       const result = await response.json();
 
       if (result.success) {
@@ -161,7 +159,7 @@ export default function Orders() {
 
   const fetchWebhookInstructions = async () => {
     try {
-      const response = await fetch(`/api/orders/webhook-instructions?storeId=${selectedStore}`);
+      const response = await fetchApi(`/api/orders/webhook-instructions?storeId=${selectedStore}`);
       const result = await response.json();
 
       if (result.success) {
@@ -176,7 +174,7 @@ export default function Orders() {
     try {
       setLoadingTabs(true);
       setSelectedTab('');
-      const response = await fetch(`/api/sheets/${selectedSheet}/tabs`);
+      const response = await fetchApi(`/api/sheets/${selectedSheet}/tabs`);
       const result = await response.json();
 
       if (result.success) {
@@ -214,11 +212,10 @@ export default function Orders() {
 
       const [tabName, tabId] = selectedTab.split('|');
 
-      const response = await fetch('/api/orders/setup-sync', {
+      const response = await fetchApi('/api/orders/setup-sync', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
-          userId: USER_ID,
           storeId: selectedStore,
           sheetId: selectedSheet,
           sheetName: tabName,
@@ -255,7 +252,7 @@ export default function Orders() {
       setError(null);
       setSuccessMessage(null);
 
-      const response = await fetch('/api/orders/manual-sync', {
+      const response = await fetchApi('/api/orders/manual-sync', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
@@ -294,7 +291,7 @@ export default function Orders() {
     if (!selectedStore) return;
     try {
       setLoadingWebhookList(true);
-      const response = await fetch(`/api/orders/webhook-list?storeId=${selectedStore}`);
+      const response = await fetchApi(`/api/orders/webhook-list?storeId=${selectedStore}`);
       const result = await response.json();
       if (result.success) {
         setWebhookList(result.data);
@@ -317,7 +314,7 @@ export default function Orders() {
     }
 
     try {
-      const response = await fetch('/api/orders/register-webhook', {
+      const response = await fetchApi('/api/orders/register-webhook', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({

@@ -19,7 +19,7 @@ export class OrderRepository {
 
   get collection() {
     if (!this._collection) {
-      this._collection = this.db.collection('orders');
+      this._collection = this.db.collection('order_backups');
     }
     return this._collection;
   }

@@ -20,7 +20,7 @@ export class OrderSyncRepository {
 
   get collection() {
     if (!this._collection) {
-      this._collection = this.db.collection('order_syncs');
+      this._collection = this.db.collection('order_configs');
     }
     return this._collection;
   }
@@ -141,7 +141,7 @@ export class OrderSyncRepository {
    * Track synced order
    */
   async trackSyncedOrder(orderData) {
-    const docRef = this.db.collection('synced_orders').doc();
+    const docRef = this.db.collection('order_synced').doc();
     await docRef.set({
       id: docRef.id,
       ...orderData,
@@ -154,7 +154,7 @@ export class OrderSyncRepository {
    */
   async isOrderSynced(storeId, shopifyOrderId) {
     const snapshot = await this.db
-      .collection('synced_orders')
+      .collection('order_synced')
       .where('storeId', '==', storeId)
       .where('shopifyOrderId', '==', shopifyOrderId)
       .limit(1)

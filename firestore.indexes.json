@@ -43,7 +43,7 @@
       ]
     },
     {
-      "collectionGroup": "orders",
+      "collectionGroup": "order_backups",
       "queryScope": "COLLECTION",
       "fields": [
         {
@@ -57,7 +57,7 @@
       ]
     },
     {
-      "collectionGroup": "orders",
+      "collectionGroup": "order_backups",
       "queryScope": "COLLECTION",
       "fields": [
         {
@@ -75,7 +75,7 @@
       ]
     },
     {
-      "collectionGroup": "orders",
+      "collectionGroup": "order_backups",
       "queryScope": "COLLECTION",
       "fields": [
         {
@@ -89,7 +89,7 @@
       ]
     },
     {
-      "collectionGroup": "order_syncs",
+      "collectionGroup": "order_configs",
       "queryScope": "COLLECTION",
       "fields": [
         {
@@ -103,7 +103,7 @@
       ]
     },
     {
-      "collectionGroup": "order_syncs",
+      "collectionGroup": "order_configs",
       "queryScope": "COLLECTION",
       "fields": [
         {
@@ -177,7 +177,7 @@
       ]
     },
     {
-      "collectionGroup": "synced_orders",
+      "collectionGroup": "order_synced",
       "queryScope": "COLLECTION",
       "fields": [
         {
@@ -396,6 +396,90 @@
       "fields": [
         {
           "fieldPath": "userId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "order_sync_queue",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "processingAt",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "order_sync_queue",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "order_sync_queue",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "syncJobId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "order_sync_queue",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "completedAt",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "order_sync_jobs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "storeId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "order_sync_jobs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "storeId",
           "order": "ASCENDING"
         },
         {

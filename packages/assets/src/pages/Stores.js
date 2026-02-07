@@ -385,7 +385,10 @@ export default function Stores() {
             icon={DeleteIcon}
             tone="critical"
             variant="plain"
-            onClick={() => handleDeleteClick(store.id)}
+            onClick={e => {
+              e.stopPropagation();
+              handleDeleteClick(store.id);
+            }}
             accessibilityLabel={`Delete ${store.name}`}
           />
         </InlineStack>

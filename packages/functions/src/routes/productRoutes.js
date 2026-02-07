@@ -7,6 +7,7 @@ router.post('/upload-csv', productImportController.uploadAndImport);
 router.get('/import-history', productImportController.getImportHistory);
 router.get('/successful-imports', productImportController.getSuccessfulImports);
 router.get('/list', productImportController.getProducts);
+router.get('/filter-options', productImportController.getProductFilterOptions);
 router.get('/template', productImportController.downloadTemplate);
 router.get('/queue-stats', productImportController.getQueueStats);
 router.post('/process-queue', productImportController.processQueueManual);

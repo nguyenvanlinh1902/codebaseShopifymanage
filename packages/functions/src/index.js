@@ -18,13 +18,15 @@ import analyticsRoutes from './routes/analyticsRoutes.js';
 // PubSub controllers
 import * as productImportController from './controllers/productImportController.js';
 import * as trackingImportController from './controllers/trackingImportController.js';
+import * as orderSyncController from './controllers/orderSyncController.js';
 
 // BigQuery Firestore triggers
 import {onDocumentWritten} from 'firebase-functions/v2/firestore';
 import {
   onTriggerStores,
   onTriggerGoogleAuth,
-  onTriggerGoogleSheets
+  onTriggerGoogleSheets,
+  onTriggerProducts
 } from './handlers/bigQueryTriggers.js';
 
 // Initialize Firebase Admin
@@ -133,6 +135,25 @@ export const productQueueCron = onSchedule(
 );
 
 /**
+ * Scheduled Function (CronJob): Process Order Sync Queue
+ * Runs every minute to process pending orders from the queue
+ */
+export const orderSyncQueueCron = onSchedule(
+  {
+    schedule: 'every 1 minutes',
+    memory: '256MiB',
+    timeoutSeconds: 540,
+    retryConfig: {
+      retryCount: 3,
+      maxRetrySeconds: 600
+    }
+  },
+  async () => {
+    await orderSyncController.processOrderSyncQueue();
+  }
+);
+
+/**
  * BigQuery Firestore Triggers
  */
 export const onWriteStores = onDocumentWritten(
@@ -148,4 +169,9 @@ export const onWriteGoogleAuth = onDocumentWritten(
 export const onWriteGoogleSheets = onDocumentWritten(
   {document: 'google_sheets/{docId}', memory: '256MiB'},
   onTriggerGoogleSheets
+);
+
+export const onWriteProducts = onDocumentWritten(
+  {document: 'products/{docId}', memory: '256MiB'},
+  onTriggerProducts
 );

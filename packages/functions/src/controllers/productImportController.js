@@ -279,11 +279,15 @@ export async function getSuccessfulImports(req, res) {
 }
 
 /**
- * Get imported products with pagination
+ * Get imported products with pagination and search
+ * Decision tree:
+ * - importId → getByImportId (single import)
+ * - search → searchProducts via BigQuery (full-text search)
+ * - otherwise → getWithPagination via Firestore (simple pagination)
  */
 export async function getProducts(req, res) {
   try {
-    const {userId, storeId, importId, page, limit, search} = req.query;
+    const {userId, storeId, importId, page, limit, search, vendor, store} = req.query;
 
     if (!userId && !storeId && !importId) {
       return res.status(400).json({
@@ -301,11 +305,39 @@ export async function getProducts(req, res) {
       });
     }
 
-    // Use pagination for user/store queries
     const pageNum = parseInt(page) || 1;
     const limitNum = parseInt(limit) || 50;
     const searchQuery = search || '';
 
+    // Parse filter arrays
+    const vendors = vendor ? vendor.split(',').filter(Boolean) : [];
+    const stores = store ? store.split(',').filter(Boolean) : [];
+
+    // Decision tree: Use BigQuery if search or filters present
+    if (searchQuery || vendors.length > 0 || stores.length > 0) {
+      // Use BigQuery for better search performance
+      const result = await productRepo.searchProducts({
+        userId,
+        search: searchQuery,
+        vendors,
+        stores,
+        page: pageNum,
+        limit: limitNum
+      });
+
+      return res.json({
+        success: true,
+        data: result.products,
+        pagination: {
+          page: result.page,
+          limit: result.limit,
+          total: result.total,
+          totalPages: result.totalPages
+        }
+      });
+    }
+
+    // No search/filters: Use fast Firestore pagination
     const result = await productRepo.getWithPagination({
       userId,
       storeId,
@@ -326,6 +358,35 @@ export async function getProducts(req, res) {
     });
   } catch (error) {
     console.error('Get products error:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+}
+
+/**
+ * Get filter options (vendors and stores)
+ */
+export async function getProductFilterOptions(req, res) {
+  try {
+    const {userId} = req.query;
+
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        error: 'userId is required'
+      });
+    }
+
+    const options = await productRepo.getFilterOptions(userId);
+
+    return res.json({
+      success: true,
+      data: options
+    });
+  } catch (error) {
+    console.error('Get product filter options error:', error);
     return res.status(500).json({
       success: false,
       error: error.message
@@ -512,24 +573,22 @@ export async function processProductQueue() {
           result = await shopifyService.createProduct(product);
           action = 'created';
 
-          // Save product to Firestore for tracking
+          // Save product to Firestore with ALL fields from CSV
           await productRepo.save({
+            // Tracking fields
             importId,
             storeId,
             userId,
             storeName,
             shopDomain,
             shopifyProductId: result.product?.id || result.id,
-            title: product.title,
-            sku: product.sku,
-            price: product.price,
-            compareAtPrice: product.compareAtPrice,
-            vendor: product.vendor,
-            productType: product.productType,
-            tags: product.tags,
-            status: product.status || 'active',
             action,
-            importedAt: new Date().toISOString()
+            importedAt: new Date().toISOString(),
+
+            // All product fields from mapToShopifyProduct()
+            // Includes: handle, title, description, options, variants, inventory,
+            // images, Google Shopping metadata, SEO fields, pricing, shipping, tax, etc.
+            ...product
           });
 
           // Mark queue item as completed

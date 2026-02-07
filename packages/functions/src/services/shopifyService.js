@@ -199,17 +199,51 @@ export class ShopifyService {
    */
   async getOrders(params = {}) {
     try {
-      const defaultParams = {
-        limit: 250,
-        status: 'any',
-        ...params
-      };
+      let queryParams;
+      if (params.page_info) {
+        // Cursor pagination: Shopify only allows page_info + limit, no other filters
+        queryParams = {page_info: params.page_info};
+        if (params.limit) queryParams.limit = params.limit;
+      } else {
+        queryParams = {limit: 250, status: 'any', ...params};
+      }
 
-      const orders = await this.shopify.order.list(defaultParams);
+      const orders = await this.shopify.order.list(queryParams);
       return orders;
     } catch (error) {
       console.error('Error getting orders:', error);
       throw new Error(`Failed to get orders: ${error.message}`);
+    }
+  }
+
+  /**
+   * Get all orders from Shopify with pagination
+   * Uses since_id to paginate through all orders
+   * @param {Object} params - Query parameters (created_at_min, status, etc.)
+   */
+  async getAllOrders(params = {}) {
+    try {
+      const allOrders = [];
+      let lastId = null;
+      const limit = 250;
+
+      while (true) {
+        const queryParams = {limit, status: 'any', ...params};
+        if (lastId) queryParams.since_id = lastId;
+
+        const orders = await this.shopify.order.list(queryParams);
+        if (orders.length === 0) break;
+
+        allOrders.push(...orders);
+        lastId = orders[orders.length - 1].id;
+
+        if (orders.length < limit) break;
+      }
+
+      return allOrders;
+    } catch (error) {
+      console.error('Error getting all orders:', error);
+      throw new Error(`Failed to get all orders: ${error.message}`);
     }
   }
 

@@ -446,6 +446,58 @@ export class GoogleSheetsService {
   }
 
   /**
+   * Append multiple orders to sheet (batch append, no headers)
+   */
+  async appendOrders(spreadsheetId, sheetName, orders) {
+    try {
+      const rows = orders.map(order => [
+        order.orderNumber,
+        order.orderId,
+        order.orderDate,
+        order.orderStatus,
+        order.fulfillmentStatus,
+        order.totalPrice,
+        order.currency,
+        order.paymentMethod,
+        order.customerId,
+        order.customerEmail,
+        order.customerPhone,
+        order.customerFirstName,
+        order.customerLastName,
+        order.customerFullName,
+        order.shippingName,
+        order.shippingAddress1,
+        order.shippingAddress2,
+        order.shippingCity,
+        order.shippingProvince,
+        order.shippingZip,
+        order.shippingCountry,
+        order.shippingPhone,
+        order.billingName,
+        order.billingAddress1,
+        order.billingCity,
+        order.billingProvince,
+        order.billingZip,
+        order.billingCountry,
+        order.itemsCount,
+        order.items,
+        order.trackingNumbers,
+        order.trackingUrls,
+        order.note,
+        order.tags,
+        order.createdAt,
+        order.updatedAt
+      ]);
+
+      await this.appendSheet(spreadsheetId, `${sheetName}!A1`, rows);
+      return {success: true, rowsAppended: rows.length};
+    } catch (error) {
+      console.error('Error appending orders:', error);
+      throw new Error(`Failed to append orders: ${error.message}`);
+    }
+  }
+
+  /**
    * Update existing order in sheet by order number
    */
   async updateOrder(spreadsheetId, sheetName, orderNumber, order) {

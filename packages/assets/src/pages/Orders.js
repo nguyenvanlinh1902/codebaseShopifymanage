@@ -1,4 +1,4 @@
-import React, {useState, useEffect} from 'react';
+import React, {useState, useEffect, useCallback, useRef} from 'react';
 import {
   Page,
   Layout,
@@ -12,7 +12,8 @@ import {
   SkeletonBodyText,
   Modal,
   List,
-  Collapsible
+  Collapsible,
+  Spinner
 } from '@shopify/polaris';
 import {USER_ID} from '../config/user';
 
@@ -39,6 +40,57 @@ export default function Orders() {
   const [showInstructionsOpen, setShowInstructionsOpen] = useState(false);
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
+  const [syncJob, setSyncJob] = useState(null);
+  const pollIntervalRef = useRef(null);
+
+  const fetchQueueStats = useCallback(async () => {
+    if (!selectedStore) return;
+    try {
+      const response = await fetch(`/api/orders/queue-stats?storeId=${selectedStore}`);
+      const result = await response.json();
+      if (result.success) {
+        setSyncJob(result.data.activeJob);
+        if (result.data.activeJob?.status === 'processing') {
+          // Active job found, ensure polling is running
+          if (!pollIntervalRef.current) {
+            startPolling();
+          }
+          setSyncing(true);
+        } else if (!result.data.activeJob || result.data.activeJob.status === 'completed') {
+          stopPolling();
+          if (result.data.activeJob?.status === 'completed' && syncing) {
+            const job = result.data.activeJob;
+            const failedMsg = job.failedCount > 0 ? ` (${job.failedCount} failed)` : '';
+            setSuccessMessage(
+              `Sync completed! ${job.successCount ||
+                0} orders synced to Google Sheets successfully${failedMsg}.`
+            );
+            fetchSyncConfigs();
+          }
+          setSyncing(false);
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching queue stats:', err);
+    }
+  }, [selectedStore, syncing]);
+
+  const startPolling = useCallback(() => {
+    stopPolling();
+    pollIntervalRef.current = setInterval(fetchQueueStats, 5000);
+  }, [fetchQueueStats]);
+
+  const stopPolling = useCallback(() => {
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = null;
+    }
+  }, []);
+
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => stopPolling();
+  }, [stopPolling]);
 
   useEffect(() => {
     fetchData();
@@ -48,6 +100,10 @@ export default function Orders() {
     if (selectedStore) {
       fetchSyncConfigs();
       fetchWebhookInstructions();
+      fetchQueueStats();
+    } else {
+      setSyncJob(null);
+      stopPolling();
     }
   }, [selectedStore]);
 
@@ -203,23 +259,33 @@ export default function Orders() {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
-          storeId: selectedStore,
-          limit: 50
+          storeId: selectedStore
         })
       });
 
       const result = await response.json();
 
       if (result.success) {
-        setSuccessMessage(result.message);
-        fetchSyncConfigs();
+        const {jobId, newOrders, alreadySynced, hasNextPage, currentPage} = result.data || {};
+        if (newOrders === 0 && !hasNextPage) {
+          setSuccessMessage(result.message || 'No new orders to sync.');
+          setSyncing(false);
+        } else {
+          const pageMsg = hasNextPage ? ' (more pages will be fetched automatically)' : '';
+          setSuccessMessage(
+            `Page ${currentPage}: ${newOrders} new orders queued (${alreadySynced} already synced)${pageMsg}`
+          );
+          setSyncJob({id: jobId, status: 'processing', successCount: 0, hasNextPage, currentPage});
+          await fetchQueueStats();
+          startPolling();
+        }
       } else {
         setError(result.error || 'Failed to sync orders');
+        setSyncing(false);
       }
     } catch (err) {
       console.error('Error syncing orders:', err);
       setError('Failed to sync orders');
-    } finally {
       setSyncing(false);
     }
   };
@@ -320,6 +386,54 @@ export default function Orders() {
           </Layout.Section>
         )}
 
+        {syncJob && syncJob.status === 'processing' && (
+          <Layout.Section>
+            <Card sectioned>
+              <div style={{display: 'flex', alignItems: 'center', gap: '8px'}}>
+                <Spinner size="small" />
+                <Text variant="headingMd" as="h2">
+                  Syncing orders...
+                </Text>
+              </div>
+              <div style={{marginTop: '12px'}}>
+                <div
+                  style={{display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '8px'}}
+                >
+                  <Text variant="headingLg" as="p">
+                    {syncJob.successCount || 0}
+                  </Text>
+                  <Text variant="bodySm" as="p" tone="subdued">
+                    orders synced
+                    {syncJob.currentPage ? ` (page ${syncJob.currentPage})` : ''}
+                  </Text>
+                </div>
+                {syncJob.queueStats &&
+                  (syncJob.queueStats.pending > 0 || syncJob.queueStats.processing > 0) && (
+                    <div style={{marginBottom: '8px', display: 'flex', gap: '12px'}}>
+                      {syncJob.queueStats.pending > 0 && (
+                        <Badge tone="attention">Pending: {syncJob.queueStats.pending}</Badge>
+                      )}
+                      {syncJob.queueStats.processing > 0 && (
+                        <Badge tone="warning">Processing: {syncJob.queueStats.processing}</Badge>
+                      )}
+                      {syncJob.queueStats.failed > 0 && (
+                        <Badge tone="critical">Failed: {syncJob.queueStats.failed}</Badge>
+                      )}
+                    </div>
+                  )}
+                <div style={{display: 'flex', gap: '8px', alignItems: 'center'}}>
+                  <Button size="slim" variant="plain" onClick={fetchQueueStats}>
+                    Refresh
+                  </Button>
+                  <Text variant="bodySm" as="span" tone="subdued">
+                    Auto-refreshes every 5s
+                  </Text>
+                </div>
+              </div>
+            </Card>
+          </Layout.Section>
+        )}
+
         <Layout.Section oneThird>
           <Card sectioned>
             <Text variant="headingMd" as="h2">
@@ -393,8 +507,13 @@ export default function Orders() {
                   </Button>
 
                   {activeConfig && (
-                    <Button fullWidth onClick={handleManualSync} loading={syncing}>
-                      Manual Sync Now
+                    <Button
+                      fullWidth
+                      onClick={handleManualSync}
+                      loading={syncing}
+                      disabled={syncJob?.status === 'processing'}
+                    >
+                      {syncJob?.status === 'processing' ? 'Sync In Progress...' : 'Manual Sync Now'}
                     </Button>
                   )}
                 </div>

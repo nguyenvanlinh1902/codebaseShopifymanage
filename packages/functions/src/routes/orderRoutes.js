@@ -18,6 +18,8 @@ router.get('/webhook-instructions', orderSyncController.getWebhookInstructions);
 router.get('/webhook-list', orderSyncController.getWebhookList);
 router.get('/sync-stats', orderSyncController.getSyncStats);
 router.post('/resync-failed', orderSyncController.resyncFailedOrders);
+router.get('/queue-stats', orderSyncController.getOrderSyncQueueStats);
+router.post('/process-queue', orderSyncController.processOrderSyncQueueManual);
 
 // Webhook endpoint - receives orders from ALL stores
 router.post('/webhook', orderSyncController.handleOrderWebhook);

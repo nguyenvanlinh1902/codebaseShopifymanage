@@ -3,6 +3,7 @@ import {
   Page,
   Layout,
   Card,
+  Tabs,
   Select,
   Button,
   Banner,
@@ -12,24 +13,44 @@ import {
   SkeletonBodyText,
   ProgressBar,
   DropZone,
-  Modal
+  Modal,
+  InlineStack
 } from '@shopify/polaris';
 import {fetchApi} from '../helpers/fetchApi';
 
 /**
- * Tracking Import Page - Upload Excel file to update order tracking numbers
+ * Tracking Import Page
+ * Two modes: Google Sheet import & Excel file upload
  */
 export default function Tracking() {
+  // Shared state
   const [stores, setStores] = useState([]);
   const [selectedStore, setSelectedStore] = useState('');
-  const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [uploading, setUploading] = useState(false);
   const [importHistory, setImportHistory] = useState([]);
   const [selectedImport, setSelectedImport] = useState(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
+  const [selectedTab, setSelectedTab] = useState(0);
+
+  // Google Sheet state
+  const [sheets, setSheets] = useState([]);
+  const [selectedSheet, setSelectedSheet] = useState('');
+  const [sheetTabs, setSheetTabs] = useState([]);
+  const [selectedSheetTab, setSelectedSheetTab] = useState('');
+  const [previewData, setPreviewData] = useState(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [importing, setImporting] = useState(false);
+
+  // Excel state
+  const [file, setFile] = useState(null);
+  const [uploading, setUploading] = useState(false);
+
+  const tabs = [
+    {id: 'google-sheet', content: 'Google Sheet'},
+    {id: 'excel-upload', content: 'Excel Upload'}
+  ];
 
   useEffect(() => {
     fetchData();
@@ -40,6 +61,27 @@ export default function Tracking() {
       fetchImportHistory();
     }
   }, [selectedStore]);
+
+  // Fetch sheets when tab is Google Sheet
+  useEffect(() => {
+    if (selectedTab === 0) {
+      fetchSheets();
+    }
+  }, [selectedTab]);
+
+  // Fetch sheet tabs when sheet selected
+  useEffect(() => {
+    if (selectedSheet) {
+      fetchSheetTabs();
+      setSelectedSheetTab('');
+      setPreviewData(null);
+    }
+  }, [selectedSheet]);
+
+  // Clear preview when tab changes
+  useEffect(() => {
+    setPreviewData(null);
+  }, [selectedSheetTab]);
 
   // Auto-refresh import history while there are processing jobs
   useEffect(() => {
@@ -58,7 +100,7 @@ export default function Tracking() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const response = await fetchApi(`/api/stores`);
+      const response = await fetchApi('/api/stores');
       const result = await response.json();
 
       if (result.success) {
@@ -72,11 +114,37 @@ export default function Tracking() {
     }
   };
 
+  const fetchSheets = async () => {
+    try {
+      const response = await fetchApi('/api/sheets?limit=50');
+      const result = await response.json();
+
+      if (result.success) {
+        setSheets(result.data);
+      }
+    } catch (err) {
+      console.error('Error fetching sheets:', err);
+    }
+  };
+
+  const fetchSheetTabs = async () => {
+    try {
+      const response = await fetchApi(`/api/sheets/${selectedSheet}/tabs`);
+      const result = await response.json();
+
+      if (result.success) {
+        setSheetTabs(result.data);
+      }
+    } catch (err) {
+      console.error('Error fetching sheet tabs:', err);
+    }
+  };
+
   const fetchImportHistory = async () => {
     try {
       const url = selectedStore
         ? `/api/tracking/import-history?storeId=${selectedStore}`
-        : `/api/tracking/import-history`;
+        : '/api/tracking/import-history';
 
       const response = await fetchApi(url);
       const result = await response.json();
@@ -88,6 +156,71 @@ export default function Tracking() {
       console.error('Error fetching import history:', err);
     }
   };
+
+  // ===== Google Sheet handlers =====
+
+  const handlePreviewSheet = async () => {
+    try {
+      setPreviewLoading(true);
+      setError(null);
+
+      const response = await fetchApi(
+        `/api/tracking/preview-sheet?sheetId=${selectedSheet}&tabName=${encodeURIComponent(selectedSheetTab)}`
+      );
+      const result = await response.json();
+
+      if (result.success) {
+        setPreviewData(result.data);
+      } else {
+        setError(result.error || 'Failed to preview sheet data');
+      }
+    } catch (err) {
+      console.error('Error previewing sheet:', err);
+      setError('Failed to preview sheet data');
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  const handleImportFromSheet = async () => {
+    if (!selectedStore) {
+      setError('Please select a store first');
+      return;
+    }
+
+    try {
+      setImporting(true);
+      setError(null);
+      setSuccessMessage(null);
+
+      const response = await fetchApi('/api/tracking/import-from-sheet', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          storeId: selectedStore,
+          sheetId: selectedSheet,
+          tabName: selectedSheetTab
+        })
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        setSuccessMessage(result.message);
+        setPreviewData(null);
+        fetchImportHistory();
+      } else {
+        setError(result.error || 'Failed to import from sheet');
+      }
+    } catch (err) {
+      console.error('Error importing from sheet:', err);
+      setError('Failed to import from sheet');
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  // ===== Excel handlers =====
 
   const handleDropZoneDrop = useCallback((_dropFiles, acceptedFiles, _rejectedFiles) => {
     setFile(acceptedFiles[0]);
@@ -110,7 +243,6 @@ export default function Tracking() {
       setError(null);
       setSuccessMessage(null);
 
-      // Read file as base64
       const reader = new FileReader();
       reader.onload = async e => {
         const base64Data = e.target.result.split(',')[1];
@@ -174,10 +306,211 @@ export default function Tracking() {
     setShowDetailsModal(true);
   };
 
+  // ===== Render helpers =====
+
   const storeOptions = stores.map(store => ({
     label: store.name,
     value: store.id
   }));
+
+  const sheetOptions = sheets.map(s => ({
+    label: s.title || s.name || s.spreadsheetId,
+    value: s.id
+  }));
+
+  const sheetTabOptions = sheetTabs.map(t => ({
+    label: t.title,
+    value: t.title
+  }));
+
+  const renderGoogleSheetTab = () => (
+    <div style={{marginTop: '16px'}}>
+      <div style={{marginBottom: '16px'}}>
+        <Select
+          label="Select Store"
+          options={storeOptions}
+          value={selectedStore}
+          onChange={setSelectedStore}
+          placeholder="Choose a store"
+        />
+      </div>
+
+      <div style={{marginBottom: '16px'}}>
+        <Select
+          label="Select Google Sheet"
+          options={sheetOptions}
+          value={selectedSheet}
+          onChange={setSelectedSheet}
+          placeholder="Choose a sheet"
+          disabled={sheets.length === 0}
+          helpText={sheets.length === 0 ? 'No sheets connected. Go to Google Sheets page to connect.' : ''}
+        />
+      </div>
+
+      {selectedSheet && (
+        <div style={{marginBottom: '16px'}}>
+          <Select
+            label="Select Tab"
+            options={sheetTabOptions}
+            value={selectedSheetTab}
+            onChange={setSelectedSheetTab}
+            placeholder="Choose a tab"
+            disabled={sheetTabs.length === 0}
+          />
+        </div>
+      )}
+
+      {selectedSheet && selectedSheetTab && (
+        <div style={{marginBottom: '16px'}}>
+          <InlineStack gap="200">
+            <Button
+              onClick={handlePreviewSheet}
+              loading={previewLoading}
+              disabled={!selectedSheetTab}
+            >
+              Preview Data
+            </Button>
+            <Button
+              variant="primary"
+              onClick={handleImportFromSheet}
+              loading={importing}
+              disabled={!selectedStore || !selectedSheetTab}
+            >
+              Import Tracking
+            </Button>
+          </InlineStack>
+        </div>
+      )}
+
+      {/* Preview table */}
+      {previewData && (
+        <div style={{marginTop: '16px'}}>
+          <Text variant="headingSm" as="h3">
+            Preview ({previewData.validCount} valid, {previewData.invalidCount} invalid of {previewData.totalRows} rows)
+          </Text>
+          <div
+            style={{
+              marginTop: '8px',
+              maxHeight: '300px',
+              overflow: 'auto',
+              border: '1px solid #e1e3e5',
+              borderRadius: '4px'
+            }}
+          >
+            <table
+              style={{
+                width: '100%',
+                borderCollapse: 'collapse',
+                fontSize: '13px'
+              }}
+            >
+              <thead style={{background: '#f6f6f7', position: 'sticky', top: 0}}>
+                <tr>
+                  <th style={{padding: '8px', textAlign: 'left', borderBottom: '1px solid #e1e3e5'}}>Row</th>
+                  <th style={{padding: '8px', textAlign: 'left', borderBottom: '1px solid #e1e3e5'}}>Order #</th>
+                  <th style={{padding: '8px', textAlign: 'left', borderBottom: '1px solid #e1e3e5'}}>Tracking Number</th>
+                  <th style={{padding: '8px', textAlign: 'left', borderBottom: '1px solid #e1e3e5'}}>Carrier</th>
+                  <th style={{padding: '8px', textAlign: 'center', borderBottom: '1px solid #e1e3e5'}}>Valid</th>
+                </tr>
+              </thead>
+              <tbody>
+                {previewData.records.map((record, idx) => (
+                  <tr
+                    key={idx}
+                    style={{
+                      background: !record.valid ? '#fff4f4' : idx % 2 === 0 ? '#fff' : '#fafbfb',
+                      borderBottom: '1px solid #e1e3e5'
+                    }}
+                  >
+                    <td style={{padding: '8px'}}>{record.row}</td>
+                    <td style={{padding: '8px', fontWeight: 'bold'}}>
+                      {record.data.orderNumber || record.data['Order Number'] || '-'}
+                    </td>
+                    <td style={{padding: '8px', fontFamily: 'monospace'}}>
+                      {record.data.trackingNumber || record.data['Tracking Number'] || '-'}
+                    </td>
+                    <td style={{padding: '8px'}}>
+                      {record.data.trackingCompany || record.data['Carrier'] || '-'}
+                    </td>
+                    <td style={{padding: '8px', textAlign: 'center'}}>
+                      {record.valid ? (
+                        <span style={{color: '#008060'}}>✅</span>
+                      ) : (
+                        <span title={record.errors.join(', ')} style={{color: '#d72c0d', cursor: 'help'}}>
+                          ❌
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  const uploadFileMarkup = file ? (
+    <div style={{padding: '16px', textAlign: 'center'}}>
+      <Text variant="bodyMd" as="p">
+        {file.name}
+      </Text>
+      <Text variant="bodySm" as="p" tone="subdued">
+        {(file.size / 1024).toFixed(2)} KB
+      </Text>
+      <div style={{marginTop: '8px'}}>
+        <Button size="slim" onClick={() => setFile(null)}>
+          Remove
+        </Button>
+      </div>
+    </div>
+  ) : (
+    <DropZone.FileUpload actionHint="Accepts .xlsx, .xls files" />
+  );
+
+  const renderExcelTab = () => (
+    <div style={{marginTop: '16px'}}>
+      <div style={{marginBottom: '16px'}}>
+        <Select
+          label="Select Store"
+          options={storeOptions}
+          value={selectedStore}
+          onChange={setSelectedStore}
+          placeholder="Choose a store"
+        />
+      </div>
+
+      <div style={{marginBottom: '16px'}}>
+        <Text variant="bodyMd" as="p" fontWeight="medium">
+          Upload Excel File
+        </Text>
+        <div style={{marginTop: '8px'}}>
+          <DropZone
+            onDrop={handleDropZoneDrop}
+            accept=".xlsx,.xls"
+            type="file"
+            disabled={uploading}
+          >
+            {uploadFileMarkup}
+          </DropZone>
+        </div>
+      </div>
+
+      <div style={{display: 'flex', gap: '8px'}}>
+        <Button
+          variant="primary"
+          fullWidth
+          onClick={handleUpload}
+          loading={uploading}
+          disabled={!selectedStore || !file}
+        >
+          Upload & Process
+        </Button>
+        <Button onClick={handleDownloadTemplate}>Download Template</Button>
+      </div>
+    </div>
+  );
 
   const importRows = importHistory.map(imp => [
     imp.fileName || 'N/A',
@@ -212,11 +545,11 @@ export default function Tracking() {
     imp.status === 'completed' ? (
       <div key={`results-${imp.id}`}>
         <Text variant="bodySm" as="span" tone="success">
-          ✅ {imp.successCount || 0}
+          {imp.successCount || 0} ok
         </Text>
         {' / '}
         <Text variant="bodySm" as="span" tone="critical">
-          ❌ {imp.failedCount || 0}
+          {imp.failedCount || 0} fail
         </Text>
       </div>
     ) : (
@@ -228,26 +561,8 @@ export default function Tracking() {
     </Button>
   ]);
 
-  const uploadFileMarkup = file ? (
-    <div style={{padding: '16px', textAlign: 'center'}}>
-      <Text variant="bodyMd" as="p">
-        📄 {file.name}
-      </Text>
-      <Text variant="bodySm" as="p" tone="subdued">
-        {(file.size / 1024).toFixed(2)} KB
-      </Text>
-      <div style={{marginTop: '8px'}}>
-        <Button size="slim" onClick={() => setFile(null)}>
-          Remove
-        </Button>
-      </div>
-    </div>
-  ) : (
-    <DropZone.FileUpload actionHint="Accepts .xlsx, .xls files" />
-  );
-
   return (
-    <Page title="Tracking Import" subtitle="Upload Excel file to update order tracking numbers">
+    <Page title="Tracking Import" subtitle="Import tracking numbers from Google Sheet or Excel file">
       <Layout>
         {error && (
           <Layout.Section>
@@ -266,55 +581,18 @@ export default function Tracking() {
         )}
 
         <Layout.Section>
-          <Card sectioned>
-            <Text variant="headingMd" as="h2">
-              Upload Tracking File
-            </Text>
-
-            {loading ? (
-              <SkeletonBodyText lines={5} />
-            ) : (
-              <div style={{marginTop: '16px'}}>
-                <div style={{marginBottom: '16px'}}>
-                  <Select
-                    label="Select Store"
-                    options={storeOptions}
-                    value={selectedStore}
-                    onChange={setSelectedStore}
-                    placeholder="Choose a store"
-                  />
-                </div>
-
-                <div style={{marginBottom: '16px'}}>
-                  <Text variant="bodyMd" as="p" fontWeight="medium">
-                    Upload Excel File
-                  </Text>
-                  <div style={{marginTop: '8px'}}>
-                    <DropZone
-                      onDrop={handleDropZoneDrop}
-                      accept=".xlsx,.xls"
-                      type="file"
-                      disabled={uploading}
-                    >
-                      {uploadFileMarkup}
-                    </DropZone>
-                  </div>
-                </div>
-
-                <div style={{display: 'flex', gap: '8px'}}>
-                  <Button
-                    primary
-                    fullWidth
-                    onClick={handleUpload}
-                    loading={uploading}
-                    disabled={!selectedStore || !file}
-                  >
-                    Upload & Process
-                  </Button>
-                  <Button onClick={handleDownloadTemplate}>Download Template</Button>
-                </div>
+          <Card>
+            <Tabs tabs={tabs} selected={selectedTab} onSelect={setSelectedTab}>
+              <div style={{padding: '16px'}}>
+                {loading ? (
+                  <SkeletonBodyText lines={5} />
+                ) : selectedTab === 0 ? (
+                  renderGoogleSheetTab()
+                ) : (
+                  renderExcelTab()
+                )}
               </div>
-            )}
+            </Tabs>
           </Card>
         </Layout.Section>
 
@@ -329,14 +607,14 @@ export default function Tracking() {
             {importHistory.length === 0 ? (
               <div style={{padding: '40px', textAlign: 'center'}}>
                 <Text variant="bodySm" as="p" tone="subdued">
-                  No import history yet. Upload your first file to get started!
+                  No import history yet. Import your first tracking data to get started!
                 </Text>
               </div>
             ) : (
               <DataTable
                 columnContentTypes={['text', 'text', 'text', 'text', 'text', 'text', 'text']}
                 headings={[
-                  'File',
+                  'Source',
                   'Store',
                   'Status',
                   'Progress',
@@ -366,7 +644,7 @@ export default function Tracking() {
             <div>
               <div style={{marginBottom: '16px'}}>
                 <Text variant="bodyMd" as="p" fontWeight="semibold">
-                  File Name:
+                  Source:
                 </Text>
                 <Text variant="bodyMd" as="p">
                   {selectedImport.fileName}
@@ -435,50 +713,19 @@ export default function Tracking() {
                     >
                       <thead style={{background: '#f6f6f7', position: 'sticky', top: 0}}>
                         <tr>
-                          <th
-                            style={{
-                              padding: '8px',
-                              textAlign: 'left',
-                              borderBottom: '1px solid #e1e3e5'
-                            }}
-                          >
+                          <th style={{padding: '8px', textAlign: 'left', borderBottom: '1px solid #e1e3e5'}}>
                             Order #
                           </th>
-                          <th
-                            style={{
-                              padding: '8px',
-                              textAlign: 'left',
-                              borderBottom: '1px solid #e1e3e5'
-                            }}
-                          >
+                          <th style={{padding: '8px', textAlign: 'left', borderBottom: '1px solid #e1e3e5'}}>
                             Tracking Number
                           </th>
-                          <th
-                            style={{
-                              padding: '8px',
-                              textAlign: 'left',
-                              borderBottom: '1px solid #e1e3e5'
-                            }}
-                          >
+                          <th style={{padding: '8px', textAlign: 'left', borderBottom: '1px solid #e1e3e5'}}>
                             Carrier
                           </th>
-                          <th
-                            style={{
-                              padding: '8px',
-                              textAlign: 'center',
-                              borderBottom: '1px solid #e1e3e5',
-                              minWidth: '100px'
-                            }}
-                          >
+                          <th style={{padding: '8px', textAlign: 'center', borderBottom: '1px solid #e1e3e5', minWidth: '100px'}}>
                             Status
                           </th>
-                          <th
-                            style={{
-                              padding: '8px',
-                              textAlign: 'left',
-                              borderBottom: '1px solid #e1e3e5'
-                            }}
-                          >
+                          <th style={{padding: '8px', textAlign: 'left', borderBottom: '1px solid #e1e3e5'}}>
                             Error Details
                           </th>
                         </tr>
@@ -501,43 +748,16 @@ export default function Tracking() {
                             <td style={{padding: '8px'}}>{detail.carrier || '-'}</td>
                             <td style={{padding: '8px', textAlign: 'center'}}>
                               {detail.success ? (
-                                <span style={{color: '#008060', fontWeight: 'bold'}}>
-                                  ✅ Success
-                                </span>
+                                <span style={{color: '#008060', fontWeight: 'bold'}}>Success</span>
                               ) : (
-                                <span style={{color: '#d72c0d', fontWeight: 'bold'}}>
-                                  ❌ Failed
-                                </span>
+                                <span style={{color: '#d72c0d', fontWeight: 'bold'}}>Failed</span>
                               )}
                             </td>
                             <td style={{padding: '8px'}}>
                               {!detail.success && detail.error ? (
-                                <div>
-                                  <Text variant="bodySm" as="p" tone="critical">
-                                    {detail.error}
-                                  </Text>
-                                  {detail.errorType === 'ORDER_NOT_FOUND' && (
-                                    <Text variant="bodySm" as="p" tone="subdued">
-                                      💡 Order number "{detail.orderNumber}" không tồn tại trong
-                                      store
-                                    </Text>
-                                  )}
-                                  {detail.errorType === 'INVALID_ORDER_NUMBER' && (
-                                    <Text variant="bodySm" as="p" tone="subdued">
-                                      💡 Định dạng Order number không hợp lệ
-                                    </Text>
-                                  )}
-                                  {detail.errorType === 'FULFILLMENT_FAILED' && (
-                                    <Text variant="bodySm" as="p" tone="subdued">
-                                      💡 Không thể tạo/cập nhật fulfillment cho order này
-                                    </Text>
-                                  )}
-                                  {detail.errorType === 'SHOPIFY_API_ERROR' && (
-                                    <Text variant="bodySm" as="p" tone="subdued">
-                                      💡 Lỗi khi gọi Shopify API
-                                    </Text>
-                                  )}
-                                </div>
+                                <Text variant="bodySm" as="p" tone="critical">
+                                  {detail.error}
+                                </Text>
                               ) : detail.success ? (
                                 <Text variant="bodySm" as="p" tone="success">
                                   Tracking updated successfully

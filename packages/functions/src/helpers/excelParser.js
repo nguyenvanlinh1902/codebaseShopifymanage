@@ -118,6 +118,27 @@ export function mapToTrackingData(record) {
 }
 
 /**
+ * Convert 2D array from Google Sheets (with header row) to array of objects
+ * Same format as parseTrackingExcel output, so validateTrackingRecord/mapToTrackingData can reuse
+ * @param {Array<Array<string>>} rows - 2D array where rows[0] is headers
+ * @returns {Array<Object>} Array of records keyed by header names
+ */
+export function convertRowsToRecords(rows) {
+  if (!rows || rows.length < 2) return [];
+
+  const headers = rows[0];
+  return rows.slice(1)
+    .filter(row => row.some(cell => cell && cell.toString().trim()))
+    .map(row => {
+      const record = {};
+      headers.forEach((header, index) => {
+        record[header] = (row[index] || '').toString();
+      });
+      return record;
+    });
+}
+
+/**
  * Generate tracking import template (Excel format)
  */
 export function generateTrackingTemplate() {

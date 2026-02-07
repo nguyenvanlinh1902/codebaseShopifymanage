@@ -337,26 +337,38 @@ export class ShopifyService {
 
   /**
    * Create a new fulfillment with tracking
+   * Uses Fulfillment Orders API (legacy fulfillment endpoint returns 406)
    */
   async createFulfillment(orderId, trackingInfo) {
     try {
-      const order = await this.getOrder(orderId);
+      // Get fulfillment orders for this order
+      const fulfillmentOrders = await this.shopify.order.fulfillmentOrders(orderId);
 
-      // Get all unfulfilled line items
-      const lineItems = order.line_items
-        .filter(item => item.fulfillment_status !== 'fulfilled')
-        .map(item => ({id: item.id, quantity: item.quantity}));
+      // Find open/unfulfilled fulfillment orders
+      const openOrders = fulfillmentOrders.filter(
+        fo => fo.status === 'open' || fo.status === 'in_progress'
+      );
 
-      if (lineItems.length === 0) {
-        throw new Error('No unfulfilled items in order');
+      if (openOrders.length === 0) {
+        throw new Error('No open fulfillment orders found');
       }
 
-      const fulfillment = await this.shopify.fulfillment.create(orderId, {
-        location_id: order.line_items[0].fulfillment_service,
-        tracking_number: trackingInfo.trackingNumber,
-        tracking_company: trackingInfo.trackingCompany,
-        tracking_url: trackingInfo.trackingUrl,
-        line_items: lineItems,
+      // Build line_items_by_fulfillment_order for createV2
+      const lineItemsByFulfillmentOrder = openOrders.map(fo => ({
+        fulfillment_order_id: fo.id,
+        fulfillment_order_line_items: fo.line_items.map(li => ({
+          id: li.id,
+          quantity: li.fulfillable_quantity
+        }))
+      }));
+
+      const fulfillment = await this.shopify.fulfillment.createV2({
+        line_items_by_fulfillment_order: lineItemsByFulfillmentOrder,
+        tracking_info: {
+          number: trackingInfo.trackingNumber,
+          company: trackingInfo.trackingCompany,
+          url: trackingInfo.trackingUrl
+        },
         notify_customer: true
       });
 

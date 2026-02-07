@@ -53,7 +53,8 @@ export default function Products() {
   const [storeImportStatus, setStoreImportStatus] = useState([]);
 
   // New states for search and selection
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(''); // User input (immediate)
+  const [debouncedSearch, setDebouncedSearch] = useState(''); // Debounced value for API
   const [selectedProducts, setSelectedProducts] = useState([]);
   const [showReimportModal, setShowReimportModal] = useState(false);
   const [reimportStores, setReimportStores] = useState([]);
@@ -80,11 +81,21 @@ export default function Products() {
     return () => clearInterval(interval);
   }, []);
 
+  // Debounce search query (400ms delay)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // Fetch products when debounced search or filters change
   useEffect(() => {
     if (selectedTab === 1) {
       fetchProducts();
     }
-  }, [selectedStore, selectedTab, currentPage, itemsPerPage, searchQuery]);
+  }, [selectedStore, selectedTab, currentPage, itemsPerPage, debouncedSearch]);
 
   const fetchStores = async () => {
     try {
@@ -111,8 +122,8 @@ export default function Products() {
         params.append('storeId', selectedStore);
       }
 
-      if (searchQuery) {
-        params.append('search', searchQuery);
+      if (debouncedSearch) {
+        params.append('search', debouncedSearch);
       }
 
       const response = await fetch(`/api/products/list?${params.toString()}`);
@@ -268,10 +279,10 @@ export default function Products() {
     }
   };
 
-  // Reset to first page when search query or store changes
+  // Reset to first page when debounced search or store changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, selectedStore]);
+  }, [debouncedSearch, selectedStore]);
 
   // Handle product selection
   const handleProductSelect = (productId, checked) => {
@@ -756,7 +767,7 @@ export default function Products() {
                       labelHidden
                       value={searchQuery}
                       onChange={setSearchQuery}
-                      placeholder="Search by title, SKU, vendor, type..."
+                      placeholder="Search by title, SKU, or vendor..."
                       prefix={<Icon source={SearchIcon} />}
                       clearButton
                       onClearButtonClick={() => setSearchQuery('')}
@@ -837,7 +848,7 @@ export default function Products() {
                                   label="Per page"
                                   labelInline
                                   options={[
-                                    {label: '25', value: '25'},
+                                    {label: '5', value: '5'},
                                     {label: '50', value: '50'},
                                     {label: '100', value: '100'},
                                     {label: '200', value: '200'}

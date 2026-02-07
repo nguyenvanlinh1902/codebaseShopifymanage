@@ -1,4 +1,6 @@
 import {getFirestore} from 'firebase-admin/firestore';
+import {queryBigQuery} from '../services/bigQueryService.js';
+import bigQueryConfig from '../config/bigQuery.js';
 
 /**
  * Product Repository
@@ -112,7 +114,10 @@ export class ProductRepository {
    * Get products count by store
    */
   async getCountByStore(storeId) {
-    const snapshot = await this.collection.where('storeId', '==', storeId).count().get();
+    const snapshot = await this.collection
+      .where('storeId', '==', storeId)
+      .count()
+      .get();
 
     return snapshot.data().count;
   }
@@ -121,7 +126,10 @@ export class ProductRepository {
    * Get products count by import
    */
   async getCountByImport(importId) {
-    const snapshot = await this.collection.where('importId', '==', importId).count().get();
+    const snapshot = await this.collection
+      .where('importId', '==', importId)
+      .count()
+      .get();
 
     return snapshot.data().count;
   }
@@ -229,6 +237,118 @@ export class ProductRepository {
       page,
       limit,
       totalPages: Math.ceil(total / limit)
+    };
+  }
+
+  /**
+   * Search products using BigQuery (for full-text search)
+   * @param {Object} options - Search options
+   * @param {string} options.userId - User ID (required)
+   * @param {string} options.search - Search query
+   * @param {Array} options.vendors - Vendor filter
+   * @param {Array} options.stores - Store ID filter
+   * @param {number} options.page - Page number (1-indexed)
+   * @param {number} options.limit - Items per page
+   * @returns {Promise<{products: Array, total: number, page: number, totalPages: number}>}
+   */
+  async searchProducts({
+    userId,
+    search = '',
+    vendors = [],
+    stores = [],
+    page = 1,
+    limit = 50
+  } = {}) {
+    const dataset = bigQueryConfig.datasetId;
+    const offset = (page - 1) * limit;
+
+    // Build WHERE clause
+    const whereConditions = [`userId = @userId`];
+    const params = {userId};
+
+    if (search) {
+      whereConditions.push(
+        `(LOWER(title) LIKE LOWER(@search) OR LOWER(sku) LIKE LOWER(@search) OR LOWER(vendor) LIKE LOWER(@search) OR LOWER(productType) LIKE LOWER(@search))`
+      );
+      params.search = `%${search}%`;
+    }
+
+    if (vendors && vendors.length > 0) {
+      whereConditions.push(`vendor IN UNNEST(@vendors)`);
+      params.vendors = vendors;
+    }
+
+    if (stores && stores.length > 0) {
+      whereConditions.push(`storeId IN UNNEST(@stores)`);
+      params.stores = stores;
+    }
+
+    // Count total matching products
+    const countQuery = `
+      SELECT COUNT(DISTINCT document_id) as count
+      FROM \`${dataset}.products_latest_view\`
+      WHERE ${whereConditions.join(' AND ')}
+    `;
+
+    const countResult = await queryBigQuery(countQuery, params);
+    const total = countResult.length > 0 ? countResult[0].count : 0;
+
+    // Fetch paginated results
+    const dataQuery = `
+      SELECT *
+      FROM \`${dataset}.products_latest_view\`
+      WHERE ${whereConditions.join(' AND ')}
+      ORDER BY createdAt DESC
+      LIMIT @limit OFFSET @offset
+    `;
+
+    params.limit = limit;
+    params.offset = offset;
+
+    const products = await queryBigQuery(dataQuery, params);
+
+    return {
+      products,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit)
+    };
+  }
+
+  /**
+   * Get filter options (distinct vendors and stores)
+   * @param {string} userId - User ID
+   * @returns {Promise<{vendors: Array, stores: Array}>}
+   */
+  async getFilterOptions(userId) {
+    const dataset = bigQueryConfig.datasetId;
+
+    // Get distinct vendors
+    const vendorQuery = `
+      SELECT DISTINCT vendor
+      FROM \`${dataset}.products_latest_view\`
+      WHERE userId = @userId AND vendor IS NOT NULL
+      ORDER BY vendor
+    `;
+
+    const vendors = await queryBigQuery(vendorQuery, {userId});
+    const vendorList = vendors.map(v => v.vendor).filter(Boolean);
+
+    // Get distinct stores
+    const storeQuery = `
+      SELECT DISTINCT storeId, storeName
+      FROM \`${dataset}.products_latest_view\`
+      WHERE userId = @userId
+      ORDER BY storeName
+    `;
+
+    const stores = await queryBigQuery(storeQuery, {userId});
+    const storeList = stores.map(s => ({storeId: s.storeId, storeName: s.storeName}));
+
+    return {
+      vendors: vendorList,
+      stores: storeList
     };
   }
 }

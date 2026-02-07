@@ -1,5 +1,6 @@
-import React from 'react';
-import {BrowserRouter, Routes, Route, useNavigate} from 'react-router-dom';
+import React, {forwardRef} from 'react';
+import PropTypes from 'prop-types';
+import {BrowserRouter, Routes, Route, Link as RouterLink, useLocation} from 'react-router-dom';
 import {AppProvider, Frame, Navigation} from '@shopify/polaris';
 import '@shopify/polaris/build/esm/styles.css';
 import enTranslations from '@shopify/polaris/locales/en.json';
@@ -13,24 +14,38 @@ import {
   ChartVerticalFilledIcon
 } from '@shopify/polaris-icons';
 
-import Dashboard from './loadables/Dashboard';
-import Stores from './loadables/Stores';
-import StoresOAuth from './loadables/StoresOAuth';
-import OAuthCallback from './loadables/OAuthCallback';
-import Sheets from './loadables/Sheets';
-import Products from './loadables/Products';
-import Orders from './loadables/Orders';
-import Tracking from './loadables/Tracking';
-import Analytics from './loadables/Analytics';
-import NotFound from './loadables/NotFound';
+import Dashboard from './pages/Dashboard';
+import Stores from './pages/Stores';
+import StoresOAuth from './pages/StoresOAuth';
+import OAuthCallback from './pages/OAuthCallback';
+import Sheets from './pages/Sheets';
+import Products from './pages/Products';
+import Orders from './pages/Orders';
+import Tracking from './pages/Tracking';
+import Analytics from './pages/Analytics';
+import NotFound from './pages/NotFound';
+
+// Custom link component so Polaris uses React Router instead of native <a> tags
+const PolarisLink = forwardRef(({url, external, ...rest}, ref) => {
+  if (external) {
+    // eslint-disable-next-line react/jsx-no-target-blank
+    return <a href={url} ref={ref} target="_blank" rel="noopener noreferrer" {...rest} />;
+  }
+  return <RouterLink to={url} ref={ref} {...rest} />;
+});
+PolarisLink.displayName = 'PolarisLink';
+PolarisLink.propTypes = {
+  url: PropTypes.string,
+  external: PropTypes.bool
+};
 
 /**
  * Main App Component
  */
 export default function App() {
   return (
-    <AppProvider i18n={enTranslations}>
-      <BrowserRouter>
+    <BrowserRouter>
+      <AppProvider i18n={enTranslations} linkComponent={PolarisLink}>
         <Routes>
           {/* OAuth callback route (no navigation frame) */}
           <Route path="/oauth/callback" element={<OAuthCallback />} />
@@ -38,53 +53,25 @@ export default function App() {
           {/* Main app routes (with navigation frame) */}
           <Route path="*" element={<AppFrame />} />
         </Routes>
-      </BrowserRouter>
-    </AppProvider>
+      </AppProvider>
+    </BrowserRouter>
   );
 }
 
 function AppFrame() {
-  const navigate = useNavigate();
+  const location = useLocation();
 
   const navigationMarkup = (
-    <Navigation location="/">
+    <Navigation location={location.pathname}>
       <Navigation.Section
         items={[
-          {
-            label: 'Dashboard',
-            icon: HomeIcon,
-            onClick: () => navigate('/')
-          },
-          {
-            label: 'Stores',
-            icon: StoreIcon,
-            onClick: () => navigate('/stores')
-          },
-          {
-            label: 'Google Sheets',
-            icon: NoteIcon,
-            onClick: () => navigate('/sheets')
-          },
-          {
-            label: 'Products',
-            icon: ProductIcon,
-            onClick: () => navigate('/products')
-          },
-          {
-            label: 'Orders',
-            icon: OrderIcon,
-            onClick: () => navigate('/orders')
-          },
-          {
-            label: 'Tracking',
-            icon: DeliveryIcon,
-            onClick: () => navigate('/tracking')
-          },
-          {
-            label: 'Analytics',
-            icon: ChartVerticalFilledIcon,
-            onClick: () => navigate('/analytics')
-          }
+          {label: 'Dashboard', icon: HomeIcon, url: '/', exactMatch: true},
+          {label: 'Stores', icon: StoreIcon, url: '/stores'},
+          {label: 'Google Sheets', icon: NoteIcon, url: '/sheets'},
+          {label: 'Products', icon: ProductIcon, url: '/products'},
+          {label: 'Orders', icon: OrderIcon, url: '/orders'},
+          {label: 'Tracking', icon: DeliveryIcon, url: '/tracking'},
+          {label: 'Analytics', icon: ChartVerticalFilledIcon, url: '/analytics'}
         ]}
       />
     </Navigation>

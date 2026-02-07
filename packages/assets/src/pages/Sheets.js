@@ -119,7 +119,10 @@ function AccountsContent({
                   <Button
                     icon={PlusIcon}
                     variant="plain"
-                    onClick={() => onAddSheet(account.email)}
+                    onClick={e => {
+                      e.stopPropagation();
+                      onAddSheet(account.email);
+                    }}
                     loading={loading}
                     accessibilityLabel="Add sheet"
                   />
@@ -129,7 +132,10 @@ function AccountsContent({
                     icon={DeleteIcon}
                     variant="plain"
                     tone="critical"
-                    onClick={() => onDisconnect(account.email)}
+                    onClick={e => {
+                      e.stopPropagation();
+                      onDisconnect(account.email);
+                    }}
                     accessibilityLabel="Disconnect account"
                   />
                 </Tooltip>
@@ -263,12 +269,13 @@ function SheetsContent({
                     <Button
                       icon={ExternalIcon}
                       variant="plain"
-                      onClick={() =>
+                      onClick={e => {
+                        e.stopPropagation();
                         window.open(
                           `https://docs.google.com/spreadsheets/d/${sheet.spreadsheetId}/edit`,
                           '_blank'
-                        )
-                      }
+                        );
+                      }}
                       accessibilityLabel="Open sheet"
                     />
                   </Tooltip>
@@ -278,7 +285,10 @@ function SheetsContent({
                     icon={DeleteIcon}
                     variant="plain"
                     tone="critical"
-                    onClick={() => onDelete(sheet)}
+                    onClick={e => {
+                      e.stopPropagation();
+                      onDelete(sheet);
+                    }}
                     accessibilityLabel="Disconnect"
                   />
                 </Tooltip>

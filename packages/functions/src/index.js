@@ -48,6 +48,10 @@ app.get('/', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.post('/api/orders/webhook', orderSyncController.handleOrderWebhook);
 
+import * as googleAuthController from './controllers/googleAuthController.js';
+app.post('/api/google/exchange', googleAuthController.exchangeGoogleCode);
+app.post('/api/google/exchange-temp', googleAuthController.exchangeGoogleCodeTemp);
+
 // ============ AUTH WALL ============
 app.use(authentication);
 

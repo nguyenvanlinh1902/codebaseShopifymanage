@@ -1,8 +1,6 @@
 import React, {useEffect, useState, useRef} from 'react';
 import {useNavigate} from 'react-router-dom';
 import {Page, Layout, Card, Banner, Text, Spinner, BlockStack} from '@shopify/polaris';
-import {fetchApi} from '../helpers/fetchApi';
-
 /**
  * OAuth Callback Page
  * Handles redirects from both Shopify and Google OAuth
@@ -23,12 +21,14 @@ export default function OAuthCallback() {
     const shop = urlParams.get('shop');
     const stateRaw = urlParams.get('state');
 
-    // Parse state to detect mode
+    // Parse state to detect mode and extract userId
     let mode = 'connect';
+    let stateUserId = '';
     if (stateRaw) {
       try {
         const parsed = JSON.parse(stateRaw);
         mode = parsed.mode || 'connect';
+        stateUserId = parsed.userId || '';
       } catch {
         // Legacy: state was just userId string
       }
@@ -39,7 +39,7 @@ export default function OAuthCallback() {
     } else if (code && mode === 'temp') {
       handleGoogleCallbackTemp(code);
     } else if (code) {
-      handleGoogleCallback(code);
+      handleGoogleCallback(code, stateUserId);
     } else {
       setError('Missing authorization parameters');
       setStatus('error');
@@ -75,12 +75,12 @@ export default function OAuthCallback() {
     }
   };
 
-  const handleGoogleCallback = async code => {
+  const handleGoogleCallback = async (code, userId) => {
     try {
-      const response = await fetchApi('/api/google/exchange', {
+      const response = await fetch('/api/google/exchange', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({code})
+        body: JSON.stringify({code, userId})
       });
 
       const result = await response.json();
@@ -127,7 +127,7 @@ export default function OAuthCallback() {
 
   const handleGoogleCallbackTemp = async code => {
     try {
-      const response = await fetchApi('/api/google/exchange-temp', {
+      const response = await fetch('/api/google/exchange-temp', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({code})

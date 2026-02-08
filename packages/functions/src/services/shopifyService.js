@@ -38,7 +38,8 @@ export class ShopifyService {
             inventory_management: 'shopify',
             weight: productData.weight || 0,
             weight_unit: productData.weightUnit || 'lb',
-            requires_shipping: productData.requiresShipping !== undefined ? productData.requiresShipping : true,
+            requires_shipping:
+              productData.requiresShipping !== undefined ? productData.requiresShipping : true,
             taxable: productData.taxable !== undefined ? productData.taxable : true
           }
         ]
@@ -118,7 +119,8 @@ export class ShopifyService {
           const variantUpdate = {id: variantId};
 
           if (productData.price) variantUpdate.price = productData.price;
-          if (productData.compareAtPrice) variantUpdate.compare_at_price = productData.compareAtPrice;
+          if (productData.compareAtPrice)
+            variantUpdate.compare_at_price = productData.compareAtPrice;
           if (productData.sku) variantUpdate.sku = productData.sku;
           if (productData.barcode) variantUpdate.barcode = productData.barcode;
           if (productData.inventoryQuantity !== undefined) {

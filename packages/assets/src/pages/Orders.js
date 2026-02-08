@@ -37,6 +37,7 @@ export default function Orders() {
   const [showWebhookListModal, setShowWebhookListModal] = useState(false);
   const [webhookList, setWebhookList] = useState(null);
   const [loadingWebhookList, setLoadingWebhookList] = useState(false);
+  const [registeringWebhook, setRegisteringWebhook] = useState(false);
   const [showInstructionsOpen, setShowInstructionsOpen] = useState(false);
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
@@ -116,13 +117,16 @@ export default function Orders() {
     }
   }, [selectedSheet]);
 
-  // Pre-fill form from active config when syncConfigs load
+  // Pre-fill sheet from active config or auto-select if only 1 sheet
   useEffect(() => {
+    if (selectedSheet) return;
     const active = syncConfigs.find(c => c.status === 'active');
-    if (active && !selectedSheet) {
+    if (active) {
       setSelectedSheet(active.sheetId);
+    } else if (sheets.length === 1) {
+      setSelectedSheet(sheets[0].id);
     }
-  }, [syncConfigs]);
+  }, [syncConfigs, sheets]);
 
   const fetchData = async () => {
     try {
@@ -314,6 +318,7 @@ export default function Orders() {
     }
 
     try {
+      setRegisteringWebhook(true);
       const response = await fetchApi('/api/orders/register-webhook', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
@@ -335,6 +340,8 @@ export default function Orders() {
     } catch (err) {
       console.error('Error registering webhook:', err);
       setError('Failed to register webhook');
+    } finally {
+      setRegisteringWebhook(false);
     }
   };
 
@@ -492,10 +499,9 @@ export default function Orders() {
                   />
                 </div>
 
-                <div style={{display: 'flex', flexDirection: 'column', gap: '8px'}}>
+                <div style={{display: 'flex', flexWrap: 'wrap', gap: '8px'}}>
                   <Button
                     primary
-                    fullWidth
                     onClick={handleSetupSync}
                     loading={settingUpSync}
                     disabled={!selectedStore || !selectedSheet || !selectedTab}
@@ -505,7 +511,6 @@ export default function Orders() {
 
                   {activeConfig && (
                     <Button
-                      fullWidth
                       onClick={handleManualSync}
                       loading={syncing}
                       disabled={syncJob?.status === 'processing'}
@@ -553,23 +558,24 @@ export default function Orders() {
                   </div>
 
                   <div style={{display: 'flex', flexDirection: 'column', gap: '8px'}}>
-                    <Button primary fullWidth onClick={handleRegisterWebhooks}>
+                    <Button primary onClick={handleRegisterWebhooks} loading={registeringWebhook}>
                       Auto-Register Webhook
                     </Button>
 
                     {webhookInstructions.registeredWebhooks?.length > 0 ? (
-                      <Banner tone="success">✅ Webhook registered successfully</Banner>
+                      <Banner tone="success">Webhook registered successfully</Banner>
                     ) : (
-                      <Banner tone="info">⚠️ Webhook not registered yet</Banner>
+                      <Banner tone="info">Webhook not registered yet</Banner>
                     )}
 
-                    <Button plain fullWidth onClick={() => setShowWebhookModal(true)}>
-                      View Full Instructions
-                    </Button>
-
-                    <Button plain fullWidth onClick={fetchWebhookList} loading={loadingWebhookList}>
-                      View All Webhooks
-                    </Button>
+                    <div style={{display: 'flex', gap: '8px'}}>
+                      <Button plain onClick={() => setShowWebhookModal(true)}>
+                        View Instructions
+                      </Button>
+                      <Button plain onClick={fetchWebhookList} loading={loadingWebhookList}>
+                        View All Webhooks
+                      </Button>
+                    </div>
                   </div>
                 </div>
               ) : (
@@ -666,7 +672,8 @@ export default function Orders() {
         title="Webhook Setup Instructions"
         primaryAction={{
           content: 'Auto-Register Webhook',
-          onAction: handleRegisterWebhooks
+          onAction: handleRegisterWebhooks,
+          loading: registeringWebhook
         }}
         secondaryActions={[
           {

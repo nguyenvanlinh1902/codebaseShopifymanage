@@ -410,6 +410,12 @@ export default function Dashboard() {
                 </p>
               </Banner>
 
+              <Divider />
+              <Text variant="bodySm" as="p" fontWeight="semibold">
+                Video Demo:
+              </Text>
+              <VideoDemo src="https://cdn.shopify.com/videos/c/o/v/5fc76108a7964ad9a2856aff1be1938f.mp4" />
+
               {syncConfigs.length > 0 && (
                 <>
                   <Divider />
@@ -508,6 +514,12 @@ export default function Dashboard() {
                   queue (Pub/Sub) so large imports won't time out.
                 </p>
               </Banner>
+
+              <Divider />
+              <Text variant="bodySm" as="p" fontWeight="semibold">
+                Video Demo:
+              </Text>
+              <VideoDemo src="https://cdn.shopify.com/videos/c/o/v/1d8df351c02f49ba8c1d1fe6df9ab21f.mp4" />
             </BlockStack>
           </GuideCard>
         </Layout.Section>
@@ -568,6 +580,12 @@ export default function Dashboard() {
                   view per-order results including any errors with helpful context messages.
                 </p>
               </Banner>
+
+              <Divider />
+              <Text variant="bodySm" as="p" fontWeight="semibold">
+                Video Demo:
+              </Text>
+              <VideoDemo src="https://cdn.shopify.com/videos/c/o/v/c3ca80c72098413799596f13c954e4d9.mp4" />
             </BlockStack>
           </GuideCard>
         </Layout.Section>
@@ -618,6 +636,24 @@ function StatCard({title, value, icon, color, done, label}) {
         </BlockStack>
       </Card>
     </div>
+  );
+}
+
+function VideoDemo({src}) {
+  return (
+    <Box borderRadius="200" overflow="hidden">
+      <video
+        src={src}
+        controls
+        preload="metadata"
+        style={{
+          width: '100%',
+          maxHeight: 400,
+          borderRadius: 8,
+          background: '#000'
+        }}
+      />
+    </Box>
   );
 }
 

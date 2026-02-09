@@ -43,7 +43,7 @@ export default function Products() {
   const [stores, setStores] = useState([]);
   const [selectedStore, setSelectedStore] = useState('');
   const [selectedStores, setSelectedStores] = useState([]);
-  const [file, setFile] = useState(null);
+  const [files, setFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -194,13 +194,22 @@ export default function Products() {
   };
 
   const handleDropZoneDrop = useCallback((_dropFiles, acceptedFiles, _rejectedFiles) => {
-    setFile(acceptedFiles[0]);
+    setFiles(prev => [...prev, ...acceptedFiles]);
     setError(null);
   }, []);
 
-  const handleFileRemove = useCallback(() => {
-    setFile(null);
+  const handleFileRemove = useCallback((index) => {
+    setFiles(prev => prev.filter((_, i) => i !== index));
   }, []);
+
+  const readFileAsText = (file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = e => resolve(e.target.result);
+      reader.onerror = () => reject(new Error(`Failed to read file: ${file.name}`));
+      reader.readAsText(file);
+    });
+  };
 
   const handleUpload = async () => {
     if (selectedStores.length === 0) {
@@ -208,8 +217,8 @@ export default function Products() {
       return;
     }
 
-    if (!file) {
-      setError('Please select a CSV file');
+    if (files.length === 0) {
+      setError('Please select at least one CSV file');
       return;
     }
 
@@ -217,44 +226,57 @@ export default function Products() {
       setUploading(true);
       setError(null);
 
-      const reader = new FileReader();
-      reader.onload = async e => {
-        const csvData = e.target.result;
-
-        const response = await fetchApi('/api/products/upload-csv', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({
-            storeIds: selectedStores,
-            csvData,
-            fileName: file.name
-          })
-        });
-
-        const result = await response.json();
-
-        if (result.success) {
-          setFile(null);
-          setSelectedStores([]);
-          await fetchProducts();
-          await fetchStoreImportStatus();
-          await fetchQueueStats();
-        } else {
-          setError(result.error || 'Failed to upload CSV');
+      // Read all files first
+      const csvFiles = [];
+      for (const f of files) {
+        try {
+          const csvData = await readFileAsText(f);
+          csvFiles.push({csvData, fileName: f.name});
+        } catch (err) {
+          setError(`Failed to read file: ${f.name}`);
+          setUploading(false);
+          return;
         }
+      }
 
-        setUploading(false);
-      };
+      // Send all files in one request
+      const response = await fetchApi('/api/products/upload-csv', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          storeIds: selectedStores,
+          csvFiles
+        })
+      });
 
-      reader.onerror = () => {
-        setError('Failed to read file');
-        setUploading(false);
-      };
+      const result = await response.json();
 
-      reader.readAsText(file);
+      if (result.success) {
+        const {totalSuccess, totalFailed} = result.data;
+        setFiles([]);
+        setSelectedStores([]);
+        await fetchProducts();
+        await fetchStoreImportStatus();
+        await fetchQueueStats();
+
+        if (totalFailed > 0) {
+          setError(`Import completed with errors: ${totalSuccess} created, ${totalFailed} failed (queued for retry)`);
+        }
+      } else {
+        // Validation failed - show file errors
+        let errorMsg = result.error || 'Import failed';
+        if (result.fileErrors) {
+          errorMsg += '\n' + result.fileErrors
+            .map(fe => `${fe.fileName}: ${fe.error}`)
+            .join('\n');
+        }
+        setError(errorMsg);
+      }
+
+      setUploading(false);
     } catch (err) {
       console.error('Error uploading CSV:', err);
-      setError('Failed to upload CSV');
+      setError('Failed to upload CSV files');
       setUploading(false);
     }
   };
@@ -380,20 +402,24 @@ export default function Products() {
     }))
   ];
 
-  const fileUpload = !file && <DropZone.FileUpload />;
+  const fileUpload = <DropZone.FileUpload />;
 
-  const uploadedFiles = file && (
-    <InlineStack align="space-between" blockAlign="center">
-      <InlineStack gap="200">
-        <Text as="p" variant="bodyMd">
-          {file.name}
-        </Text>
-        <Text as="p" variant="bodySm" tone="subdued">
-          {(file.size / 1024).toFixed(2)} KB
-        </Text>
-      </InlineStack>
-      <Button onClick={handleFileRemove}>Remove</Button>
-    </InlineStack>
+  const uploadedFilesList = files.length > 0 && (
+    <BlockStack gap="200">
+      {files.map((f, index) => (
+        <InlineStack key={`${f.name}-${index}`} align="space-between" blockAlign="center">
+          <InlineStack gap="200">
+            <Text as="p" variant="bodyMd">
+              {f.name}
+            </Text>
+            <Text as="p" variant="bodySm" tone="subdued">
+              {(f.size / 1024).toFixed(2)} KB
+            </Text>
+          </InlineStack>
+          <Button onClick={() => handleFileRemove(index)} size="slim">Remove</Button>
+        </InlineStack>
+      ))}
+    </BlockStack>
   );
 
   const getStatusBadge = status => {
@@ -459,17 +485,18 @@ export default function Products() {
                     <Card>
                       <BlockStack gap="300">
                         <Text as="h2" variant="headingMd">
-                          Step 1: Upload CSV File
+                          Step 1: Upload CSV Files
                         </Text>
                         <DropZone
                           onDrop={handleDropZoneDrop}
                           accept=".csv,text/csv"
                           type="file"
+                          allowMultiple
                           disabled={uploading}
                         >
-                          {uploadedFiles}
                           {fileUpload}
                         </DropZone>
+                        {uploadedFilesList}
                       </BlockStack>
                     </Card>
 
@@ -480,19 +507,19 @@ export default function Products() {
                           Step 2: Select Target Stores
                         </Text>
 
-                        {!file && (
+                        {files.length === 0 && (
                           <Banner tone="warning">
                             <Text as="p">
-                              Please upload a CSV file first before selecting stores.
+                              Please upload CSV file(s) first before selecting stores.
                             </Text>
                           </Banner>
                         )}
 
-                        {file && (
+                        {files.length > 0 && (
                           <Banner tone="info">
                             <Text as="p">
-                              <strong>File ready:</strong> {file.name} (
-                              {(file.size / 1024).toFixed(2)} KB)
+                              <strong>{files.length} file(s) ready:</strong>{' '}
+                              {files.map(f => f.name).join(', ')}
                             </Text>
                           </Banner>
                         )}
@@ -506,14 +533,14 @@ export default function Products() {
                           }))}
                           selected={selectedStores}
                           onChange={setSelectedStores}
-                          disabled={uploading || !file}
+                          disabled={uploading || files.length === 0}
                         />
 
-                        {selectedStores.length > 0 && file && (
+                        {selectedStores.length > 0 && files.length > 0 && (
                           <Banner tone="success">
                             <Text as="p">
-                              <strong>{selectedStores.length} store(s) selected:</strong> Products
-                              from <strong>{file.name}</strong> will be imported to all selected
+                              <strong>{selectedStores.length} store(s) selected:</strong>{' '}
+                              {files.length} file(s) will be imported to all selected
                               stores simultaneously.
                             </Text>
                           </Banner>
@@ -524,9 +551,9 @@ export default function Products() {
                             variant="primary"
                             onClick={handleUpload}
                             loading={uploading}
-                            disabled={selectedStores.length === 0 || !file}
+                            disabled={selectedStores.length === 0 || files.length === 0}
                           >
-                            Upload & Import to {selectedStores.length} Store
+                            Upload & Import {files.length} File{files.length !== 1 ? 's' : ''} to {selectedStores.length} Store
                             {selectedStores.length !== 1 ? 's' : ''}
                           </Button>
                         </InlineStack>

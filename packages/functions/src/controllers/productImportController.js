@@ -17,144 +17,273 @@ const storeRepo = new StoreRepository();
 
 /**
  * Upload CSV and initiate product import
- * Supports importing to multiple stores at once
+ * Supports multiple files + multiple stores
+ * Flow: Validate ALL files first → only import if all pass → return real results
  */
 export async function uploadAndImport(req, res) {
   try {
-    const {userId, storeId, storeIds, csvData, fileName} = req.body;
+    // Support both single file (csvData) and multiple files (csvFiles)
+    const {userId, storeId, storeIds, csvData, fileName, csvFiles} = req.body;
 
-    // Support both single store (storeId) and multiple stores (storeIds)
     const targetStoreIds = storeIds || (storeId ? [storeId] : []);
 
     // Task 1: Validate input
-    if (!userId || !csvData) {
-      return res.status(400).json({
-        success: false,
-        error: 'userId and csvData are required'
-      });
+    if (!userId) {
+      return res.status(400).json({success: false, error: 'userId is required'});
     }
 
     if (targetStoreIds.length === 0) {
-      return res.status(400).json({
-        success: false,
-        error: 'At least one store must be selected'
-      });
+      return res.status(400).json({success: false, error: 'At least one store must be selected'});
+    }
+
+    // Build files list - support both single file and multi-file
+    const filesToProcess = [];
+    if (csvFiles && csvFiles.length > 0) {
+      filesToProcess.push(...csvFiles);
+    } else if (csvData) {
+      filesToProcess.push({csvData, fileName: fileName || 'upload.csv'});
+    } else {
+      return res.status(400).json({success: false, error: 'No CSV data provided'});
     }
 
     // Task 2: Get all store information
     const stores = await Promise.all(targetStoreIds.map(id => storeRepo.getById(id)));
     const missingStores = stores.filter(s => !s);
     if (missingStores.length > 0) {
-      return res.status(404).json({
-        success: false,
-        error: 'One or more stores not found'
-      });
+      return res.status(404).json({success: false, error: 'One or more stores not found'});
     }
 
-    // Task 3: Parse CSV
-    let products;
-    try {
-      products = parseCsv(csvData);
-    } catch (error) {
-      return res.status(400).json({
-        success: false,
-        error: `Failed to parse CSV: ${error.message}`
-      });
-    }
+    // Task 3: Parse & validate ALL files first (fail fast)
+    const parsedFiles = [];
+    const fileErrors = [];
 
-    if (products.length === 0) {
-      return res.status(400).json({
-        success: false,
-        error: 'No products found in CSV file'
-      });
-    }
-
-    // Task 4: Validate products
-    const validProducts = [];
-    const invalidProducts = [];
-
-    products.forEach((product, index) => {
-      const errors = validateProductData(product);
-      if (errors.length > 0) {
-        invalidProducts.push({
-          row: index + 2, // +2 because index starts at 0 and there's a header
-          product,
-          errors
-        });
-      } else {
-        validProducts.push(mapToShopifyProduct(product));
+    for (const file of filesToProcess) {
+      let products;
+      try {
+        products = parseCsv(file.csvData);
+      } catch (error) {
+        fileErrors.push({fileName: file.fileName, error: `Parse error: ${error.message}`});
+        continue;
       }
-    });
 
-    if (validProducts.length === 0) {
-      return res.status(400).json({
-        success: false,
-        error: 'No valid products found in CSV',
-        invalidProducts
+      if (products.length === 0) {
+        fileErrors.push({fileName: file.fileName, error: 'No products found in file'});
+        continue;
+      }
+
+      const validProducts = [];
+      const invalidProducts = [];
+
+      products.forEach((product, index) => {
+        const errors = validateProductData(product);
+        if (errors.length > 0) {
+          invalidProducts.push({
+            row: index + 2,
+            title: product['Title'] || product['title'] || `Row ${index + 2}`,
+            errors
+          });
+        } else {
+          validProducts.push(mapToShopifyProduct(product));
+        }
+      });
+
+      if (validProducts.length === 0) {
+        fileErrors.push({
+          fileName: file.fileName,
+          error: 'No valid products found',
+          invalidProducts: invalidProducts.slice(0, 20)
+        });
+        continue;
+      }
+
+      parsedFiles.push({
+        fileName: file.fileName,
+        validProducts,
+        invalidProducts,
+        totalRows: products.length
       });
     }
 
-    // Task 5: Create import job record for each store
-    const importJobs = [];
-    const allEnqueuePromises = [];
+    // If any file failed validation → stop everything, return errors
+    if (fileErrors.length > 0) {
+      return res.status(400).json({
+        success: false,
+        error: `${fileErrors.length} file(s) failed validation. Fix all files before importing.`,
+        fileErrors
+      });
+    }
+
+    if (parsedFiles.length === 0) {
+      return res.status(400).json({success: false, error: 'No valid files to process'});
+    }
+
+    // Helper: delay between API calls to respect Shopify rate limit (2 req/s)
+    const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+    // Helper: call Shopify API with retry on 429
+    const callWithRetry = async (fn, maxRetries = 3) => {
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+          return await fn();
+        } catch (error) {
+          const is429 = error.statusCode === 429 || error.status === 429 ||
+            (error.message && error.message.includes('429'));
+          if (is429 && attempt < maxRetries) {
+            const retryAfter = (error.retryAfter || 2) * 1000;
+            console.log(`Rate limited (429), waiting ${retryAfter}ms before retry ${attempt + 1}/${maxRetries}`);
+            await delay(retryAfter);
+            continue;
+          }
+          throw error;
+        }
+      }
+    };
+
+    // Task 4: All files valid → Process products for each store (sequential, rate-limited)
+    const importResults = [];
 
     for (const store of stores) {
-      const importJobData = {
-        userId,
-        storeId: store.id,
-        storeName: store.name,
+      const shopifyService = new ShopifyService({
         shopDomain: store.shopDomain,
-        fileName: fileName || 'upload.csv',
-        totalProducts: validProducts.length,
-        processedProducts: 0,
-        successCount: 0,
-        failedCount: 0,
-        status: 'pending'
-      };
-
-      // Only add invalidProducts field if there are invalid products
-      if (invalidProducts.length > 0) {
-        importJobData.invalidProducts = invalidProducts;
-      }
-
-      const importJob = await importHistoryRepo.create(importJobData);
-      importJobs.push(importJob);
-
-      // Task 6: Enqueue products to queue for CronJob processing
-      const enqueuePromises = validProducts.map((product, index) => {
-        const queueData = {
-          importId: importJob.id,
-          storeId: store.id,
-          userId,
-          storeName: store.name,
-          shopDomain: store.shopDomain,
-          accessToken: store.accessToken,
-          product,
-          productIndex: index,
-          totalProducts: validProducts.length
-        };
-
-        return productQueueRepo.enqueue(queueData);
+        accessToken: store.accessToken
       });
 
-      allEnqueuePromises.push(...enqueuePromises);
+      const storeFileResults = [];
+
+      for (const parsedFile of parsedFiles) {
+        let successCount = 0;
+        let failedCount = 0;
+        let skippedCount = 0;
+        const failedProducts = [];
+
+        // Process products one by one with delay to respect Shopify rate limit
+        for (let i = 0; i < parsedFile.validProducts.length; i++) {
+          const product = parsedFile.validProducts[i];
+
+          try {
+            // Check if product with SKU already exists
+            if (product.sku) {
+              const existing = await callWithRetry(() => shopifyService.getProductBySku(product.sku));
+              if (existing) {
+                skippedCount++;
+                console.log(`[${i + 1}/${parsedFile.validProducts.length}] Skipped: ${product.title} (SKU exists)`);
+                await delay(500); // 0.5s delay between requests
+                continue;
+              }
+            }
+
+            await delay(500); // 0.5s delay before create call
+
+            const result = await callWithRetry(() => shopifyService.createProduct(product));
+
+            await productRepo.save({
+              storeId: store.id,
+              userId,
+              storeName: store.name,
+              shopDomain: store.shopDomain,
+              shopifyProductId: result.product?.id || result.id,
+              action: 'created',
+              importedAt: new Date().toISOString(),
+              ...product
+            });
+
+            successCount++;
+            console.log(`[${i + 1}/${parsedFile.validProducts.length}] Created: ${product.title}`);
+          } catch (error) {
+            failedCount++;
+            failedProducts.push({
+              title: product.title || 'Unknown',
+              error: error.message || 'Unknown error'
+            });
+            console.error(`[${i + 1}/${parsedFile.validProducts.length}] Failed: ${product.title}`, error.message);
+          }
+
+          // Delay between products to stay under Shopify rate limit (2 req/s)
+          await delay(600);
+        }
+
+        // Save import history
+        const importJobData = {
+          userId,
+          storeId: store.id,
+          storeName: store.name,
+          shopDomain: store.shopDomain,
+          fileName: parsedFile.fileName,
+          totalProducts: parsedFile.validProducts.length,
+          processedProducts: parsedFile.validProducts.length,
+          successCount,
+          failedCount,
+          skippedCount,
+          status: failedCount === parsedFile.validProducts.length ? 'failed' : 'completed',
+          completedAt: new Date().toISOString()
+        };
+
+        if (parsedFile.invalidProducts.length > 0) {
+          importJobData.invalidProducts = parsedFile.invalidProducts.slice(0, 100);
+          importJobData.totalInvalidProducts = parsedFile.invalidProducts.length;
+        }
+
+        if (failedProducts.length > 0) {
+          importJobData.failedProductDetails = failedProducts.slice(0, 100);
+        }
+
+        const importJob = await importHistoryRepo.create(importJobData);
+
+        // Enqueue only failed products for cron retry
+        if (failedProducts.length > 0) {
+          const failedTitles = new Set(failedProducts.map(fp => fp.title));
+          const enqueuePromises = parsedFile.validProducts
+            .filter(p => failedTitles.has(p.title))
+            .map((product, index) =>
+              productQueueRepo.enqueue({
+                importId: importJob.id,
+                storeId: store.id,
+                userId,
+                storeName: store.name,
+                shopDomain: store.shopDomain,
+                accessToken: store.accessToken,
+                product,
+                productIndex: index,
+                totalProducts: failedProducts.length
+              })
+            );
+          await Promise.all(enqueuePromises);
+        }
+
+        storeFileResults.push({
+          fileName: parsedFile.fileName,
+          importId: importJob.id,
+          successCount,
+          failedCount,
+          skippedCount,
+          totalProducts: parsedFile.validProducts.length,
+          failedProducts: failedProducts.slice(0, 20)
+        });
+      }
+
+      importResults.push({
+        storeId: store.id,
+        storeName: store.name,
+        files: storeFileResults
+      });
     }
 
-    await Promise.all(allEnqueuePromises);
+    const totalSuccess = importResults.reduce(
+      (sum, r) => sum + r.files.reduce((s, f) => s + f.successCount, 0), 0
+    );
+    const totalFailed = importResults.reduce(
+      (sum, r) => sum + r.files.reduce((s, f) => s + f.failedCount, 0), 0
+    );
 
     return res.json({
       success: true,
-      message: `Import jobs created for ${stores.length} store(s). ${validProducts.length} products per store queued for processing.`,
+      message: `${parsedFiles.length} file(s) imported to ${stores.length} store(s): ${totalSuccess} created, ${totalFailed} failed${totalFailed > 0 ? ' (queued for retry)' : ''}.`,
       data: {
-        importJobs: importJobs.map(job => ({
-          importId: job.id,
-          storeId: job.storeId,
-          storeName: job.storeName
-        })),
+        importResults,
         storesCount: stores.length,
-        totalProducts: validProducts.length,
-        invalidProducts: invalidProducts.length,
-        queuedProductsTotal: validProducts.length * stores.length
+        filesCount: parsedFiles.length,
+        totalSuccess,
+        totalFailed
       }
     });
   } catch (error) {

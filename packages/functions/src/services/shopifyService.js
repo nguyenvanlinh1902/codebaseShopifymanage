@@ -9,7 +9,8 @@ export class ShopifyService {
     if (shopConfig) {
       this.shopify = new Shopify({
         shopName: shopConfig.shopDomain,
-        accessToken: shopConfig.accessToken
+        accessToken: shopConfig.accessToken,
+        autoLimit: {calls: 2, interval: 1000, bucketSize: 35}
       });
       this.shopDomain = shopConfig.shopDomain;
     }
@@ -160,32 +161,33 @@ export class ShopifyService {
   }
 
   /**
-   * Get product by SKU with pagination support
+   * Get product by SKU using GraphQL (1 API call instead of paginating all products)
    */
   async getProductBySku(sku) {
     try {
-      const params = {limit: 250};
-      let hasMore = true;
-
-      while (hasMore) {
-        const products = await this.shopify.product.list(params);
-
-        // Search in current batch
-        for (const product of products) {
-          for (const variant of product.variants) {
-            if (variant.sku === sku) {
-              return {product, variant};
+      const query = `
+        query GetProductBySku($query: String!) {
+          productVariants(first: 1, query: $query) {
+            edges {
+              node {
+                id
+                sku
+                product {
+                  id
+                  title
+                  handle
+                }
+              }
             }
           }
         }
+      `;
 
-        // Check if there are more products
-        if (products.length < 250) {
-          hasMore = false;
-        } else {
-          // Set since_id for next page
-          params.since_id = products[products.length - 1].id;
-        }
+      const result = await this.shopify.graphql(query, {query: `sku:${sku}`});
+
+      if (result.productVariants.edges.length > 0) {
+        const node = result.productVariants.edges[0].node;
+        return {product: node.product, variant: node};
       }
 
       return null;
@@ -442,6 +444,124 @@ export class ShopifyService {
     } catch (error) {
       console.error('Error deleting webhook:', error);
       throw new Error(`Failed to delete webhook: ${error.message}`);
+    }
+  }
+
+  /**
+   * List all themes for the store
+   */
+  async getThemes() {
+    try {
+      const themes = await this.shopify.theme.list();
+      return themes;
+    } catch (error) {
+      console.error('Error listing themes:', error);
+      throw new Error(`Failed to list themes: ${error.message}`);
+    }
+  }
+
+  /**
+   * Create a theme from a URL (ZIP file)
+   * @param {string} name - Theme name
+   * @param {string} src - Public URL to theme ZIP file
+   * @param {string} role - Theme role: 'unpublished' (default) or 'main'
+   */
+  async createTheme(name, src, role = 'unpublished') {
+    try {
+      const theme = await this.shopify.theme.create({name, src, role});
+      return theme;
+    } catch (error) {
+      console.error('Error creating theme:', error);
+      throw new Error(`Failed to create theme: ${error.message}`);
+    }
+  }
+
+  /**
+   * Delete a theme by ID
+   */
+  async deleteTheme(themeId) {
+    try {
+      await this.shopify.theme.delete(themeId);
+      return true;
+    } catch (error) {
+      console.error('Error deleting theme:', error);
+      throw new Error(`Failed to delete theme: ${error.message}`);
+    }
+  }
+
+  /**
+   * Publish a theme (set role to main)
+   */
+  async publishTheme(themeId) {
+    try {
+      const theme = await this.shopify.theme.update(themeId, {role: 'main'});
+      return theme;
+    } catch (error) {
+      console.error('Error publishing theme:', error);
+      throw new Error(`Failed to publish theme: ${error.message}`);
+    }
+  }
+
+  /**
+   * Get metafield definitions for a given owner type using GraphQL
+   */
+  async getMetafieldDefinitions(ownerType = 'PRODUCT') {
+    try {
+      const query = `
+        query MetafieldDefinitions($ownerType: MetafieldOwnerType!) {
+          metafieldDefinitions(ownerType: $ownerType, first: 100) {
+            nodes {
+              id
+              namespace
+              key
+              name
+              type { name }
+              description
+              ownerType
+              pinnedPosition
+            }
+          }
+        }
+      `;
+      const result = await this.shopify.graphql(query, {ownerType});
+      return result.metafieldDefinitions.nodes;
+    } catch (error) {
+      console.error('Error getting metafield definitions:', error);
+      throw new Error(`Failed to get metafield definitions: ${error.message}`);
+    }
+  }
+
+  /**
+   * Create a metafield definition using GraphQL
+   */
+  async createMetafieldDefinition(definition) {
+    try {
+      const mutation = `
+        mutation MetafieldDefinitionCreate($definition: MetafieldDefinitionInput!) {
+          metafieldDefinitionCreate(definition: $definition) {
+            createdDefinition {
+              id
+              name
+              namespace
+              key
+              type { name }
+            }
+            userErrors {
+              field
+              message
+            }
+          }
+        }
+      `;
+      const result = await this.shopify.graphql(mutation, {definition});
+      const {createdDefinition, userErrors} = result.metafieldDefinitionCreate;
+      if (userErrors && userErrors.length > 0) {
+        throw new Error(userErrors.map(e => e.message).join(', '));
+      }
+      return createdDefinition;
+    } catch (error) {
+      console.error('Error creating metafield definition:', error);
+      throw new Error(`Failed to create metafield definition: ${error.message}`);
     }
   }
 

@@ -12,7 +12,9 @@ import {
   OrderIcon,
   DeliveryIcon,
   ChartVerticalFilledIcon,
-  ExitIcon
+  ExitIcon,
+  ThemeIcon,
+  SettingsIcon
 } from '@shopify/polaris-icons';
 
 import {AuthProvider, useAuth} from './context/AuthContext';
@@ -26,6 +28,8 @@ import Products from './pages/Products';
 import Orders from './pages/Orders';
 import Tracking from './pages/Tracking';
 import Analytics from './pages/Analytics';
+import Themes from './pages/Themes';
+import SetupStore from './pages/SetupStore';
 import NotFound from './pages/NotFound';
 
 // Custom link component so Polaris uses React Router instead of native <a> tags
@@ -102,7 +106,9 @@ function AppFrame() {
           {label: 'Products', icon: ProductIcon, url: '/products'},
           {label: 'Orders', icon: OrderIcon, url: '/orders'},
           {label: 'Tracking', icon: DeliveryIcon, url: '/tracking'},
-          {label: 'Analytics', icon: ChartVerticalFilledIcon, url: '/analytics'}
+          {label: 'Analytics', icon: ChartVerticalFilledIcon, url: '/analytics'},
+          {label: 'Themes', icon: ThemeIcon, url: '/themes'},
+          {label: 'Setup Store', icon: SettingsIcon, url: '/setup'}
         ]}
       />
       <Navigation.Section items={[{label: 'Logout', icon: ExitIcon, onClick: logout}]} />
@@ -119,7 +125,9 @@ function AppFrame() {
         <Route path="/products" element={<Products />} />
         <Route path="/orders" element={<Orders />} />
         <Route path="/tracking" element={<Tracking />} />
+        <Route path="/themes" element={<Themes />} />
         <Route path="/analytics" element={<Analytics />} />
+        <Route path="/setup" element={<SetupStore />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </Frame>

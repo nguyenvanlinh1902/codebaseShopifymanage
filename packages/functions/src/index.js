@@ -14,7 +14,9 @@ import sheetRoutes from './routes/sheetRoutes.js';
 import productRoutes from './routes/productRoutes.js';
 import orderRoutes from './routes/orderRoutes.js';
 import trackingRoutes from './routes/trackingRoutes.js';
+import themeRoutes from './routes/themeRoutes.js';
 import analyticsRoutes from './routes/analyticsRoutes.js';
+import setupRoutes from './routes/setupRoutes.js';
 
 // PubSub controllers
 import * as productImportController from './controllers/productImportController.js';
@@ -72,7 +74,9 @@ app.use('/api/sheets', sheetRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/tracking', trackingRoutes);
+app.use('/api/themes', themeRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/setup', setupRoutes);
 
 // 404 handler
 app.use((req, res) => {

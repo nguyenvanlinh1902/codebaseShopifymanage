@@ -16,7 +16,7 @@ import {
   BlockStack,
   InlineStack
 } from '@shopify/polaris';
-import {fetchApi} from '../helpers/fetchApi';
+import {api} from '../helpers/api';
 
 /**
  * Stores Management Page with OAuth Flow
@@ -74,7 +74,7 @@ export default function StoresOAuth() {
   const fetchStores = async () => {
     try {
       setLoading(true);
-      const response = await fetchApi(`/api/stores`);
+      const response = await api(`/api/stores`);
       const result = await response.json();
       if (result.success) {
         setStores(result.data);
@@ -112,7 +112,7 @@ export default function StoresOAuth() {
       // Get current domain for redirect
       const redirectUri = `${window.location.origin}/oauth/callback`;
 
-      const response = await fetchApi('/api/oauth/auth-url', {
+      const response = await api('/api/oauth/auth-url', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
@@ -168,7 +168,7 @@ export default function StoresOAuth() {
       setSubmitting(true);
       setError(null);
 
-      const response = await fetchApi('/api/oauth/callback', {
+      const response = await api('/api/oauth/callback', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
@@ -204,7 +204,7 @@ export default function StoresOAuth() {
     if (!confirm('Are you sure you want to delete this store?')) return;
 
     try {
-      const response = await fetchApi(`/api/stores/${storeId}`, {
+      const response = await api(`/api/stores/${storeId}`, {
         method: 'DELETE'
       });
 

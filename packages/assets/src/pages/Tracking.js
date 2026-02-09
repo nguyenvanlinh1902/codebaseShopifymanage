@@ -16,7 +16,7 @@ import {
   Modal,
   InlineStack
 } from '@shopify/polaris';
-import {fetchApi} from '../helpers/fetchApi';
+import {api} from '../helpers/api';
 
 /**
  * Tracking Import Page
@@ -100,7 +100,7 @@ export default function Tracking() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const response = await fetchApi('/api/stores');
+      const response = await api('/api/stores');
       const result = await response.json();
 
       if (result.success) {
@@ -116,7 +116,7 @@ export default function Tracking() {
 
   const fetchSheets = async () => {
     try {
-      const response = await fetchApi('/api/sheets?limit=50');
+      const response = await api('/api/sheets?limit=50');
       const result = await response.json();
 
       if (result.success) {
@@ -129,7 +129,7 @@ export default function Tracking() {
 
   const fetchSheetTabs = async () => {
     try {
-      const response = await fetchApi(`/api/sheets/${selectedSheet}/tabs`);
+      const response = await api(`/api/sheets/${selectedSheet}/tabs`);
       const result = await response.json();
 
       if (result.success) {
@@ -146,7 +146,7 @@ export default function Tracking() {
         ? `/api/tracking/import-history?storeId=${selectedStore}`
         : '/api/tracking/import-history';
 
-      const response = await fetchApi(url);
+      const response = await api(url);
       const result = await response.json();
 
       if (result.success) {
@@ -164,7 +164,7 @@ export default function Tracking() {
       setPreviewLoading(true);
       setError(null);
 
-      const response = await fetchApi(
+      const response = await api(
         `/api/tracking/preview-sheet?sheetId=${selectedSheet}&tabName=${encodeURIComponent(selectedSheetTab)}`
       );
       const result = await response.json();
@@ -193,7 +193,7 @@ export default function Tracking() {
       setError(null);
       setSuccessMessage(null);
 
-      const response = await fetchApi('/api/tracking/import-from-sheet', {
+      const response = await api('/api/tracking/import-from-sheet', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
@@ -247,7 +247,7 @@ export default function Tracking() {
       reader.onload = async e => {
         const base64Data = e.target.result.split(',')[1];
 
-        const response = await fetchApi('/api/tracking/upload-excel', {
+        const response = await api('/api/tracking/upload-excel', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({
@@ -285,7 +285,7 @@ export default function Tracking() {
 
   const handleDownloadTemplate = async () => {
     try {
-      const response = await fetchApi('/api/tracking/template');
+      const response = await api('/api/tracking/template');
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');

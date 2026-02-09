@@ -22,7 +22,7 @@ import {
 import {DeleteIcon, PlusIcon, ExternalIcon} from '@shopify/polaris-icons';
 import {useGoogleAuth} from '../hooks/useGoogleAuth';
 import {useGooglePicker} from '../hooks/useGooglePicker';
-import {fetchApi} from '../helpers/fetchApi';
+import {api} from '../helpers/api';
 
 const truncateStyle = {
   maxWidth: 200,
@@ -467,7 +467,7 @@ export default function Sheets() {
       });
       if (search) params.set('search', search);
 
-      const response = await fetchApi(`/api/sheets?${params}`);
+      const response = await api(`/api/sheets?${params}`);
       const result = await response.json();
       if (result.success) {
         setSheets(result.data);
@@ -489,7 +489,7 @@ export default function Sheets() {
       });
       if (search) params.set('search', search);
 
-      const response = await fetchApi(`/api/google/connected-accounts?${params}`);
+      const response = await api(`/api/google/connected-accounts?${params}`);
       const result = await response.json();
       if (result.success) {
         setAccounts(result.data);
@@ -523,7 +523,7 @@ export default function Sheets() {
         if (refreshToken) body.refreshToken = refreshToken;
         if (googleEmail) body.googleEmail = googleEmail;
 
-        const response = await fetchApi('/api/sheets/add', {
+        const response = await api('/api/sheets/add', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify(body)
@@ -588,7 +588,7 @@ export default function Sheets() {
       setDeleting(true);
       const idsToDelete = pendingDeleteTarget ? [pendingDeleteTarget.id] : pendingDeleteIds;
 
-      const response = await fetchApi('/api/sheets/bulk-delete', {
+      const response = await api('/api/sheets/bulk-delete', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({sheetIds: idsToDelete})
@@ -631,7 +631,7 @@ export default function Sheets() {
       setDisconnecting(true);
 
       if (isBulk) {
-        const response = await fetchApi('/api/google/bulk-disconnect-accounts', {
+        const response = await api('/api/google/bulk-disconnect-accounts', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({emails: pendingDisconnectEmails})
@@ -647,7 +647,7 @@ export default function Sheets() {
           setError(result.error || 'Failed to disconnect accounts');
         }
       } else {
-        const response = await fetchApi('/api/google/disconnect-account', {
+        const response = await api('/api/google/disconnect-account', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({googleEmail: pendingDisconnectEmail})
@@ -680,7 +680,7 @@ export default function Sheets() {
         setAddingSheet(true);
         setError(null);
 
-        const res = await fetchApi(
+        const res = await api(
           `/api/google/account-token?googleEmail=${encodeURIComponent(email)}`
         );
         const result = await res.json();

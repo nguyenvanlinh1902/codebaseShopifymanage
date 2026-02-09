@@ -717,7 +717,7 @@ Additional Technical Guidelines:
   - afterShopReOpened: Handle shop reopening
 - Sample auth configuration:
   ```javascript
-  import {shopifyAuth} from '@avada/core';
+  // shopifyAuth removed - using custom auth implementation
   import shopifyConfig from '@functions/config/shopify';
   import appConfig from '@functions/config/app';
 

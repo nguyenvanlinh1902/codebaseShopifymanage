@@ -21,7 +21,7 @@ import {
   Modal
 } from '@shopify/polaris';
 import {RefreshIcon, DeleteIcon} from '@shopify/polaris-icons';
-import {fetchApi} from '../helpers/fetchApi';
+import {api} from '../helpers/api';
 
 export default function Themes() {
   const [selectedTab, setSelectedTab] = useState(0);
@@ -74,7 +74,7 @@ export default function Themes() {
   const loadStores = async () => {
     try {
       setStoresLoading(true);
-      const res = await fetchApi('/api/stores?limit=50');
+      const res = await api('/api/stores?limit=50');
       const data = await res.json();
       if (data.success) {
         setStores(data.data || []);
@@ -97,7 +97,7 @@ export default function Themes() {
       setThemesLoading(true);
       setErrorMsg('');
       setThemes([]);
-      const res = await fetchApi(`/api/themes?storeId=${selectedStoreId}`);
+      const res = await api(`/api/themes?storeId=${selectedStoreId}`);
       const data = await res.json();
       if (data.success) {
         setThemes(data.data || []);
@@ -122,7 +122,7 @@ export default function Themes() {
   const loadImportedThemes = async () => {
     try {
       setImportedLoading(true);
-      const res = await fetchApi('/api/themes/imported');
+      const res = await api('/api/themes/imported');
       const data = await res.json();
       if (data.success) {
         setImportedThemes(data.data || []);
@@ -140,7 +140,7 @@ export default function Themes() {
   const handleDeleteRecord = async (recordId) => {
     try {
       setActionLoading(recordId);
-      const res = await fetchApi(`/api/themes/imported/${recordId}`, {method: 'DELETE'});
+      const res = await api(`/api/themes/imported/${recordId}`, {method: 'DELETE'});
       const data = await res.json();
       if (data.success) {
         setSuccessMsg('Theme record deleted');
@@ -169,7 +169,7 @@ export default function Themes() {
         const store = stores.find(s => s.id === storeId);
         const storeName = store?.name || store?.shopDomain || storeId;
         try {
-          const res = await fetchApi(`/api/themes/imported/${reimportModal.id}/reimport`, {
+          const res = await api(`/api/themes/imported/${reimportModal.id}/reimport`, {
             method: 'POST',
             body: JSON.stringify({storeId, themeName: reimportModal.themeName})
           });
@@ -232,7 +232,7 @@ export default function Themes() {
             fileName
           };
 
-          const res = await fetchApi('/api/themes/import', {
+          const res = await api('/api/themes/import', {
             method: 'POST',
             body: JSON.stringify(body)
           });
@@ -290,7 +290,7 @@ export default function Themes() {
     try {
       setActionLoading(themeId);
       setErrorMsg('');
-      const res = await fetchApi(`/api/themes/${themeId}/publish`, {
+      const res = await api(`/api/themes/${themeId}/publish`, {
         method: 'PUT',
         body: JSON.stringify({storeId: selectedStoreId})
       });
@@ -312,7 +312,7 @@ export default function Themes() {
     try {
       setActionLoading(themeId);
       setErrorMsg('');
-      const res = await fetchApi(`/api/themes/${themeId}?storeId=${selectedStoreId}`, {
+      const res = await api(`/api/themes/${themeId}?storeId=${selectedStoreId}`, {
         method: 'DELETE'
       });
       const data = await res.json();

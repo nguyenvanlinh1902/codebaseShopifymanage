@@ -1,5 +1,5 @@
 {
-  "name": "@avada/assets",
+  "name": "@linhnv/assets",
   "version": "0.0.1",
   "scripts": {
     "production:embed": "cross-env NODE_ENV=production ENVIRONMENT=production IS_EMBEDDED_APP=yes vite build",
@@ -12,8 +12,6 @@
     "eslint-fix": "./node_modules/.bin/eslint --fix ."
   },
   "dependencies": {
-    "@avada/common-ui": "^1.0.11",
-    "@avada/utils": "^2.0.3",
     "@shopify/app-bridge": "^3.7.10",
     "@shopify/app-bridge-react": "^4.1.5",
     "@shopify/app-bridge-utils": "^3.5.1",

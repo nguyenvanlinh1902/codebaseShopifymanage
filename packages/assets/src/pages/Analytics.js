@@ -21,7 +21,7 @@ import {
   DeliveryIcon,
   ProductIcon
 } from '@shopify/polaris-icons';
-import {fetchApi} from '../helpers/fetchApi';
+import {api} from '../helpers/api';
 
 function StatCard({title, value, icon, color, subtitle}) {
   return (
@@ -89,7 +89,7 @@ export default function Analytics() {
   const fetchAnalytics = async () => {
     try {
       setLoading(true);
-      const res = await fetchApi('/api/analytics/stats');
+      const res = await api('/api/analytics/stats');
       const result = await res.json();
       if (result.success) {
         setData(result.data);

@@ -23,7 +23,7 @@ import {
   useIndexResourceState
 } from '@shopify/polaris';
 import {DeleteIcon} from '@shopify/polaris-icons';
-import {fetchApi} from '../helpers/fetchApi';
+import {api} from '../helpers/api';
 
 const PAGE_LIMIT = 10;
 
@@ -79,7 +79,7 @@ export default function Stores() {
       if (search) params.set('search', search);
       if (niches.length > 0) params.set('niche', niches.join(','));
 
-      const response = await fetchApi(`/api/stores?${params}`);
+      const response = await api(`/api/stores?${params}`);
       const result = await response.json();
       if (result.success) {
         setStores(result.data || []);
@@ -97,7 +97,7 @@ export default function Stores() {
 
   const fetchNiches = async () => {
     try {
-      const response = await fetchApi('/api/stores/niches');
+      const response = await api('/api/stores/niches');
       const result = await response.json();
       if (result.success) {
         setAllNiches(result.data);
@@ -239,7 +239,7 @@ export default function Stores() {
       setVerifying(true);
       setError(null);
 
-      const response = await fetchApi('/api/stores/verify-token', {
+      const response = await api('/api/stores/verify-token', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
@@ -276,7 +276,7 @@ export default function Stores() {
       setSubmitting(true);
       setError(null);
 
-      const response = await fetchApi('/api/stores', {
+      const response = await api('/api/stores', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
@@ -321,7 +321,7 @@ export default function Stores() {
       setDeleting(true);
       const idsToDelete = deleteTarget ? [deleteTarget] : selectedResources;
 
-      const response = await fetchApi('/api/stores/bulk-delete', {
+      const response = await api('/api/stores/bulk-delete', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({storeIds: idsToDelete})

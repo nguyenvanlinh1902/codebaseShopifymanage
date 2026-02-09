@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="shopify-api-key" content="{{SHOPIFY_API_KEY}}" />
+  <title>Sync Order Sheets</title>
+  <script src="https://cdn.shopify.com/shopifycloud/app-bridge.js"></script>
+  <style>
+    body {
+      background: #f4f6f8;
+      line-height: 2rem;
+      font-weight: 400;
+      margin: 0;
+    }
+
+    .PreLoading {
+      position: fixed;
+      top: 0;
+      left: 0;
+      bottom: 0;
+      right: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      z-index: -1;
+    }
+
+    @keyframes spinner-loading {
+      100% {
+        transform: rotate(1turn);
+      }
+    }
+
+    .PreLoading .PreLoading-Loader {
+      height: 1.5rem;
+      width: 1.5rem;
+      animation: spinner-loading 0.5s linear infinite;
+      color: transparent;
+    }
+
+    .PreLoading p {
+      font-weight: 700;
+      font-family: -apple-system, BlinkMacSystemFont, San Francisco, Roboto,
+      Segoe UI, Helvetica Neue, sans-serif;
+      font-size: 1rem;
+      color: #424242;
+    }
+  </style>
+</head>
+<body>
+<div id="app"></div>
+<div id="PreLoading" class="PreLoading">
+  <img class="PreLoading-Loader"
+       src="data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgNDQgNDQiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHBhdGggZD0iTTE1LjU0MiAxLjQ4N0EyMS41MDcgMjEuNTA3IDAgMCAwIC41IDIyYzAgMTEuODc0IDkuNjI2IDIxLjUgMjEuNSAyMS41IDkuODQ3IDAgMTguMzY0LTYuNjc1IDIwLjgwOS0xNi4wNzJhMS41IDEuNSAwIDAgMC0yLjkwNC0uNzU2QzM3LjgwMyAzNC43NTUgMzAuNDczIDQwLjUgMjIgNDAuNSAxMS43ODMgNDAuNSAzLjUgMzIuMjE3IDMuNSAyMmMwLTguMTM3IDUuMy0xNS4yNDcgMTIuOTQyLTE3LjY1YTEuNSAxLjUgMCAxIDAtLjktMi44NjN6IiBmaWxsPSIjOTE5RUFCIi8+PC9zdmc+Cg=="
+       alt="Loading" draggable="false" role="status" />
+  <p>Loading...</p>
+</div>
+<script type="module" src="/src/embed.js"></script>
+</body>
+</html>

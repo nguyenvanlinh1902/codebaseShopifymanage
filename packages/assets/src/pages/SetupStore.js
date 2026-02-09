@@ -14,7 +14,7 @@ import {
   BlockStack,
   ChoiceList
 } from '@shopify/polaris';
-import {fetchApi} from '../helpers/fetchApi';
+import {api} from '../helpers/api';
 
 export default function SetupStore() {
   // Stores
@@ -51,7 +51,7 @@ export default function SetupStore() {
   const loadStores = async () => {
     try {
       setStoresLoading(true);
-      const res = await fetchApi('/api/stores?limit=50');
+      const res = await api('/api/stores?limit=50');
       const data = await res.json();
       if (data.success) {
         setStores(data.data || []);
@@ -65,7 +65,7 @@ export default function SetupStore() {
 
   const loadDefinitions = async () => {
     try {
-      const res = await fetchApi('/api/setup/definitions');
+      const res = await api('/api/setup/definitions');
       const data = await res.json();
       if (data.success) {
         setDefinitions(data.data || []);
@@ -78,7 +78,7 @@ export default function SetupStore() {
   const loadSavedThemes = async () => {
     try {
       setSavedThemesLoading(true);
-      const res = await fetchApi('/api/themes/imported');
+      const res = await api('/api/themes/imported');
       const data = await res.json();
       if (data.success) {
         setSavedThemes(data.data || []);
@@ -109,7 +109,7 @@ export default function SetupStore() {
       setCheckResults([]);
       setApplyResults([]);
 
-      const res = await fetchApi('/api/setup/check', {
+      const res = await api('/api/setup/check', {
         method: 'POST',
         body: JSON.stringify({storeIds: selectedStoreIds})
       });
@@ -144,7 +144,7 @@ export default function SetupStore() {
       setApplyResults([]);
 
       // 1. Apply metafield definitions
-      const metafieldRes = await fetchApi('/api/setup/apply', {
+      const metafieldRes = await api('/api/setup/apply', {
         method: 'POST',
         body: JSON.stringify({storeIds: selectedStoreIds})
       });
@@ -161,7 +161,7 @@ export default function SetupStore() {
         for (let i = 0; i < results.length; i++) {
           const storeId = results[i].storeId;
           try {
-            const themeRes = await fetchApi(`/api/themes/imported/${selectedThemeId}/reimport`, {
+            const themeRes = await api(`/api/themes/imported/${selectedThemeId}/reimport`, {
               method: 'POST',
               body: JSON.stringify({storeId, themeName: selectedTheme?.themeName})
             });
@@ -179,7 +179,7 @@ export default function SetupStore() {
           if (!results.find(r => r.storeId === storeId)) {
             const store = stores.find(s => s.id === storeId);
             try {
-              const themeRes = await fetchApi(`/api/themes/imported/${selectedThemeId}/reimport`, {
+              const themeRes = await api(`/api/themes/imported/${selectedThemeId}/reimport`, {
                 method: 'POST',
                 body: JSON.stringify({storeId, themeName: selectedTheme?.themeName})
               });

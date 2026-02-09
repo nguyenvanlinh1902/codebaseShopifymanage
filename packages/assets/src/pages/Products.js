@@ -25,7 +25,7 @@ import {
   Modal
 } from '@shopify/polaris';
 import {CheckCircleIcon, ClockIcon, AlertCircleIcon, SearchIcon} from '@shopify/polaris-icons';
-import {fetchApi} from '../helpers/fetchApi';
+import {api} from '../helpers/api';
 
 /**
  * Products Page - Enhanced version
@@ -99,7 +99,7 @@ export default function Products() {
 
   const fetchStores = async () => {
     try {
-      const response = await fetchApi('/api/stores');
+      const response = await api('/api/stores');
       const result = await response.json();
       if (result.success) {
         setStores(result.data || []);
@@ -125,7 +125,7 @@ export default function Products() {
         params.append('search', debouncedSearch);
       }
 
-      const response = await fetchApi(`/api/products/list?${params.toString()}`);
+      const response = await api(`/api/products/list?${params.toString()}`);
       const result = await response.json();
 
       if (result.success) {
@@ -144,7 +144,7 @@ export default function Products() {
 
   const fetchQueueStats = async () => {
     try {
-      const response = await fetchApi('/api/products/queue-stats');
+      const response = await api('/api/products/queue-stats');
       const result = await response.json();
       if (result.success) {
         setQueueStats(result.data);
@@ -156,7 +156,7 @@ export default function Products() {
 
   const fetchStoreImportStatus = async () => {
     try {
-      const response = await fetchApi('/api/products/successful-imports');
+      const response = await api('/api/products/successful-imports');
       const result = await response.json();
       if (result.success) {
         setStoreImportStatus(result.data || []);
@@ -171,7 +171,7 @@ export default function Products() {
       setProcessingQueue(true);
       setError(null);
 
-      const response = await fetchApi('/api/products/process-queue', {
+      const response = await api('/api/products/process-queue', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'}
       });
@@ -240,7 +240,7 @@ export default function Products() {
       }
 
       // Send all files in one request
-      const response = await fetchApi('/api/products/upload-csv', {
+      const response = await api('/api/products/upload-csv', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
@@ -283,7 +283,7 @@ export default function Products() {
 
   const handleDownloadTemplate = async () => {
     try {
-      const response = await fetchApi('/api/products/template');
+      const response = await api('/api/products/template');
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -364,7 +364,7 @@ export default function Products() {
 
       const csvData = [csvHeaders.join(','), ...csvRows.map(row => row.join(','))].join('\n');
 
-      const response = await fetchApi('/api/products/upload-csv', {
+      const response = await api('/api/products/upload-csv', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({

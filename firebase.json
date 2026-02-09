@@ -1,4 +1,4 @@
-{
+ {
   "firestore": {
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"
@@ -32,6 +32,10 @@
       {
         "source": "/api/**",
         "function": "api"
+      },
+      {
+        "source": "/embed/**",
+        "destination": "/embed.html"
       },
       {
         "source": "**",

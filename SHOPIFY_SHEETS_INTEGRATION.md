@@ -120,10 +120,10 @@ mv App.new.js App.js
 
 ```bash
 # Terminal 1 - Backend
-yarn workspace @avada/functions run watch
+yarn workspace @linhnv/functions run watch
 
 # Terminal 2 - Frontend
-yarn workspace @avada/assets run watch
+yarn workspace @linhnv/assets run watch
 
 # Terminal 3 - Emulators
 yarn emulators

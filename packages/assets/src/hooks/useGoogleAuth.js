@@ -1,5 +1,5 @@
 import {useState, useEffect, useCallback} from 'react';
-import {fetchApi} from '../helpers/fetchApi';
+import {api} from '../helpers/api';
 
 export function useGoogleAuth() {
   const [authenticated, setAuthenticated] = useState(false);
@@ -10,7 +10,7 @@ export function useGoogleAuth() {
   const checkAuth = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await fetchApi(`/api/google/status`);
+      const response = await api(`/api/google/status`);
       const result = await response.json();
 
       if (result.success && result.data.authenticated) {
@@ -35,7 +35,7 @@ export function useGoogleAuth() {
   const startAuth = useCallback(() => {
     return new Promise(async (resolve, reject) => {
       try {
-        const response = await fetchApi(`/api/google/auth-url`);
+        const response = await api(`/api/google/auth-url`);
         const result = await response.json();
         if (!result.success) {
           setError(result.error || 'Failed to get authorization URL');
@@ -88,7 +88,7 @@ export function useGoogleAuth() {
 
   const disconnect = useCallback(async () => {
     try {
-      const response = await fetchApi('/api/google/disconnect', {
+      const response = await api('/api/google/disconnect', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({})
@@ -106,7 +106,7 @@ export function useGoogleAuth() {
   const startAuthForNewAccount = useCallback(() => {
     return new Promise(async (resolve, reject) => {
       try {
-        const response = await fetchApi(`/api/google/auth-url?mode=temp`);
+        const response = await api(`/api/google/auth-url?mode=temp`);
         const result = await response.json();
         if (!result.success) {
           reject(new Error(result.error || 'Failed to get authorization URL'));
@@ -155,7 +155,7 @@ export function useGoogleAuth() {
 
   const getPickerToken = useCallback(async () => {
     try {
-      const response = await fetchApi(`/api/google/picker-token`);
+      const response = await api(`/api/google/picker-token`);
       const result = await response.json();
       if (result.success) {
         return result.data;

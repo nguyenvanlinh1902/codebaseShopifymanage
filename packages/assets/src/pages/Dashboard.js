@@ -30,7 +30,7 @@ import {
   AlertCircleIcon,
   ExternalIcon
 } from '@shopify/polaris-icons';
-import {fetchApi} from '../helpers/fetchApi';
+import {api} from '../helpers/api';
 
 export default function Dashboard() {
   const [loading, setLoading] = useState(true);
@@ -43,8 +43,8 @@ export default function Dashboard() {
     try {
       setLoading(true);
       const [storesRes, sheetsRes] = await Promise.all([
-        fetchApi('/api/stores'),
-        fetchApi('/api/sheets')
+        api('/api/stores'),
+        api('/api/sheets')
       ]);
       const [storesData, sheetsData] = await Promise.all([storesRes.json(), sheetsRes.json()]);
 
@@ -55,7 +55,7 @@ export default function Dashboard() {
       // Fetch sync configs for all stores
       if (storeList.length > 0) {
         try {
-          const configRes = await fetchApi('/api/orders/sync-configs');
+          const configRes = await api('/api/orders/sync-configs');
           const configData = await configRes.json();
           if (configData.success) setSyncConfigs(configData.data || []);
         } catch (e) {

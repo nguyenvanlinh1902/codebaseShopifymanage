@@ -2,11 +2,12 @@ import express from 'express';
 import {onRequest} from 'firebase-functions/v2/https';
 import {onMessagePublished} from 'firebase-functions/v2/pubsub';
 import {onSchedule} from 'firebase-functions/v2/scheduler';
+import {onDocumentWritten} from 'firebase-functions/v2/firestore';
 import {initializeApp} from 'firebase-admin/app';
-import {authentication} from './middleware/authentication.js';
 
 // Route modules
 import authRoutes from './routes/authRoutes.js';
+import shopifyInstallRoutes from './routes/shopifyInstallRoutes.js';
 import oauthRoutes from './routes/oauthRoutes.js';
 import storeRoutes from './routes/storeRoutes.js';
 import googleAuthRoutes from './routes/googleAuthRoutes.js';
@@ -17,14 +18,16 @@ import trackingRoutes from './routes/trackingRoutes.js';
 import themeRoutes from './routes/themeRoutes.js';
 import analyticsRoutes from './routes/analyticsRoutes.js';
 import setupRoutes from './routes/setupRoutes.js';
+import embedRoutes from './routes/embedRoutes.js';
 
-// PubSub controllers
+// Controllers
+import * as googleAuthController from './controllers/googleAuthController.js';
+import * as webhookController from './controllers/webhookController.js';
+import * as orderSyncController from './controllers/orderSyncController.js';
 import * as productImportController from './controllers/productImportController.js';
 import * as trackingImportController from './controllers/trackingImportController.js';
-import * as orderSyncController from './controllers/orderSyncController.js';
 
 // BigQuery Firestore triggers
-import {onDocumentWritten} from 'firebase-functions/v2/firestore';
 import {
   onTriggerStores,
   onTriggerGoogleAuth,
@@ -37,36 +40,44 @@ initializeApp();
 
 const app = express();
 
-// Health check
+// ============ HEALTH CHECK ============
 app.get('/', (req, res) => {
-  res.json({
-    success: true,
-    message: 'Shopify Google Sheets Integration API',
-    version: '1.0.0'
-  });
+  res.json({success: true, message: 'ToolTrackingOrder API', version: '1.0.0'});
 });
 
-// ============ PUBLIC ROUTES (no auth required) ============
+// ============ PUBLIC ROUTES (no auth) ============
+// Shopify OAuth install flow (must come before authRoutes)
+app.use('/api/auth/shopify', shopifyInstallRoutes);
 app.use('/api/auth', authRoutes);
-app.post('/api/orders/webhook', orderSyncController.handleOrderWebhook);
 
-import * as googleAuthController from './controllers/googleAuthController.js';
+// Shopify webhooks (called directly by Shopify)
+import * as shopifyInstallController from './controllers/shopifyInstallController.js';
+app.post('/api/auth/webhook/app/uninstalled', shopifyInstallController.handleUninstall);
+app.post('/api/orders/webhook', orderSyncController.handleOrderWebhook);
+app.post('/api/products/webhook', webhookController.handleProductWebhook);
+app.post('/api/fulfillments/webhook', webhookController.handleFulfillmentWebhook);
+app.post('/api/customers/webhook', webhookController.handleCustomerWebhook);
+app.post('/api/inventory/webhook', webhookController.handleInventoryWebhook);
+app.post('/api/themes/webhook', webhookController.handleThemeWebhook);
+app.post('/api/shop/webhook', webhookController.handleShopWebhook);
+
+// Google OAuth exchange
 app.post('/api/google/exchange', googleAuthController.exchangeGoogleCode);
 app.post('/api/google/exchange-temp', googleAuthController.exchangeGoogleCodeTemp);
 
-// ============ AUTH WALL ============
-app.use(authentication);
+// ============ EMBEDDED APP ROUTES (session token auth) ============
+app.use('/api/embed', embedRoutes);
 
-// Inject userId from JWT into query/body for backward compatibility
+// ============ USER ID MIDDLEWARE ============
 app.use((req, res, next) => {
-  if (req.userId) {
-    if (!req.query.userId) req.query.userId = req.userId;
-    if (req.body && !req.body.userId) req.body.userId = req.userId;
-  }
+  const clientId = req.headers['x-client-id'] || 'default-user';
+  req.userId = clientId;
+  if (!req.query.userId) req.query.userId = clientId;
+  if (req.body && !req.body.userId) req.body.userId = clientId;
   next();
 });
 
-// ============ PROTECTED ROUTES ============
+// ============ APP ROUTES ============
 app.use('/api/oauth', oauthRoutes);
 app.use('/api/stores', storeRoutes);
 app.use('/api/google', googleAuthRoutes);
@@ -78,121 +89,81 @@ app.use('/api/themes', themeRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/setup', setupRoutes);
 
-// 404 handler
+// ============ ERROR HANDLING ============
 app.use((req, res) => {
-  res.status(404).json({
-    success: false,
-    error: 'Route not found',
-    path: req.path,
-    method: req.method
-  });
+  res
+    .status(404)
+    .json({success: false, error: 'Route not found', path: req.path, method: req.method});
 });
 
-// Error handler
 app.use((err, req, res, _next) => {
   console.error('API Error:', err);
   res.status(500).json({success: false, error: err.message});
 });
 
-/**
- * Main API endpoint
- */
+// ============ FIREBASE FUNCTION EXPORTS ============
+
+/** Main API */
 export const api = onRequest(
-  {
-    memory: '1GiB',
-    timeoutSeconds: 300,
-    invoker: 'public',
-    cors: true
-  },
+  {memory: '1GiB', timeoutSeconds: 300, invoker: 'public', cors: true},
   app
 );
 
-/**
- * PubSub Handler: Process Product Import Queue
- */
+/** PubSub: Product Import */
 export const processProductImportQueue = onMessagePublished(
-  {
-    topic: 'product-import',
-    memory: '512MiB',
-    timeoutSeconds: 540,
-    retry: true
-  },
+  {topic: 'product-import', memory: '512MiB', timeoutSeconds: 540, retry: true},
   async event => {
     await productImportController.processProductImport(event.data);
   }
 );
 
-/**
- * PubSub Handler: Process Tracking Import Queue
- */
+/** PubSub: Tracking Import */
 export const processTrackingImportQueue = onMessagePublished(
-  {
-    topic: 'tracking-import',
-    memory: '512MiB',
-    timeoutSeconds: 540,
-    retry: true
-  },
+  {topic: 'tracking-import', memory: '512MiB', timeoutSeconds: 540, retry: true},
   async event => {
     await trackingImportController.processTrackingImport(event.data);
   }
 );
 
-/**
- * Scheduled Function (CronJob): Process Product Queue
- * Runs every minute to process pending products from the queue
- */
+/** Cron: Process Product Queue (every 1 min) */
 export const productQueueCron = onSchedule(
   {
     schedule: 'every 1 minutes',
     memory: '512MiB',
     timeoutSeconds: 540,
-    retryConfig: {
-      retryCount: 3,
-      maxRetrySeconds: 600
-    }
+    retryConfig: {retryCount: 3, maxRetrySeconds: 600}
   },
   async () => {
     await productImportController.processProductQueue();
   }
 );
 
-/**
- * Scheduled Function (CronJob): Process Order Sync Queue
- * Runs every minute to process pending orders from the queue
- */
+/** Cron: Process Order Sync Queue (every 1 min) */
 export const orderSyncQueueCron = onSchedule(
   {
     schedule: 'every 1 minutes',
     memory: '256MiB',
     timeoutSeconds: 540,
-    retryConfig: {
-      retryCount: 3,
-      maxRetrySeconds: 600
-    }
+    retryConfig: {retryCount: 3, maxRetrySeconds: 600}
   },
   async () => {
     await orderSyncController.processOrderSyncQueue();
   }
 );
 
-/**
- * BigQuery Firestore Triggers
- */
+/** Firestore Triggers -> BigQuery */
 export const onWriteStores = onDocumentWritten(
   {document: 'shopify_stores/{docId}', memory: '256MiB'},
   onTriggerStores
 );
-
 export const onWriteGoogleAuth = onDocumentWritten(
   {document: 'google_auth/{docId}', memory: '256MiB'},
   onTriggerGoogleAuth
 );
-
 export const onWriteGoogleSheets = onDocumentWritten(
   {document: 'google_sheets/{docId}', memory: '256MiB'},
   onTriggerGoogleSheets
 );
-
 export const onWriteProducts = onDocumentWritten(
   {document: 'products/{docId}', memory: '256MiB'},
   onTriggerProducts

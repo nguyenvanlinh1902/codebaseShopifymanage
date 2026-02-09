@@ -243,6 +243,12 @@ export default function Dashboard() {
                 </List.Item>
               </List>
 
+              <Divider />
+              <Text variant="bodySm" as="p" fontWeight="semibold">
+                Video Demo:
+              </Text>
+              <VideoDemo src="https://cdn.shopify.com/videos/c/o/v/3fb7f4122ae541ef97f9cb8a468505b4.mov" />
+
               {hasStores && (
                 <>
                   <Divider />
@@ -414,7 +420,7 @@ export default function Dashboard() {
               <Text variant="bodySm" as="p" fontWeight="semibold">
                 Video Demo:
               </Text>
-              <VideoDemo src="https://cdn.shopify.com/videos/c/o/v/5fc76108a7964ad9a2856aff1be1938f.mp4" />
+              <VideoDemo src="https://cdn.shopify.com/videos/c/o/v/b5192267f0564e3bbde68dee7672d0ec.mov" />
 
               {syncConfigs.length > 0 && (
                 <>
@@ -519,7 +525,7 @@ export default function Dashboard() {
               <Text variant="bodySm" as="p" fontWeight="semibold">
                 Video Demo:
               </Text>
-              <VideoDemo src="https://cdn.shopify.com/videos/c/o/v/1d8df351c02f49ba8c1d1fe6df9ab21f.mp4" />
+              <VideoDemo src="https://cdn.shopify.com/videos/c/o/v/1b67afc033314d00b134c6b984f83d7d.mov" />
             </BlockStack>
           </GuideCard>
         </Layout.Section>
@@ -585,7 +591,7 @@ export default function Dashboard() {
               <Text variant="bodySm" as="p" fontWeight="semibold">
                 Video Demo:
               </Text>
-              <VideoDemo src="https://cdn.shopify.com/videos/c/o/v/c3ca80c72098413799596f13c954e4d9.mp4" />
+              <VideoDemo src="https://cdn.shopify.com/videos/c/o/v/89cc565b870542fb8a8000bee35560b1.mov" />
             </BlockStack>
           </GuideCard>
         </Layout.Section>

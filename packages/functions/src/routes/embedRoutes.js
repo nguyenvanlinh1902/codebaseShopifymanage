@@ -3,6 +3,7 @@ import {verifyShopifySession} from '../middleware/verifyShopifySession.js';
 import * as productImportController from '../controllers/productImportController.js';
 import * as orderSyncController from '../controllers/orderSyncController.js';
 import * as sheetController from '../controllers/sheetController.js';
+import * as googleAuthController from '../controllers/googleAuthController.js';
 
 const router = new Router();
 
@@ -55,11 +56,50 @@ router.get('/products/queue-stats', productImportController.getQueueStats);
 router.post('/products/process-queue', productImportController.processQueueManual);
 router.get('/products/successful-imports', productImportController.getSuccessfulImports);
 
-// Orders - reuse existing controllers
-router.post('/orders/setup-sync', orderSyncController.setupSync);
-router.post('/orders/manual-sync', orderSyncController.manualSync);
+// Orders - wrap POST routes to ensure storeId/userId injection from session
+router.post('/orders/setup-sync', (req, res) => {
+  if (req.store) {
+    if (!req.body || typeof req.body !== 'object') req.body = {};
+    req.body.storeId = req.store.id;
+    req.body.userId = req.store.userId || req.userId || 'default-user';
+  }
+  return orderSyncController.setupSync(req, res);
+});
+
+router.post('/orders/manual-sync', (req, res) => {
+  if (req.store) {
+    if (!req.body || typeof req.body !== 'object') req.body = {};
+    req.body.storeId = req.store.id;
+    req.body.userId = req.store.userId || req.userId || 'default-user';
+  }
+  return orderSyncController.manualSync(req, res);
+});
+
 router.get('/orders/sync-configs', orderSyncController.getSyncConfigs);
 router.get('/orders/queue-stats', orderSyncController.getOrderSyncQueueStats);
+
+// Google auth (wrapped to match frontend expected response shape)
+router.get('/google/auth-url', async (req, res) => {
+  const originalJson = res.json.bind(res);
+  res.json = data => {
+    if (data.success && data.data?.authUrl) {
+      data.data.url = data.data.authUrl;
+    }
+    return originalJson(data);
+  };
+  return googleAuthController.getGoogleAuthUrl(req, res);
+});
+
+router.get('/google/status', async (req, res) => {
+  const originalJson = res.json.bind(res);
+  res.json = data => {
+    if (data.success && data.data) {
+      data.data.connected = data.data.authenticated || false;
+    }
+    return originalJson(data);
+  };
+  return googleAuthController.checkGoogleAuth(req, res);
+});
 
 // Sheets - reuse existing controllers
 router.get('/sheets', sheetController.getSheets);

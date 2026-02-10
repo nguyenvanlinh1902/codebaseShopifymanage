@@ -1,7 +1,6 @@
 import React, {useState, useEffect, useCallback} from 'react';
 import {
   Page,
-  Layout,
   Card,
   Button,
   DataTable,
@@ -9,33 +8,36 @@ import {
   Text,
   DropZone,
   InlineStack,
-  Badge,
   SkeletonBodyText,
   EmptyState,
   BlockStack,
-  Tabs,
   Box,
-  Divider,
   Icon,
-  ProgressBar,
   TextField,
-  Checkbox,
-  Select
+  Select,
+  InlineGrid,
+  Badge,
+  Divider,
+  Modal
 } from '@shopify/polaris';
-import {CheckCircleIcon, ClockIcon, AlertCircleIcon, SearchIcon} from '@shopify/polaris-icons';
+import {
+  CheckCircleIcon,
+  ClockIcon,
+  AlertCircleIcon,
+  SearchIcon,
+  ImportIcon,
+  DeleteIcon
+} from '@shopify/polaris-icons';
 import {api} from '../helpers/api';
 
-/**
- * Embedded Products Page - Single store (from session token)
- * Features: CSV import, product list with search, queue status
- */
 export default function EmbedProducts() {
-  const [selectedTab, setSelectedTab] = useState(0);
+  const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [files, setFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [successMessage, setSuccessMessage] = useState(null);
   const [queueStats, setQueueStats] = useState(null);
   const [processingQueue, setProcessingQueue] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -58,8 +60,8 @@ export default function EmbedProducts() {
   }, [searchQuery]);
 
   useEffect(() => {
-    if (selectedTab === 1) fetchProducts();
-  }, [selectedTab, currentPage, itemsPerPage, debouncedSearch]);
+    fetchProducts();
+  }, [currentPage, itemsPerPage, debouncedSearch]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -121,14 +123,13 @@ export default function EmbedProducts() {
 
   const handleDropZoneDrop = useCallback((_dropFiles, acceptedFiles) => {
     setFiles(prev => [...prev, ...acceptedFiles]);
-    setError(null);
   }, []);
 
-  const handleFileRemove = useCallback((index) => {
+  const handleFileRemove = useCallback(index => {
     setFiles(prev => prev.filter((_, i) => i !== index));
   }, []);
 
-  const readFileAsText = (file) => {
+  const readFileAsText = file => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = e => resolve(e.target.result);
@@ -138,14 +139,12 @@ export default function EmbedProducts() {
   };
 
   const handleUpload = async () => {
-    if (files.length === 0) {
-      setError('Please select at least one CSV file');
-      return;
-    }
+    if (files.length === 0) return;
 
     try {
       setUploading(true);
       setError(null);
+      setSuccessMessage(null);
 
       const csvFiles = [];
       for (const f of files) {
@@ -163,15 +162,21 @@ export default function EmbedProducts() {
       if (result.success) {
         const {totalSuccess, totalFailed} = result.data;
         setFiles([]);
+        setUploadModalOpen(false);
         await fetchProducts();
         await fetchQueueStats();
         if (totalFailed > 0) {
-          setError(`Import completed: ${totalSuccess} created, ${totalFailed} failed (queued for retry)`);
+          setError(
+            `Import completed: ${totalSuccess} created, ${totalFailed} failed (queued for retry)`
+          );
+        } else {
+          setSuccessMessage(`Successfully imported ${totalSuccess} products!`);
         }
       } else {
         let errorMsg = result.error || 'Import failed';
         if (result.fileErrors) {
-          errorMsg += '\n' + result.fileErrors.map(fe => `${fe.fileName}: ${fe.error}`).join('\n');
+          errorMsg +=
+            '\n' + result.fileErrors.map(fe => `${fe.fileName}: ${fe.error}`).join('\n');
         }
         setError(errorMsg);
       }
@@ -199,6 +204,13 @@ export default function EmbedProducts() {
     }
   };
 
+  const handleCloseModal = () => {
+    if (!uploading) {
+      setUploadModalOpen(false);
+      setFiles([]);
+    }
+  };
+
   const productRows = products.map(product => [
     product.title,
     product.sku || '-',
@@ -208,209 +220,252 @@ export default function EmbedProducts() {
     new Date(product.createdAt).toLocaleString()
   ]);
 
-  const tabs = [
-    {id: 'upload', content: 'Upload & Import', panelID: 'upload-panel'},
-    {id: 'products', content: 'Products List', panelID: 'products-panel'}
-  ];
-
   return (
     <Page
-      title="Product Import"
-      subtitle="Import products from CSV to your Shopify store"
-      secondaryActions={[{content: 'Download CSV Template', onAction: handleDownloadTemplate}]}
+      title="Products"
+      subtitle="Import and manage products from CSV"
+      primaryAction={{
+        content: 'Import CSV',
+        icon: ImportIcon,
+        onAction: () => setUploadModalOpen(true)
+      }}
+      secondaryActions={[{content: 'Download Template', onAction: handleDownloadTemplate}]}
     >
-      <Layout>
+      <BlockStack gap="400">
         {error && (
-          <Layout.Section>
-            <Banner tone="critical" onDismiss={() => setError(null)}>{error}</Banner>
-          </Layout.Section>
+          <Banner tone="critical" onDismiss={() => setError(null)}>
+            {error}
+          </Banner>
+        )}
+        {successMessage && (
+          <Banner tone="success" onDismiss={() => setSuccessMessage(null)}>
+            {successMessage}
+          </Banner>
         )}
 
-        <Layout.Section>
-          <Card>
-            <Tabs tabs={tabs} selected={selectedTab} onSelect={setSelectedTab}>
-              <div style={{padding: '16px'}}>
-                {selectedTab === 0 && (
-                  <BlockStack gap="400">
-                    <Card>
-                      <BlockStack gap="300">
-                        <Text as="h2" variant="headingMd">Upload CSV Files</Text>
-                        <DropZone
-                          onDrop={handleDropZoneDrop}
-                          accept=".csv,text/csv"
-                          type="file"
-                          allowMultiple
-                          disabled={uploading}
-                        >
-                          <DropZone.FileUpload />
-                        </DropZone>
-                        {files.length > 0 && (
-                          <BlockStack gap="200">
-                            {files.map((f, index) => (
-                              <InlineStack key={`${f.name}-${index}`} align="space-between" blockAlign="center">
-                                <InlineStack gap="200">
-                                  <Text as="p" variant="bodyMd">{f.name}</Text>
-                                  <Text as="p" variant="bodySm" tone="subdued">
-                                    {(f.size / 1024).toFixed(2)} KB
-                                  </Text>
-                                </InlineStack>
-                                <Button onClick={() => handleFileRemove(index)} size="slim">Remove</Button>
-                              </InlineStack>
-                            ))}
-                          </BlockStack>
-                        )}
-                      </BlockStack>
-                    </Card>
+        {/* Queue Status */}
+        {queueStats &&
+          (queueStats.pending > 0 || queueStats.completed > 0 || queueStats.failed > 0) && (
+            <BlockStack gap="300">
+              <InlineStack align="space-between" blockAlign="center">
+                <Text variant="headingMd" as="h2">
+                  Import Queue
+                </Text>
+                <Button
+                  onClick={handleProcessQueue}
+                  loading={processingQueue}
+                  disabled={queueStats.pending === 0}
+                  size="slim"
+                >
+                  Process Now
+                </Button>
+              </InlineStack>
 
-                    <InlineStack align="end">
+              <InlineGrid columns={3} gap="400">
+                <Card>
+                  <InlineStack gap="300" blockAlign="center">
+                    <Box background="bg-surface-secondary" borderRadius="300" padding="200">
+                      <Icon source={ClockIcon} tone="base" />
+                    </Box>
+                    <BlockStack gap="050">
+                      <Text variant="headingLg" as="p" fontWeight="bold">
+                        {queueStats.pending}
+                      </Text>
+                      <Text variant="bodySm" tone="subdued">
+                        Pending
+                      </Text>
+                    </BlockStack>
+                  </InlineStack>
+                </Card>
+                <Card>
+                  <InlineStack gap="300" blockAlign="center">
+                    <Box background="bg-fill-success-secondary" borderRadius="300" padding="200">
+                      <Icon source={CheckCircleIcon} tone="success" />
+                    </Box>
+                    <BlockStack gap="050">
+                      <Text variant="headingLg" as="p" fontWeight="bold">
+                        {queueStats.completed}
+                      </Text>
+                      <Text variant="bodySm" tone="subdued">
+                        Completed
+                      </Text>
+                    </BlockStack>
+                  </InlineStack>
+                </Card>
+                <Card>
+                  <InlineStack gap="300" blockAlign="center">
+                    <Box background="bg-fill-critical-secondary" borderRadius="300" padding="200">
+                      <Icon source={AlertCircleIcon} tone="critical" />
+                    </Box>
+                    <BlockStack gap="050">
+                      <Text variant="headingLg" as="p" fontWeight="bold">
+                        {queueStats.failed}
+                      </Text>
+                      <Text variant="bodySm" tone="subdued">
+                        Failed
+                      </Text>
+                    </BlockStack>
+                  </InlineStack>
+                </Card>
+              </InlineGrid>
+            </BlockStack>
+          )}
+
+        {/* Products List */}
+        <Card>
+          <BlockStack gap="400">
+            <InlineStack align="space-between" blockAlign="center">
+              <Text variant="headingMd" as="h2">
+                Imported Products
+              </Text>
+              {totalProducts > 0 && <Badge>{totalProducts} total</Badge>}
+            </InlineStack>
+
+            <TextField
+              label="Search"
+              labelHidden
+              value={searchQuery}
+              onChange={setSearchQuery}
+              placeholder="Search by title, SKU, or vendor..."
+              prefix={<Icon source={SearchIcon} />}
+              clearButton
+              onClearButtonClick={() => setSearchQuery('')}
+            />
+
+            {loading ? (
+              <SkeletonBodyText lines={8} />
+            ) : products.length === 0 ? (
+              <EmptyState
+                heading={searchQuery ? 'No products found' : 'No products yet'}
+                image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
+                action={{
+                  content: 'Import CSV',
+                  onAction: () => setUploadModalOpen(true)
+                }}
+              >
+                <Text>
+                  {searchQuery
+                    ? 'Try adjusting your search query'
+                    : 'Import products from CSV to see them here.'}
+                </Text>
+              </EmptyState>
+            ) : (
+              <BlockStack gap="300">
+                <DataTable
+                  columnContentTypes={['text', 'text', 'numeric', 'text', 'text', 'text']}
+                  headings={['Title', 'SKU', 'Price', 'Vendor', 'Type', 'Imported At']}
+                  rows={productRows}
+                />
+                {totalProducts > 0 && (
+                  <InlineStack align="space-between" blockAlign="center" wrap={false}>
+                    <Text variant="bodySm" tone="subdued">
+                      Showing {(currentPage - 1) * itemsPerPage + 1}-
+                      {Math.min(currentPage * itemsPerPage, totalProducts)} of {totalProducts}
+                      {searchQuery && ' (filtered)'}
+                    </Text>
+                    <InlineStack gap="300" blockAlign="center">
+                      <Select
+                        label="Per page"
+                        labelInline
+                        options={[
+                          {label: '50', value: '50'},
+                          {label: '100', value: '100'},
+                          {label: '200', value: '200'}
+                        ]}
+                        value={String(itemsPerPage)}
+                        onChange={value => {
+                          setItemsPerPage(Number(value));
+                          setCurrentPage(1);
+                        }}
+                      />
                       <Button
-                        variant="primary"
-                        onClick={handleUpload}
-                        loading={uploading}
-                        disabled={files.length === 0}
+                        size="slim"
+                        onClick={() => setCurrentPage(currentPage - 1)}
+                        disabled={currentPage === 1 || loading}
                       >
-                        Upload & Import {files.length} File{files.length !== 1 ? 's' : ''}
+                        &larr;
+                      </Button>
+                      <Text variant="bodySm">
+                        {currentPage} / {totalPages}
+                      </Text>
+                      <Button
+                        size="slim"
+                        onClick={() => setCurrentPage(currentPage + 1)}
+                        disabled={currentPage === totalPages || loading}
+                      >
+                        &rarr;
                       </Button>
                     </InlineStack>
-
-                    {queueStats && (
-                      <Card>
-                        <BlockStack gap="400">
-                          <InlineStack align="space-between" blockAlign="center">
-                            <Text as="h2" variant="headingMd">Import Queue Status</Text>
-                            <Button
-                              onClick={handleProcessQueue}
-                              loading={processingQueue}
-                              disabled={queueStats.pending === 0}
-                              variant="primary"
-                            >
-                              Manual Process Now
-                            </Button>
-                          </InlineStack>
-
-                          <InlineStack gap="400" wrap>
-                            <Box padding="400" background="bg-surface-secondary" borderRadius="200" minWidth="120px">
-                              <BlockStack gap="200">
-                                <InlineStack gap="200" blockAlign="center">
-                                  <Icon source={ClockIcon} tone="base" />
-                                  <Text as="p" variant="bodySm" tone="subdued">Pending</Text>
-                                </InlineStack>
-                                <Text as="p" variant="heading2xl">{queueStats.pending}</Text>
-                              </BlockStack>
-                            </Box>
-                            <Box padding="400" background="bg-surface-secondary" borderRadius="200" minWidth="120px">
-                              <BlockStack gap="200">
-                                <InlineStack gap="200" blockAlign="center">
-                                  <Icon source={CheckCircleIcon} tone="success" />
-                                  <Text as="p" variant="bodySm" tone="subdued">Completed</Text>
-                                </InlineStack>
-                                <Text as="p" variant="heading2xl">{queueStats.completed}</Text>
-                              </BlockStack>
-                            </Box>
-                            <Box padding="400" background="bg-surface-secondary" borderRadius="200" minWidth="120px">
-                              <BlockStack gap="200">
-                                <InlineStack gap="200" blockAlign="center">
-                                  <Icon source={AlertCircleIcon} tone="critical" />
-                                  <Text as="p" variant="bodySm" tone="subdued">Failed</Text>
-                                </InlineStack>
-                                <Text as="p" variant="heading2xl">{queueStats.failed}</Text>
-                              </BlockStack>
-                            </Box>
-                          </InlineStack>
-                        </BlockStack>
-                      </Card>
-                    )}
-                  </BlockStack>
+                  </InlineStack>
                 )}
+              </BlockStack>
+            )}
+          </BlockStack>
+        </Card>
+      </BlockStack>
 
-                {selectedTab === 1 && (
-                  <BlockStack gap="400">
-                    <Text as="h2" variant="headingMd">Imported Products</Text>
+      {/* Upload Modal */}
+      <Modal
+        open={uploadModalOpen}
+        onClose={handleCloseModal}
+        title="Import Products from CSV"
+        primaryAction={{
+          content: files.length > 0
+            ? `Upload ${files.length} File${files.length !== 1 ? 's' : ''}`
+            : 'Upload',
+          onAction: handleUpload,
+          loading: uploading,
+          disabled: files.length === 0
+        }}
+        secondaryActions={[{content: 'Cancel', onAction: handleCloseModal, disabled: uploading}]}
+      >
+        <Modal.Section>
+          <BlockStack gap="400">
+            <DropZone
+              onDrop={handleDropZoneDrop}
+              accept=".csv,text/csv"
+              type="file"
+              allowMultiple
+              disabled={uploading}
+            >
+              <DropZone.FileUpload actionHint="Accepts .csv files" />
+            </DropZone>
 
-                    <TextField
-                      label="Search"
-                      labelHidden
-                      value={searchQuery}
-                      onChange={setSearchQuery}
-                      placeholder="Search by title, SKU, or vendor..."
-                      prefix={<Icon source={SearchIcon} />}
-                      clearButton
-                      onClearButtonClick={() => setSearchQuery('')}
+            {files.length > 0 && (
+              <BlockStack gap="200">
+                <Text variant="headingSm" as="h3">
+                  {files.length} file{files.length !== 1 ? 's' : ''} selected
+                </Text>
+                <Divider />
+                {files.map((f, index) => (
+                  <InlineStack
+                    key={`${f.name}-${index}`}
+                    align="space-between"
+                    blockAlign="center"
+                  >
+                    <InlineStack gap="200" blockAlign="center">
+                      <Badge size="small">{(f.size / 1024).toFixed(1)} KB</Badge>
+                      <Text variant="bodyMd">{f.name}</Text>
+                    </InlineStack>
+                    <Button
+                      onClick={() => handleFileRemove(index)}
+                      icon={DeleteIcon}
+                      size="slim"
+                      tone="critical"
+                      variant="plain"
+                      disabled={uploading}
                     />
+                  </InlineStack>
+                ))}
+              </BlockStack>
+            )}
 
-                    {loading ? (
-                      <SkeletonBodyText lines={8} />
-                    ) : products.length === 0 ? (
-                      <EmptyState
-                        heading={searchQuery ? 'No products found' : 'No products yet'}
-                        image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
-                      >
-                        {searchQuery ? (
-                          <p>Try adjusting your search query</p>
-                        ) : (
-                          <p>Import products from CSV to see them here.</p>
-                        )}
-                      </EmptyState>
-                    ) : (
-                      <>
-                        <DataTable
-                          columnContentTypes={['text', 'text', 'numeric', 'text', 'text', 'text']}
-                          headings={['Title', 'SKU', 'Price', 'Vendor', 'Type', 'Imported At']}
-                          rows={productRows}
-                        />
-                        {totalProducts > 0 && (
-                          <Box padding="400">
-                            <InlineStack align="space-between" blockAlign="center" wrap={false}>
-                              <Text as="p" variant="bodySm" tone="subdued">
-                                Showing {(currentPage - 1) * itemsPerPage + 1}-
-                                {Math.min(currentPage * itemsPerPage, totalProducts)} of {totalProducts}
-                                {searchQuery && ' (filtered)'}
-                              </Text>
-                              <InlineStack gap="300" blockAlign="center">
-                                <Select
-                                  label="Per page"
-                                  labelInline
-                                  options={[
-                                    {label: '50', value: '50'},
-                                    {label: '100', value: '100'},
-                                    {label: '200', value: '200'}
-                                  ]}
-                                  value={String(itemsPerPage)}
-                                  onChange={value => {
-                                    setItemsPerPage(Number(value));
-                                    setCurrentPage(1);
-                                  }}
-                                />
-                                <Button
-                                  size="slim"
-                                  onClick={() => setCurrentPage(currentPage - 1)}
-                                  disabled={currentPage === 1 || loading}
-                                >
-                                  &larr;
-                                </Button>
-                                <Text as="span" variant="bodySm">
-                                  {currentPage} / {totalPages}
-                                </Text>
-                                <Button
-                                  size="slim"
-                                  onClick={() => setCurrentPage(currentPage + 1)}
-                                  disabled={currentPage === totalPages || loading}
-                                >
-                                  &rarr;
-                                </Button>
-                              </InlineStack>
-                            </InlineStack>
-                          </Box>
-                        )}
-                      </>
-                    )}
-                  </BlockStack>
-                )}
-              </div>
-            </Tabs>
-          </Card>
-        </Layout.Section>
-      </Layout>
+            <Button onClick={handleDownloadTemplate} variant="plain" size="slim">
+              Download CSV template
+            </Button>
+          </BlockStack>
+        </Modal.Section>
+      </Modal>
     </Page>
   );
 }

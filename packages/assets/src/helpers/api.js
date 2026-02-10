@@ -13,7 +13,7 @@ export async function api(url, options = {}) {
     }
   };
 
-  if (isEmbeddedApp) {
+  if (isEmbeddedApp && window.shopify) {
     const token = await window.shopify.idToken();
     mergedOptions.headers.Authorization = `Bearer ${token}`;
   } else {

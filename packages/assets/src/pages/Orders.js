@@ -13,7 +13,8 @@ import {
   Modal,
   List,
   Collapsible,
-  Spinner
+  Spinner,
+  Box
 } from '@shopify/polaris';
 import {api} from '../helpers/api';
 
@@ -131,10 +132,7 @@ export default function Orders() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [storesRes, sheetsRes] = await Promise.all([
-        api('/api/stores'),
-        api('/api/sheets')
-      ]);
+      const [storesRes, sheetsRes] = await Promise.all([api('/api/stores'), api('/api/sheets')]);
 
       const [storesData, sheetsData] = await Promise.all([storesRes.json(), sheetsRes.json()]);
 
@@ -558,9 +556,11 @@ export default function Orders() {
                   </div>
 
                   <div style={{display: 'flex', flexDirection: 'column', gap: '8px'}}>
-                    <Button primary onClick={handleRegisterWebhooks} loading={registeringWebhook}>
-                      Auto-Register Webhook
-                    </Button>
+                    <Box>
+                      <Button primary onClick={handleRegisterWebhooks} loading={registeringWebhook}>
+                        Auto-Register Webhook
+                      </Button>
+                    </Box>
 
                     {webhookInstructions.registeredWebhooks?.length > 0 ? (
                       <Banner tone="success">Webhook registered successfully</Banner>

@@ -50,12 +50,28 @@ PolarisLink.propTypes = {
  * Following shopable pattern: same App.js, different layouts.
  */
 export default function App() {
+  const [appBridgeReady, setAppBridgeReady] = React.useState(!isEmbeddedApp);
+
   // Initialize App Bridge for embedded app
   useEffect(() => {
     if (isEmbeddedApp) {
-      initAppBridge();
+      initAppBridge()
+        .then(() => {
+          console.log('[App] App Bridge initialized successfully');
+          setAppBridgeReady(true);
+        })
+        .catch(err => {
+          console.error('[App] Failed to initialize App Bridge:', err);
+          // Still render the app even if initialization fails
+          setAppBridgeReady(true);
+        });
     }
   }, []);
+
+  // Wait for App Bridge to be ready before rendering embedded routes
+  if (isEmbeddedApp && !appBridgeReady) {
+    return null; // Or a loading spinner
+  }
 
   return (
     <BrowserRouter basename={routePrefix}>

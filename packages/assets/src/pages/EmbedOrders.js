@@ -395,7 +395,7 @@ export default function EmbedOrders() {
                   <Text variant="bodySm" as="p" tone="subdued">
                     <Badge tone="info">Beta</Badge> Google Sheets integration is currently in beta.
                   </Text>
-                  <InlineStack gap="200" align='center'>
+                  <InlineStack gap="200" align="center">
                     <Button variant="primary" onClick={handleAddSheet} loading={addingSheet}>
                       Connect & Select Sheet
                     </Button>

@@ -1,7 +1,9 @@
 import createApp from '@shopify/app-bridge';
 import {Redirect} from '@shopify/app-bridge/actions';
+import {getSessionToken} from '@shopify/app-bridge-utils';
 
 let embedApp = null;
+let initPromise = null;
 
 /**
  * Get host parameter from URL
@@ -23,56 +25,69 @@ export function getHost() {
  * @returns {Object|null} App Bridge app instance
  */
 export function initAppBridge() {
-  if (embedApp) return embedApp;
-
-  const host = getHost();
-  if (!host) {
-    console.warn('No host parameter found for App Bridge');
-    return null;
+  // Return existing promise if initialization is in progress
+  if (initPromise) {
+    console.log('[AppBridge] Initialization in progress, returning existing promise');
+    return initPromise;
   }
 
-  const apiKey = import.meta.env.VITE_SHOPIFY_API_KEY || '3de04076a60f0c67a6ce18f5e7ff2b30';
+  if (embedApp) {
+    console.log('[AppBridge] Already initialized');
+    return Promise.resolve(embedApp);
+  }
 
-  embedApp = createApp({
-    apiKey,
-    host,
-    forceRedirect: false
+  // Create initialization promise
+  initPromise = new Promise((resolve, reject) => {
+    const host = getHost();
+    console.log('[AppBridge] Initializing with host:', host);
+    if (!host) {
+      console.warn('[AppBridge] No host parameter found for App Bridge');
+      reject(new Error('No host parameter found'));
+      return;
+    }
+
+    const apiKey = import.meta.env.VITE_SHOPIFY_API_KEY || '3de04076a60f0c67a6ce18f5e7ff2b30';
+    console.log('[AppBridge] Using API key:', apiKey?.substring(0, 8) + '...');
+
+    try {
+      embedApp = createApp({
+        apiKey,
+        host,
+        forceRedirect: false
+      });
+
+      console.log('[AppBridge] App created successfully');
+
+      // Set up global shopify object for compatibility
+      window.shopify = {
+        idToken: async () => {
+          if (!embedApp) {
+            console.error('[AppBridge] App Bridge not initialized');
+            return null;
+          }
+
+          try {
+            console.log('[AppBridge] Requesting session token...');
+            // Use correct getSessionToken utility function from app-bridge-utils
+            const token = await getSessionToken(embedApp);
+            console.log('[AppBridge] Got session token, length:', token?.length, 'parts:', token?.split('.').length);
+            return token;
+          } catch (error) {
+            console.error('[AppBridge] Failed to get session token:', error);
+            return null;
+          }
+        }
+      };
+
+      console.log('[AppBridge] window.shopify.idToken set up');
+      resolve(embedApp);
+    } catch (error) {
+      console.error('[AppBridge] Failed to create app:', error);
+      reject(error);
+    }
   });
 
-  // Set up global shopify object for compatibility
-  window.shopify = {
-    idToken: async () => {
-      if (!embedApp) return null;
-
-      try {
-        const token = await new Promise((resolve, reject) => {
-          // Get session token from App Bridge
-          const unsubscribe = embedApp.subscribe('SessionToken', (data) => {
-            if (data && data.token) {
-              resolve(data.token);
-              unsubscribe();
-            }
-          });
-
-          // Request session token
-          embedApp.getSessionToken?.().then(resolve).catch(reject);
-
-          // Timeout after 5 seconds
-          setTimeout(() => {
-            unsubscribe();
-            reject(new Error('Session token timeout'));
-          }, 5000);
-        });
-
-        return token;
-      } catch (error) {
-        console.error('Failed to get session token:', error);
-        return null;
-      }
-    }
-  };
-
-  return embedApp;
+  return initPromise;
 }
 
 /**

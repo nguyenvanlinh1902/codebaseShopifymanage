@@ -45,13 +45,18 @@ export async function getGoogleAuthUrl(req, res) {
 /**
  * POST /api/google/exchange
  * Exchange authorization code for tokens and save (multi-account)
+ * SECURITY: Now requires storeId for proper data isolation
  */
 export async function exchangeGoogleCode(req, res) {
   try {
-    const {code, userId} = req.body;
+    const {code, userId, storeId} = req.body;
 
     if (!code || !userId) {
       return res.status(400).json({success: false, error: 'code and userId are required'});
+    }
+
+    if (!storeId) {
+      return res.status(400).json({success: false, error: 'storeId is required for security'});
     }
 
     const oauth2Client = createOAuth2Client();
@@ -68,7 +73,8 @@ export async function exchangeGoogleCode(req, res) {
       // email is optional
     }
 
-    await authRepo.upsertByEmail(userId, googleEmail, {
+    // SECURITY FIX: Use store-scoped method
+    await authRepo.upsertByStoreAndEmail(storeId, userId, googleEmail, {
       refreshToken: tokens.refresh_token,
       scopes: GOOGLE_SHEETS_CONFIG.scopes
     });
@@ -123,16 +129,22 @@ export async function exchangeGoogleCodeTemp(req, res) {
 /**
  * GET /api/google/status
  * Check if user has any valid Google auth
+ * SECURITY: Now requires storeId for proper data isolation
  */
 export async function checkGoogleAuth(req, res) {
   try {
-    const {userId} = req.query;
+    const {userId, storeId} = req.query;
 
     if (!userId) {
       return res.status(400).json({success: false, error: 'userId is required'});
     }
 
-    const allRecords = await authRepo.getAllByUserId(userId);
+    if (!storeId) {
+      return res.status(400).json({success: false, error: 'storeId is required for security'});
+    }
+
+    // SECURITY FIX: Use store-scoped method
+    const allRecords = await authRepo.getAllByStoreAndUser(storeId, userId);
     const validRecord = allRecords.find(r => r.refreshToken);
 
     if (!validRecord) {
@@ -155,16 +167,22 @@ export async function checkGoogleAuth(req, res) {
 /**
  * POST /api/google/disconnect
  * Remove Google auth for a user
+ * SECURITY: Now requires storeId for proper data isolation
  */
 export async function disconnectGoogle(req, res) {
   try {
-    const {userId} = req.body;
+    const {userId, storeId} = req.body;
 
     if (!userId) {
       return res.status(400).json({success: false, error: 'userId is required'});
     }
 
-    await authRepo.delete(userId);
+    if (!storeId) {
+      return res.status(400).json({success: false, error: 'storeId is required for security'});
+    }
+
+    // SECURITY FIX: Use store-scoped method
+    await authRepo.deleteByStore(storeId, userId);
     return res.json({success: true, message: 'Google account disconnected'});
   } catch (error) {
     console.error('Disconnect Google error:', error);
@@ -175,16 +193,22 @@ export async function disconnectGoogle(req, res) {
 /**
  * GET /api/google/picker-token
  * Get fresh access token + config for Google Picker
+ * SECURITY: Now requires storeId for proper data isolation
  */
 export async function getPickerToken(req, res) {
   try {
-    const {userId} = req.query;
+    const {userId, storeId} = req.query;
 
     if (!userId) {
       return res.status(400).json({success: false, error: 'userId is required'});
     }
 
-    const authRecord = await authRepo.getByUserId(userId);
+    if (!storeId) {
+      return res.status(400).json({success: false, error: 'storeId is required for security'});
+    }
+
+    // SECURITY FIX: Use store-scoped method
+    const authRecord = await authRepo.getByStoreAndUser(storeId, userId);
 
     if (!authRecord || !authRecord.refreshToken) {
       return res.status(401).json({success: false, error: 'Not authenticated with Google'});
@@ -214,27 +238,33 @@ export async function getPickerToken(req, res) {
 /**
  * GET /api/google/account-token
  * Get fresh access token for a specific Google account
+ * SECURITY: Now requires storeId for proper data isolation
  */
 export async function getAccountToken(req, res) {
   try {
-    const {userId, googleEmail} = req.query;
+    const {userId, googleEmail, storeId} = req.query;
 
     if (!userId || !googleEmail) {
       return res.status(400).json({success: false, error: 'userId and googleEmail are required'});
     }
 
+    if (!storeId) {
+      return res.status(400).json({success: false, error: 'storeId is required for security'});
+    }
+
     const appId = GOOGLE_OAUTH_CONFIG.clientId?.split('-')[0] || '';
 
     // Find refresh_token: auth records first, then sheet records
+    // SECURITY FIX: Use store-scoped methods
     let refreshToken = null;
 
-    const authRecord = await authRepo.getByUserIdAndEmail(userId, googleEmail);
+    const authRecord = await authRepo.getByStoreUserAndEmail(storeId, userId, googleEmail);
     if (authRecord) {
       refreshToken = authRecord.refreshToken;
     }
 
     if (!refreshToken) {
-      const userSheets = await sheetRepo.getByUserId(userId);
+      const userSheets = await sheetRepo.getByStoreAndUser(storeId, userId);
       const donor = userSheets.find(s => s.googleEmail === googleEmail && s.refreshToken);
       if (donor) refreshToken = donor.refreshToken;
     }
@@ -267,20 +297,26 @@ export async function getAccountToken(req, res) {
 /**
  * POST /api/google/disconnect-account
  * Disconnect a specific Google account: remove auth record + delete all its sheets
+ * SECURITY: Now requires storeId for proper data isolation
  */
 export async function disconnectAccount(req, res) {
   try {
-    const {userId, googleEmail} = req.body;
+    const {userId, googleEmail, storeId} = req.body;
 
     if (!userId || !googleEmail) {
       return res.status(400).json({success: false, error: 'userId and googleEmail are required'});
     }
 
-    // Remove auth record for this email
-    await authRepo.deleteByEmail(userId, googleEmail);
+    if (!storeId) {
+      return res.status(400).json({success: false, error: 'storeId is required for security'});
+    }
 
-    // Remove all sheets belonging to this Google account
-    const userSheets = await sheetRepo.getByUserId(userId);
+    // SECURITY FIX: Use store-scoped methods
+    // Remove auth record for this email
+    await authRepo.deleteByStoreAndEmail(storeId, userId, googleEmail);
+
+    // Remove all sheets belonging to this Google account (within this store only)
+    const userSheets = await sheetRepo.getByStoreAndUser(storeId, userId);
     const sheetsToDelete = userSheets.filter(s => s.googleEmail === googleEmail);
     for (const sheet of sheetsToDelete) {
       await sheetRepo.delete(sheet.id);
@@ -300,24 +336,30 @@ export async function disconnectAccount(req, res) {
 /**
  * POST /api/google/bulk-disconnect-accounts
  * Disconnect multiple Google accounts at once
+ * SECURITY: Now requires storeId for proper data isolation
  */
 export async function bulkDisconnectAccounts(req, res) {
   try {
-    const {userId, emails} = req.body;
+    const {userId, emails, storeId} = req.body;
 
     if (!userId || !Array.isArray(emails) || emails.length === 0) {
       return res.status(400).json({success: false, error: 'userId and emails array are required'});
     }
 
+    if (!storeId) {
+      return res.status(400).json({success: false, error: 'storeId is required for security'});
+    }
+
     let totalDeletedSheets = 0;
 
+    // SECURITY FIX: Use store-scoped methods
     const results = await Promise.allSettled(
       emails.map(async googleEmail => {
         // Remove auth record for this email
-        await authRepo.deleteByEmail(userId, googleEmail);
+        await authRepo.deleteByStoreAndEmail(storeId, userId, googleEmail);
 
-        // Remove all sheets belonging to this Google account
-        const userSheets = await sheetRepo.getByUserId(userId);
+        // Remove all sheets belonging to this Google account (within this store only)
+        const userSheets = await sheetRepo.getByStoreAndUser(storeId, userId);
         const sheetsToDelete = userSheets.filter(s => s.googleEmail === googleEmail);
         for (const sheet of sheetsToDelete) {
           await sheetRepo.delete(sheet.id);
@@ -347,29 +389,34 @@ export async function bulkDisconnectAccounts(req, res) {
 /**
  * GET /api/google/connected-accounts
  * Get paginated list of connected Google accounts with sheet counts
+ * SECURITY: Now requires storeId for proper data isolation
  */
 export async function getConnectedAccounts(req, res) {
   try {
-    const {userId, page, limit, search} = req.query;
+    const {userId, page, limit, search, storeId} = req.query;
 
     if (!userId) {
       return res.status(400).json({success: false, error: 'userId is required'});
     }
 
+    if (!storeId) {
+      return res.status(400).json({success: false, error: 'storeId is required for security'});
+    }
+
     const pageNum = Math.max(1, parseInt(page) || 1);
     const limitNum = Math.min(50, Math.max(1, parseInt(limit) || 5));
 
-    // Build accounts map from ALL auth records + sheets
+    // SECURITY FIX: Build accounts map from store-scoped records only
     const accountMap = new Map();
 
-    const allAuthRecords = await authRepo.getAllByUserId(userId);
+    const allAuthRecords = await authRepo.getAllByStoreAndUser(storeId, userId);
     allAuthRecords.forEach(record => {
       if (record.googleEmail) {
         accountMap.set(record.googleEmail, {email: record.googleEmail, sheetCount: 0});
       }
     });
 
-    const userSheets = await sheetRepo.getByUserId(userId);
+    const userSheets = await sheetRepo.getByStoreAndUser(storeId, userId);
     userSheets.forEach(sheet => {
       if (!sheet.googleEmail) return;
       if (accountMap.has(sheet.googleEmail)) {

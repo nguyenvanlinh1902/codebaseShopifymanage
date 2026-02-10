@@ -7,19 +7,34 @@ const storeRepo = new StoreRepository();
 /**
  * Middleware to verify Shopify session token (JWT) from App Bridge.
  * Extracts shop domain and attaches store info to request.
+ * SECURITY: Store lookup is now synchronous to prevent race conditions.
  */
-export function verifyShopifySession(req, res, next) {
+export async function verifyShopifySession(req, res, next) {
   const authHeader = req.get('Authorization');
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    console.error('[verifyShopifySession] Missing or invalid Authorization header:', authHeader);
     return res.status(401).json({success: false, error: 'Missing session token'});
   }
 
   const token = authHeader.replace('Bearer ', '');
+  console.log(
+    '[verifyShopifySession] Token received, length:',
+    token?.length,
+    'starts with:',
+    token?.substring(0, 20)
+  );
 
   try {
     // Decode JWT (header.payload.signature)
     const parts = token.split('.');
+    console.log('[verifyShopifySession] Token parts:', parts.length);
     if (parts.length !== 3) {
+      console.error(
+        '[verifyShopifySession] Invalid token format. Parts:',
+        parts.length,
+        'Token:',
+        token.substring(0, 50)
+      );
       return res.status(401).json({success: false, error: 'Invalid token format'});
     }
 
@@ -66,18 +81,29 @@ export function verifyShopifySession(req, res, next) {
     req.shopDomain = shopDomain;
     req.sessionToken = payload;
 
-    // Lookup store in background, attach to request
-    storeRepo
-      .getByShopDomain(shopDomain)
-      .then(store => {
-        req.store = store;
-        next();
-      })
-      .catch(err => {
-        console.error('Error looking up store:', err);
-        req.store = null;
-        next();
+    // SECURITY FIX: Wait for store lookup to complete BEFORE calling next()
+    // This prevents race conditions where req.store might be undefined or wrong
+    try {
+      const store = await storeRepo.getByShopDomain(shopDomain);
+      req.store = store;
+
+      if (!store) {
+        console.warn('[verifyShopifySession] Store not found for shop:', shopDomain);
+        return res.status(404).json({
+          success: false,
+          error: 'Store not found. Please reinstall the app.'
+        });
+      }
+
+      console.log('[verifyShopifySession] Store found:', store.id, 'userId:', store.userId);
+      next();
+    } catch (err) {
+      console.error('[verifyShopifySession] Error looking up store:', err);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to verify store'
       });
+    }
   } catch (error) {
     console.error('Session token verification error:', error);
     return res.status(401).json({success: false, error: 'Invalid session token'});

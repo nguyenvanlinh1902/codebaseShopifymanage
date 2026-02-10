@@ -27,9 +27,14 @@ export class SheetRepository {
   }
 
   /**
-   * Create a new sheet connection
+   * SECURITY: Create a new sheet connection with store isolation
+   * @param {object} sheetData - Must include storeId for data isolation
    */
   async create(sheetData) {
+    if (!sheetData.storeId) {
+      throw new Error('storeId is required for sheet creation');
+    }
+
     const docRef = await this.collection.add({
       ...sheetData,
       createdAt: new Date().toISOString(),
@@ -59,9 +64,28 @@ export class SheetRepository {
   }
 
   /**
+   * SECURITY: Get all sheets for a store + user
+   * @param {string} storeId - Store ID (required for data isolation)
+   * @param {string} userId - User ID
+   */
+  async getByStoreAndUser(storeId, userId) {
+    const snapshot = await this.collection
+      .where('storeId', '==', storeId)
+      .where('userId', '==', userId)
+      .get();
+
+    return snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+  }
+
+  /**
    * Get all sheets for a user
+   * @deprecated Use getByStoreAndUser for proper data isolation
    */
   async getByUserId(userId) {
+    console.warn('[SheetRepository] getByUserId is deprecated - use getByStoreAndUser');
     const snapshot = await this.collection.where('userId', '==', userId).get();
 
     return snapshot.docs.map(doc => ({
@@ -71,9 +95,42 @@ export class SheetRepository {
   }
 
   /**
+   * SECURITY: Get sheets for a store + user with server-side pagination
+   * @param {string} storeId - Store ID (required for data isolation)
+   * @param {string} userId - User ID
+   * @param {object} options - Pagination options
+   */
+  async getByStoreAndUserPaginated(storeId, userId, {page = 1, limit = 5} = {}) {
+    const baseQuery = this.collection
+      .where('storeId', '==', storeId)
+      .where('userId', '==', userId);
+
+    // Get total count
+    const countSnapshot = await baseQuery.count().get();
+    const total = countSnapshot.data().count;
+
+    // Get paginated results
+    const offset = (page - 1) * limit;
+    const snapshot = await baseQuery
+      .orderBy('createdAt', 'desc')
+      .offset(offset)
+      .limit(limit)
+      .get();
+
+    const sheets = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+
+    return {sheets, total, page, limit};
+  }
+
+  /**
    * Get sheets for a user with server-side pagination
+   * @deprecated Use getByStoreAndUserPaginated for proper data isolation
    */
   async getByUserIdPaginated(userId, {page = 1, limit = 5} = {}) {
+    console.warn('[SheetRepository] getByUserIdPaginated is deprecated - use getByStoreAndUserPaginated');
     const baseQuery = this.collection.where('userId', '==', userId);
 
     // Get total count

@@ -125,15 +125,23 @@ export async function connectSheet(req, res) {
 
 /**
  * Get all sheets for a user
+ * SECURITY: Now requires storeId for proper data isolation
  */
 export async function getSheets(req, res) {
   try {
-    const {userId, page, limit, search} = req.query;
+    const {userId, page, limit, search, storeId} = req.query;
 
     if (!userId) {
       return res.status(400).json({
         success: false,
         error: 'userId is required'
+      });
+    }
+
+    if (!storeId) {
+      return res.status(400).json({
+        success: false,
+        error: 'storeId is required for security'
       });
     }
 
@@ -144,8 +152,8 @@ export async function getSheets(req, res) {
     let total;
 
     if (search) {
-      // Fetch all and filter in memory (Firestore has no text search)
-      const allSheets = await sheetRepo.getByUserId(userId);
+      // SECURITY FIX: Fetch all from store-scoped method
+      const allSheets = await sheetRepo.getByStoreAndUser(storeId, userId);
       const searchLower = search.toLowerCase();
       const filtered = allSheets.filter(
         s =>
@@ -156,7 +164,8 @@ export async function getSheets(req, res) {
       const offset = (pageNum - 1) * limitNum;
       sheets = filtered.slice(offset, offset + limitNum);
     } else {
-      const result = await sheetRepo.getByUserIdPaginated(userId, {
+      // SECURITY FIX: Use store-scoped paginated method
+      const result = await sheetRepo.getByStoreAndUserPaginated(storeId, userId, {
         page: pageNum,
         limit: limitNum
       });

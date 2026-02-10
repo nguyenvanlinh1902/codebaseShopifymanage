@@ -23,6 +23,7 @@ import {
 } from '@shopify/polaris-icons';
 import {useNavigate} from 'react-router-dom';
 import {api} from '../../helpers/api';
+import {useGoogleAuth} from '../../hooks/useGoogleAuth';
 
 const STEPS = [
   {key: 'welcome', title: 'Welcome', icon: CheckCircleIcon},
@@ -113,9 +114,10 @@ FeatureCard.propTypes = {
 
 export default function EmbedOnboarding() {
   const [currentStep, setCurrentStep] = useState(0);
-  const [googleConnected, setGoogleConnected] = useState(false);
   const [error, setError] = useState(null);
   const navigate = useNavigate();
+
+  const {authenticated: googleConnected, startAuth, checkAuth} = useGoogleAuth();
 
   const progress = ((currentStep + 1) / STEPS.length) * 100;
 
@@ -142,24 +144,13 @@ export default function EmbedOnboarding() {
 
   const handleConnectGoogle = useCallback(async () => {
     try {
-      const response = await api('/api/embed/google/auth-url');
-      const data = await response.json();
-      if (data.success && data.data?.url) {
-        window.open(data.data.url, '_blank');
-        setTimeout(async () => {
-          const checkRes = await api('/api/embed/google/status');
-          const checkData = await checkRes.json();
-          if (checkData.success && checkData.data?.connected) {
-            setGoogleConnected(true);
-          }
-        }, 5000);
-      } else {
-        setError('Unable to get Google auth URL');
-      }
+      setError(null);
+      await startAuth();
     } catch (err) {
-      setError('Failed to connect Google account');
+      // user cancelled or auth failed — already handled by useGoogleAuth
     }
-  }, []);
+    await checkAuth();
+  }, [startAuth, checkAuth]);
 
   const renderStepContent = () => {
     switch (currentStep) {

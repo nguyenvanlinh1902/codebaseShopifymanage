@@ -1,5 +1,5 @@
-import {Router} from 'express';
-import {verifyShopifySession} from '../middleware/verifyShopifySession.js';
+import { Router } from 'express';
+import { verifyShopifySession } from '../middleware/verifyShopifySession.js';
 import * as productImportController from '../controllers/productImportController.js';
 import * as orderSyncController from '../controllers/orderSyncController.js';
 import * as sheetController from '../controllers/sheetController.js';
@@ -27,7 +27,7 @@ router.use((req, res, next) => {
 // Get current store info
 router.get('/store', (req, res) => {
   if (!req.store) {
-    return res.status(404).json({success: false, error: 'Store not found'});
+    return res.status(404).json({ success: false, error: 'Store not found' });
   }
   return res.json({
     success: true,
@@ -100,6 +100,17 @@ router.get('/google/status', async (req, res) => {
   };
   return googleAuthController.checkGoogleAuth(req, res);
 });
+
+router.post('/google/disconnect', (req, res) => {
+  if (req.store) {
+    if (!req.body || typeof req.body !== 'object') req.body = {};
+    req.body.storeId = req.store.id;
+    req.body.userId = req.store.userId || req.userId || 'default-user';
+  }
+  return googleAuthController.disconnectGoogle(req, res);
+});
+
+router.get('/google/picker-token', googleAuthController.getPickerToken);
 
 // Sheets - reuse existing controllers
 router.get('/sheets', sheetController.getSheets);

@@ -1,7 +1,7 @@
 import React from 'react';
 import PropTypes from 'prop-types';
 import {NavMenu} from '@shopify/app-bridge-react';
-import {NavLink, useLocation} from 'react-router-dom';
+import {Link, useLocation} from 'react-router-dom';
 
 /**
  * AppBridgeProvider - Renders NavMenu for embedded app
@@ -13,18 +13,18 @@ export default function AppBridgeProvider({children}) {
   return (
     <>
       <NavMenu>
-        <NavLink to="/" rel="home">
+        <Link to="/" rel="home">
           Dashboard
-        </NavLink>
-        <NavLink to="/products" isActive={() => location.pathname === '/products'}>
+        </Link>
+        <Link to="/products" className={location.pathname === '/products' ? 'active' : ''}>
           Products Import
-        </NavLink>
-        <NavLink to="/orders" isActive={() => location.pathname === '/orders'}>
+        </Link>
+        <Link to="/orders" className={location.pathname === '/orders' ? 'active' : ''}>
           Orders & Sheets
-        </NavLink>
-        <NavLink to="/settings" isActive={() => location.pathname === '/settings'}>
+        </Link>
+        <Link to="/settings" className={location.pathname === '/settings' ? 'active' : ''}>
           Settings
-        </NavLink>
+        </Link>
       </NavMenu>
       {children}
     </>

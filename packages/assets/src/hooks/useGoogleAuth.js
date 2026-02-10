@@ -1,16 +1,23 @@
-import {useState, useEffect, useCallback} from 'react';
+import {useState, useEffect, useCallback, useRef} from 'react';
 import {api} from '../helpers/api';
+import {isEmbeddedApp} from '../config/app';
 
 export function useGoogleAuth() {
   const [authenticated, setAuthenticated] = useState(false);
   const [googleEmail, setGoogleEmail] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const mountedRef = useRef(false);
+
+  // Use embed-specific endpoints when in embedded app context
+  const getEndpoint = useCallback(path => {
+    return isEmbeddedApp ? `/api/embed${path}` : `/api${path}`;
+  }, []);
 
   const checkAuth = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await api(`/api/google/status`);
+      const response = await api(getEndpoint('/google/status'));
       const result = await response.json();
 
       if (result.success && result.data.authenticated) {
@@ -26,16 +33,20 @@ export function useGoogleAuth() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [getEndpoint]);
 
+  // Only check auth once on mount to reduce API calls
   useEffect(() => {
-    checkAuth();
+    if (!mountedRef.current) {
+      mountedRef.current = true;
+      checkAuth();
+    }
   }, [checkAuth]);
 
   const startAuth = useCallback(() => {
     return new Promise(async (resolve, reject) => {
       try {
-        const response = await api(`/api/google/auth-url`);
+        const response = await api(getEndpoint('/google/auth-url'));
         const result = await response.json();
         if (!result.success) {
           setError(result.error || 'Failed to get authorization URL');
@@ -84,11 +95,11 @@ export function useGoogleAuth() {
         reject(err);
       }
     });
-  }, []);
+  }, [getEndpoint]);
 
   const disconnect = useCallback(async () => {
     try {
-      const response = await api('/api/google/disconnect', {
+      const response = await api(getEndpoint('/google/disconnect'), {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({})
@@ -101,12 +112,12 @@ export function useGoogleAuth() {
     } catch (err) {
       setError('Failed to disconnect');
     }
-  }, []);
+  }, [getEndpoint]);
 
   const startAuthForNewAccount = useCallback(() => {
     return new Promise(async (resolve, reject) => {
       try {
-        const response = await api(`/api/google/auth-url?mode=temp`);
+        const response = await api(getEndpoint('/google/auth-url?mode=temp'));
         const result = await response.json();
         if (!result.success) {
           reject(new Error(result.error || 'Failed to get authorization URL'));
@@ -151,11 +162,11 @@ export function useGoogleAuth() {
         reject(err);
       }
     });
-  }, []);
+  }, [getEndpoint]);
 
   const getPickerToken = useCallback(async () => {
     try {
-      const response = await api(`/api/google/picker-token`);
+      const response = await api(getEndpoint('/google/picker-token'));
       const result = await response.json();
       if (result.success) {
         return result.data;
@@ -165,7 +176,7 @@ export function useGoogleAuth() {
       setError(err.message);
       return null;
     }
-  }, []);
+  }, [getEndpoint]);
 
   return {
     authenticated,

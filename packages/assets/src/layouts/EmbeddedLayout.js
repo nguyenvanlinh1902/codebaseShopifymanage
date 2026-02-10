@@ -1,9 +1,14 @@
 import React from 'react';
 import PropTypes from 'prop-types';
 import {Frame} from '@shopify/polaris';
+import AppBridgeProvider from '../components/AppBridgeProvider';
 
 export default function EmbeddedLayout({children}) {
-  return <Frame>{children}</Frame>;
+  return (
+    <AppBridgeProvider>
+      <Frame>{children}</Frame>
+    </AppBridgeProvider>
+  );
 }
 
 EmbeddedLayout.propTypes = {

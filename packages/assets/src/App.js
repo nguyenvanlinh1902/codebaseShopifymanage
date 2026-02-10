@@ -1,11 +1,11 @@
-import React, {forwardRef} from 'react';
+import React, {forwardRef, useEffect} from 'react';
 import PropTypes from 'prop-types';
 import {BrowserRouter, Routes, Route, Link as RouterLink} from 'react-router-dom';
 import {AppProvider} from '@shopify/polaris';
 import '@shopify/polaris/build/esm/styles.css';
 import enTranslations from '@shopify/polaris/locales/en.json';
 
-import {isEmbeddedApp, routePrefix} from './config/app';
+import {isEmbeddedApp, routePrefix, initAppBridge} from './config/app';
 
 // Layouts
 import EmbeddedLayout from './layouts/EmbeddedLayout';
@@ -50,12 +50,16 @@ PolarisLink.propTypes = {
  * Following shopable pattern: same App.js, different layouts.
  */
 export default function App() {
+  // Initialize App Bridge for embedded app
+  useEffect(() => {
+    if (isEmbeddedApp) {
+      initAppBridge();
+    }
+  }, []);
+
   return (
     <BrowserRouter basename={routePrefix}>
-      <AppProvider
-        i18n={enTranslations}
-        linkComponent={isEmbeddedApp ? undefined : PolarisLink}
-      >
+      <AppProvider i18n={enTranslations} linkComponent={isEmbeddedApp ? undefined : PolarisLink}>
         {isEmbeddedApp ? <EmbeddedRoutes /> : <StandaloneRoutes />}
       </AppProvider>
     </BrowserRouter>

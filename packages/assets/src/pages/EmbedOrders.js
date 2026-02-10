@@ -1,5 +1,4 @@
 import React, {useState, useEffect, useCallback, useRef} from 'react';
-import {useNavigate} from 'react-router-dom';
 import {
   Page,
   Card,
@@ -14,17 +13,20 @@ import {
   BlockStack,
   InlineStack,
   Box,
-  Icon
+  Icon,
+  EmptyState
 } from '@shopify/polaris';
 import {OrderIcon} from '@shopify/polaris-icons';
 import {api} from '../helpers/api';
+import {useGoogleAuth} from '../hooks/useGoogleAuth';
+import {useGooglePicker} from '../hooks/useGooglePicker';
 
 /**
  * Embedded Orders Page - Single store (from session token)
  * Features: Setup sync config, manual sync, webhook management
  */
 export default function EmbedOrders() {
-  const navigate = useNavigate();
+  // State
   const [sheets, setSheets] = useState([]);
   const [selectedSheet, setSelectedSheet] = useState('');
   const [sheetTabs, setSheetTabs] = useState([]);
@@ -37,7 +39,12 @@ export default function EmbedOrders() {
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
   const [syncJob, setSyncJob] = useState(null);
+  const [addingSheet, setAddingSheet] = useState(false);
   const pollIntervalRef = useRef(null);
+
+  // Google Auth & Picker (only for adding sheets)
+  const {startAuth, getPickerToken} = useGoogleAuth();
+  const {openPicker} = useGooglePicker();
 
   const fetchQueueStats = useCallback(async () => {
     try {
@@ -108,10 +115,7 @@ export default function EmbedOrders() {
         api('/api/embed/sheets'),
         api('/api/embed/orders/sync-configs')
       ]);
-      const [sheetsData, configsData] = await Promise.all([
-        sheetsRes.json(),
-        configsRes.json()
-      ]);
+      const [sheetsData, configsData] = await Promise.all([sheetsRes.json(), configsRes.json()]);
       if (sheetsData.success) setSheets(sheetsData.data);
       if (configsData.success) setSyncConfigs(configsData.data);
       fetchQueueStats();
@@ -129,6 +133,72 @@ export default function EmbedOrders() {
       if (result.success) setSyncConfigs(result.data);
     } catch (err) {
       console.error('Error fetching sync configs:', err);
+    }
+  };
+
+  const handleAddSheet = async () => {
+    try {
+      setAddingSheet(true);
+      setError(null);
+
+      // First try to get picker token (will trigger auth if needed)
+      let pickerData;
+      try {
+        pickerData = await getPickerToken();
+      } catch (err) {
+        // If no token, start auth flow first
+        try {
+          await startAuth();
+          pickerData = await getPickerToken();
+        } catch (authErr) {
+          if (authErr.message !== 'Authentication window was closed') {
+            throw authErr;
+          }
+          return;
+        }
+      }
+
+      if (!pickerData) {
+        setError('Failed to authenticate with Google');
+        return;
+      }
+
+      // Open picker
+      await openPicker({
+        accessToken: pickerData.accessToken,
+        appId: pickerData.appId,
+        onSelect: async selectedSheet => {
+          try {
+            const response = await api('/api/embed/sheets', {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({
+                spreadsheetId: selectedSheet.spreadsheetId,
+                name: selectedSheet.name,
+                url: selectedSheet.url
+              })
+            });
+            const result = await response.json();
+            if (result.success) {
+              setSuccessMessage('Sheet added successfully!');
+              await fetchData();
+            } else {
+              setError(result.error || 'Failed to add sheet');
+            }
+          } catch (err) {
+            setError('Failed to add sheet');
+          }
+        },
+        onCancel: () => {
+          // User cancelled picker
+        }
+      });
+    } catch (err) {
+      if (err.message !== 'Authentication window was closed') {
+        setError(err.message || 'Failed to add sheet');
+      }
+    } finally {
+      setAddingSheet(false);
     }
   };
 
@@ -252,10 +322,13 @@ export default function EmbedOrders() {
     <Page
       title="Orders Sync"
       subtitle="Export orders from Shopify to Google Sheets"
+      titleMetadata={<Badge tone="info">Beta</Badge>}
     >
       <BlockStack gap="400">
         {error && (
-          <Banner tone="critical" onDismiss={() => setError(null)}>{error}</Banner>
+          <Banner tone="critical" onDismiss={() => setError(null)}>
+            {error}
+          </Banner>
         )}
         {successMessage && (
           <Banner tone="success" onDismiss={() => setSuccessMessage(null)}>
@@ -269,7 +342,9 @@ export default function EmbedOrders() {
             <InlineStack gap="400" blockAlign="center">
               <Spinner size="small" />
               <BlockStack gap="050">
-                <Text variant="headingSm" as="h3" fontWeight="semibold">Syncing orders...</Text>
+                <Text variant="headingSm" as="h3" fontWeight="semibold">
+                  Syncing orders...
+                </Text>
                 <Text variant="bodySm" tone="subdued">
                   {syncJob.successCount || 0} orders synced
                   {syncJob.currentPage ? ` (page ${syncJob.currentPage})` : ''}
@@ -309,26 +384,40 @@ export default function EmbedOrders() {
             {loading ? (
               <SkeletonBodyText lines={5} />
             ) : sheets.length === 0 ? (
-              <Banner tone="warning">
-                <BlockStack gap="200">
-                  <Text variant="bodySm">
-                    No Google Sheets connected. Please connect your Google account and add a sheet
-                    first.
+              <EmptyState
+                heading="Connect Google Sheets"
+                image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
+              >
+                <BlockStack gap="400">
+                  <Text variant="bodyMd" as="p" tone="subdued">
+                    Connect your Google account and select a spreadsheet to start syncing orders.
                   </Text>
-                  <Button size="slim" onClick={() => navigate('/settings')}>
-                    Go to Settings
-                  </Button>
+                  <Text variant="bodySm" as="p" tone="subdued">
+                    <Badge tone="info">Beta</Badge> Google Sheets integration is currently in beta.
+                  </Text>
+                  <InlineStack gap="200" align='center'>
+                    <Button variant="primary" onClick={handleAddSheet} loading={addingSheet}>
+                      Connect & Select Sheet
+                    </Button>
+                  </InlineStack>
                 </BlockStack>
-              </Banner>
+              </EmptyState>
             ) : (
               <BlockStack gap="400">
-                <Select
-                  label="Select Google Sheet"
-                  options={sheetOptions}
-                  value={selectedSheet}
-                  onChange={setSelectedSheet}
-                  placeholder="Choose a sheet"
-                />
+                <InlineStack gap="200" blockAlign="end" wrap={false}>
+                  <Box width="100%">
+                    <Select
+                      label="Select Google Sheet"
+                      options={sheetOptions}
+                      value={selectedSheet}
+                      onChange={setSelectedSheet}
+                      placeholder="Choose a sheet"
+                    />
+                  </Box>
+                  <Button onClick={handleAddSheet} loading={addingSheet}>
+                    Add Sheet
+                  </Button>
+                </InlineStack>
 
                 <Select
                   label="Sheet Tab"
@@ -371,7 +460,9 @@ export default function EmbedOrders() {
         {syncConfigs.length > 0 && (
           <Card>
             <BlockStack gap="300">
-              <Text variant="headingMd" as="h2">Sync History</Text>
+              <Text variant="headingMd" as="h2">
+                Sync History
+              </Text>
               <DataTable
                 columnContentTypes={['text', 'text', 'text', 'numeric', 'text']}
                 headings={['Sheet', 'Target Tab', 'Status', 'Orders Synced', 'Last Sync']}

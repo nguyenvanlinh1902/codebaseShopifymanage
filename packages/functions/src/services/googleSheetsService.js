@@ -294,92 +294,104 @@ export class GoogleSheetsService {
   }
 
   /**
-   * Write orders to Google Sheets with headers
+   * Get order sheet headers
+   */
+  static get ORDER_HEADERS() {
+    return [
+      'STT',
+      'Order Number',
+      'Email',
+      'Created at',
+      'Base cost',
+      'Size',
+      'Type',
+      'Quantity',
+      'Product name',
+      'Product SKU',
+      'Lineitem price',
+      'Shipping Country',
+      'Payment Method',
+      'Total',
+      'Tax Total',
+      'Base cost',
+      'Fee (PP/ST & Shopify)',
+      'Note',
+      'Shipping Address',
+      'Shipping Name',
+      'Shipping Address 1',
+      'Shipping Address 2',
+      'Shipping City',
+      'Shipping Zip',
+      'Shipping State',
+      'Shipping Country Code',
+      'Shipping Phone',
+      'Custom name',
+      'Design'
+    ];
+  }
+
+  /**
+   * Ensure headers exist in sheet. If not, write them.
+   */
+  async ensureHeaders(spreadsheetId, sheetName) {
+    try {
+      const data = await this.readSheet(spreadsheetId, `${sheetName}!A1:AC1`);
+      if (!data || data.length === 0 || data[0][0] !== 'STT') {
+        await this.writeSheet(spreadsheetId, `${sheetName}!A1`, [
+          GoogleSheetsService.ORDER_HEADERS
+        ]);
+        return true;
+      }
+      return false;
+    } catch {
+      await this.writeSheet(spreadsheetId, `${sheetName}!A1`, [
+        GoogleSheetsService.ORDER_HEADERS
+      ]);
+      return true;
+    }
+  }
+
+  /**
+   * Get next STT number by reading max STT from column A
+   */
+  async getNextSTT(spreadsheetId, sheetName) {
+    try {
+      const data = await this.readSheet(spreadsheetId, `${sheetName}!A:A`);
+      if (!data || data.length <= 1) return 1;
+      let maxSTT = 0;
+      for (let i = 1; i < data.length; i++) {
+        const val = parseInt(data[i][0]);
+        if (!isNaN(val) && val > maxSTT) maxSTT = val;
+      }
+      return maxSTT + 1;
+    } catch {
+      return 1;
+    }
+  }
+
+  /**
+   * Assign STT numbers to order rows.
+   * Only the first row of each order gets a STT number.
+   */
+  static assignSTT(orders, startSTT) {
+    let stt = startSTT;
+    for (const order of orders) {
+      order.rows[0][0] = stt;
+      stt++;
+    }
+  }
+
+  /**
+   * Write orders to Google Sheets with headers (per-line-item rows)
+   * Each order is { orderId, orderNumber, rows: [[...], [...]] }
    */
   async writeOrders(spreadsheetId, sheetName, orders) {
     try {
-      // Create headers
-      const headers = [
-        'Order Number',
-        'Order ID',
-        'Order Date',
-        'Order Status',
-        'Fulfillment Status',
-        'Total Price',
-        'Currency',
-        'Payment Method',
-        'Customer ID',
-        'Customer Email',
-        'Customer Phone',
-        'Customer First Name',
-        'Customer Last Name',
-        'Customer Full Name',
-        'Shipping Name',
-        'Shipping Address 1',
-        'Shipping Address 2',
-        'Shipping City',
-        'Shipping Province',
-        'Shipping Zip',
-        'Shipping Country',
-        'Shipping Phone',
-        'Billing Name',
-        'Billing Address 1',
-        'Billing City',
-        'Billing Province',
-        'Billing Zip',
-        'Billing Country',
-        'Items Count',
-        'Items',
-        'Tracking Numbers',
-        'Tracking URLs',
-        'Note',
-        'Tags',
-        'Created At',
-        'Updated At'
-      ];
+      // Assign STT starting from 1
+      GoogleSheetsService.assignSTT(orders, 1);
 
-      // Convert orders to rows
-      const rows = orders.map(order => [
-        order.orderNumber,
-        order.orderId,
-        order.orderDate,
-        order.orderStatus,
-        order.fulfillmentStatus,
-        order.totalPrice,
-        order.currency,
-        order.paymentMethod,
-        order.customerId,
-        order.customerEmail,
-        order.customerPhone,
-        order.customerFirstName,
-        order.customerLastName,
-        order.customerFullName,
-        order.shippingName,
-        order.shippingAddress1,
-        order.shippingAddress2,
-        order.shippingCity,
-        order.shippingProvince,
-        order.shippingZip,
-        order.shippingCountry,
-        order.shippingPhone,
-        order.billingName,
-        order.billingAddress1,
-        order.billingCity,
-        order.billingProvince,
-        order.billingZip,
-        order.billingCountry,
-        order.itemsCount,
-        order.items,
-        order.trackingNumbers,
-        order.trackingUrls,
-        order.note,
-        order.tags,
-        order.createdAt,
-        order.updatedAt
-      ]);
-
-      // Write headers + data
-      const allRows = [headers, ...rows];
+      const rows = orders.flatMap(order => order.rows);
+      const allRows = [GoogleSheetsService.ORDER_HEADERS, ...rows];
       await this.writeSheet(spreadsheetId, `${sheetName}!A1`, allRows);
 
       return {success: true, rowsWritten: rows.length};
@@ -390,53 +402,28 @@ export class GoogleSheetsService {
   }
 
   /**
-   * Append single order to sheet
+   * Append single order to sheet (multiple rows, one per line item)
+   * order is { orderId, orderNumber, rows: [[...], [...]] }
    */
   async appendOrder(spreadsheetId, sheetName, order) {
     try {
-      const row = [
-        order.orderNumber,
-        order.orderId,
-        order.orderDate,
-        order.orderStatus,
-        order.fulfillmentStatus,
-        order.totalPrice,
-        order.currency,
-        order.paymentMethod,
-        order.customerId,
-        order.customerEmail,
-        order.customerPhone,
-        order.customerFirstName,
-        order.customerLastName,
-        order.customerFullName,
-        order.shippingName,
-        order.shippingAddress1,
-        order.shippingAddress2,
-        order.shippingCity,
-        order.shippingProvince,
-        order.shippingZip,
-        order.shippingCountry,
-        order.shippingPhone,
-        order.billingName,
-        order.billingAddress1,
-        order.billingCity,
-        order.billingProvince,
-        order.billingZip,
-        order.billingCountry,
-        order.itemsCount,
-        order.items,
-        order.trackingNumbers,
-        order.trackingUrls,
-        order.note,
-        order.tags,
-        order.createdAt,
-        order.updatedAt
-      ];
+      // Ensure headers exist
+      await this.ensureHeaders(spreadsheetId, sheetName);
 
-      // Find last row with data, then write at next row
-      const data = await this.readSheet(spreadsheetId, `${sheetName}!A:A`);
+      // Assign STT
+      const nextSTT = await this.getNextSTT(spreadsheetId, sheetName);
+      order.rows[0][0] = nextSTT;
+
+      // Read column B (Order Number) to find last row - column A (STT) has empty
+      // cells for sub-line-items which causes Google Sheets API to trim them
+      const data = await this.readSheet(spreadsheetId, `${sheetName}!B:B`);
       const nextRow = (data?.length || 0) + 1;
-      await this.writeSheet(spreadsheetId, `${sheetName}!A${nextRow}:AJ${nextRow}`, [row]);
+      const endRow = nextRow + order.rows.length - 1;
+      await this.writeSheet(
+        spreadsheetId,
+        `${sheetName}!A${nextRow}:AC${endRow}`,
+        order.rows
+      );
 
       return {success: true};
     } catch (error) {
@@ -447,48 +434,18 @@ export class GoogleSheetsService {
 
   /**
    * Append multiple orders to sheet (batch append, no headers)
+   * Each order is { orderId, orderNumber, rows: [[...], [...]] }
    */
   async appendOrders(spreadsheetId, sheetName, orders) {
     try {
-      const rows = orders.map(order => [
-        order.orderNumber,
-        order.orderId,
-        order.orderDate,
-        order.orderStatus,
-        order.fulfillmentStatus,
-        order.totalPrice,
-        order.currency,
-        order.paymentMethod,
-        order.customerId,
-        order.customerEmail,
-        order.customerPhone,
-        order.customerFirstName,
-        order.customerLastName,
-        order.customerFullName,
-        order.shippingName,
-        order.shippingAddress1,
-        order.shippingAddress2,
-        order.shippingCity,
-        order.shippingProvince,
-        order.shippingZip,
-        order.shippingCountry,
-        order.shippingPhone,
-        order.billingName,
-        order.billingAddress1,
-        order.billingCity,
-        order.billingProvince,
-        order.billingZip,
-        order.billingCountry,
-        order.itemsCount,
-        order.items,
-        order.trackingNumbers,
-        order.trackingUrls,
-        order.note,
-        order.tags,
-        order.createdAt,
-        order.updatedAt
-      ]);
+      // Ensure headers exist
+      await this.ensureHeaders(spreadsheetId, sheetName);
 
+      // Assign STT for each order
+      const nextSTT = await this.getNextSTT(spreadsheetId, sheetName);
+      GoogleSheetsService.assignSTT(orders, nextSTT);
+
+      const rows = orders.flatMap(order => order.rows);
       await this.appendSheet(spreadsheetId, `${sheetName}!A1`, rows);
       return {success: true, rowsAppended: rows.length};
     } catch (error) {
@@ -499,66 +456,31 @@ export class GoogleSheetsService {
 
   /**
    * Update existing order in sheet by order number
+   * Searches column B (Order Number) and replaces all matching rows
+   * order is { orderId, orderNumber, rows: [[...], [...]] }
    */
   async updateOrder(spreadsheetId, sheetName, orderNumber, order) {
     try {
-      // Read all data to find the row
-      const data = await this.readSheet(spreadsheetId, `${sheetName}!A:A`);
+      // Read column B to find rows matching this order number
+      const data = await this.readSheet(spreadsheetId, `${sheetName}!B:B`);
 
-      // Find row index (column A contains order numbers)
-      let rowIndex = -1;
+      // Find all row indices for this order (column B contains order numbers)
+      const matchingRows = [];
       for (let i = 0; i < data.length; i++) {
         if (data[i][0] === orderNumber) {
-          rowIndex = i + 1; // +1 because sheets are 1-indexed
-          break;
+          matchingRows.push(i + 1); // +1 because sheets are 1-indexed
         }
       }
 
-      if (rowIndex === -1) {
+      if (matchingRows.length === 0) {
         throw new Error(`Order ${orderNumber} not found in sheet`);
       }
 
-      // Update the row
-      const row = [
-        order.orderNumber,
-        order.orderId,
-        order.orderDate,
-        order.orderStatus,
-        order.fulfillmentStatus,
-        order.totalPrice,
-        order.currency,
-        order.paymentMethod,
-        order.customerId,
-        order.customerEmail,
-        order.customerPhone,
-        order.customerFirstName,
-        order.customerLastName,
-        order.customerFullName,
-        order.shippingName,
-        order.shippingAddress1,
-        order.shippingAddress2,
-        order.shippingCity,
-        order.shippingProvince,
-        order.shippingZip,
-        order.shippingCountry,
-        order.shippingPhone,
-        order.billingName,
-        order.billingAddress1,
-        order.billingCity,
-        order.billingProvince,
-        order.billingZip,
-        order.billingCountry,
-        order.itemsCount,
-        order.items,
-        order.trackingNumbers,
-        order.trackingUrls,
-        order.note,
-        order.tags,
-        order.createdAt,
-        order.updatedAt
-      ];
-
-      await this.writeSheet(spreadsheetId, `${sheetName}!A${rowIndex}:AJ${rowIndex}`, [row]);
+      // Write new rows starting at the first matching row
+      const startRow = matchingRows[0];
+      const newRows = order.rows;
+      const endRow = startRow + newRows.length - 1;
+      await this.writeSheet(spreadsheetId, `${sheetName}!A${startRow}:AC${endRow}`, newRows);
 
       return {success: true};
     } catch (error) {

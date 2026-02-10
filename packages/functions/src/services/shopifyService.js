@@ -17,6 +17,31 @@ export class ShopifyService {
   }
 
   /**
+   * Build metafields array from product data.
+   * Maps CSV-parsed fields to Shopify metafield format.
+   */
+  static buildMetafieldsFromProduct(productData) {
+    const metafields = [];
+
+    // seo.hidden - Hide product from search engines
+    if (productData.seoHidden !== undefined && productData.seoHidden !== null) {
+      metafields.push({
+        namespace: 'seo',
+        key: 'hidden',
+        value: productData.seoHidden ? '1' : '0',
+        type: 'number_integer'
+      });
+    }
+
+    // Future metafields can be added here following the same pattern:
+    // if (productData.someField) {
+    //   metafields.push({ namespace: 'x', key: 'y', value: '...', type: '...' });
+    // }
+
+    return metafields;
+  }
+
+  /**
    * Create or update a product in Shopify
    */
   async createProduct(productData) {
@@ -55,6 +80,12 @@ export class ShopifyService {
       if (productData.seoTitle || productData.seoDescription) {
         shopifyProduct.metafields_global_title_tag = productData.seoTitle || undefined;
         shopifyProduct.metafields_global_description_tag = productData.seoDescription || undefined;
+      }
+
+      // Add metafields from product data (e.g., seo.hidden from CSV)
+      const metafields = ShopifyService.buildMetafieldsFromProduct(productData);
+      if (metafields.length > 0) {
+        shopifyProduct.metafields = metafields;
       }
 
       // Add image if provided

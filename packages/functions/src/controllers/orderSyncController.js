@@ -147,7 +147,7 @@ export async function manualSync(req, res) {
     );
 
     // Format and filter duplicates
-    const formattedOrders = orders.map(formatOrderForSheet);
+    const formattedOrders = orders.map(formatOrderRowsForSheet);
     const newOrders = [];
     const alreadySyncedCount = {count: 0};
     for (const order of formattedOrders) {
@@ -343,7 +343,8 @@ export async function processOrderSyncQueue() {
             try {
               await orderSyncQueueRepo.updateStatus(item.id, 'completed');
               await orderRepo.saveOrder({
-                ...item.orderData,
+                orderId: item.orderData.orderId,
+                orderNumber: item.orderData.orderNumber,
                 storeId: item.storeId,
                 syncedToSheet: true,
                 lastSheetSync: new Date().toISOString()
@@ -510,7 +511,7 @@ async function fetchNextPage(syncJobId) {
     );
 
     // Filter duplicates
-    const formattedOrders = orders.map(formatOrderForSheet);
+    const formattedOrders = orders.map(formatOrderRowsForSheet);
     const newOrders = [];
     for (const order of formattedOrders) {
       const alreadySynced = await orderSyncRepo.isOrderSynced(job.storeId, order.orderId);
@@ -777,6 +778,8 @@ export async function registerWebhook(req, res) {
       });
     }
 
+    // Check if webhook already exists on Shopify
+    const shopifyWebhooks = await shopifyService.listWebhooks();
     const existingOnShopify = shopifyWebhooks.find(
       wh => wh.topic === 'orders/create' && wh.address === webhookUrl
     );
@@ -865,13 +868,14 @@ export async function handleOrderWebhook(req, res) {
       return res.status(200).json({message: 'Already synced'});
     }
 
-    // Format order for sheet
-    const formattedOrder = formatOrderForSheet(order);
+    // Format order for sheet (per-line-item rows)
+    const formattedOrder = formatOrderRowsForSheet(order);
 
     // STEP 1: Save to Firestore first (always succeed, our backup)
     try {
       await orderRepo.saveOrder({
-        ...formattedOrder,
+        orderId: formattedOrder.orderId,
+        orderNumber: formattedOrder.orderNumber,
         storeId: store.id,
         syncConfigId: syncConfig.id
       });
@@ -891,7 +895,7 @@ export async function handleOrderWebhook(req, res) {
         ? await GoogleSheetsService.createFromRefreshToken(sheet.refreshToken)
         : await GoogleSheetsService.createForUser(sheet.userId);
 
-      // Append new order to Google Sheets
+      // Append new order rows to Google Sheets
       await sheetsService.appendOrder(
         syncConfig.spreadsheetId,
         syncConfig.targetSheet,
@@ -1066,73 +1070,109 @@ export async function getWebhookInstructions(req, res) {
 }
 
 /**
- * Format order data for Google Sheets with customer information
+ * Format Shopify order data for Google Sheets rows (1 row per line item)
+ * Returns { orderId, orderNumber, rows: [[...], [...]] }
  */
-function formatOrderForSheet(order) {
-  const customer = order.customer || {};
+function formatOrderRowsForSheet(order) {
   const shippingAddress = order.shipping_address || {};
-  const billingAddress = order.billing_address || {};
+  const lineItems = order.line_items || [];
+  const orderNumber = order.name || '';
+  const email = order.email || order.customer?.email || '';
+  const createdAt = order.created_at || '';
+  const shippingCountry = shippingAddress.country || '';
+  const paymentMethod = order.payment_gateway_names?.join(', ') || '';
+  const totalPrice = order.total_price || '0';
+  const totalTax = order.total_tax || '0';
+  const note = order.note || '';
+  const shippingName = shippingAddress.name || '';
+  const shippingAddr1 = shippingAddress.address1 || '';
+  const shippingAddr2 = shippingAddress.address2 || '';
+  const shippingCity = shippingAddress.city || '';
+  const shippingZip = shippingAddress.zip || '';
+  const shippingState = shippingAddress.province || '';
+  const shippingCountryCode = shippingAddress.country_code || '';
+  const shippingPhone = shippingAddress.phone || '';
+
+  const rows = lineItems.map((item, index) => {
+    // Extract custom properties (non-hidden, i.e. not starting with _)
+    const props = (item.properties || []).filter(p => p.name && !p.name.startsWith('_'));
+    const nameProp = props.find(p => /name/i.test(p.name));
+    const designProp = props.find(p => /design/i.test(p.name));
+    const customName = nameProp ? `${nameProp.name}: ${nameProp.value}` : '';
+    const design = designProp ? `${designProp.name}: ${designProp.value}` : '';
+
+    return [
+      '', // STT
+      orderNumber,
+      email,
+      createdAt,
+      '', // Base cost
+      '', // Size
+      '', // Type
+      item.quantity || 1,
+      item.name || item.title || '',
+      item.sku || '',
+      item.price || '0',
+      shippingCountry,
+      paymentMethod,
+      index === 0 ? totalPrice : '',
+      index === 0 ? totalTax : '',
+      '', // Base cost
+      '', // Fee
+      note,
+      '', // Shipping Address
+      shippingName,
+      shippingAddr1,
+      shippingAddr2,
+      shippingCity,
+      shippingZip,
+      shippingState,
+      shippingCountryCode,
+      shippingPhone,
+      customName,
+      design
+    ];
+  });
+
+  // If no line items, still create one row with order info
+  if (rows.length === 0) {
+    rows.push([
+      '',
+      orderNumber,
+      email,
+      createdAt,
+      '',
+      '',
+      '',
+      0,
+      '',
+      '',
+      '0',
+      shippingCountry,
+      paymentMethod,
+      totalPrice,
+      totalTax,
+      '',
+      '',
+      note,
+      '',
+      shippingName,
+      shippingAddr1,
+      shippingAddr2,
+      shippingCity,
+      shippingZip,
+      shippingState,
+      shippingCountryCode,
+      shippingPhone,
+      '',
+      ''
+    ]);
+  }
 
   return {
-    // Order Info
-    orderNumber: order.name || '',
-    orderId: order.id || '',
-    orderDate: order.created_at || '',
-    orderStatus: order.financial_status || '',
-    fulfillmentStatus: order.fulfillment_status || '',
-    totalPrice: order.total_price || '0',
-    currency: order.currency || 'USD',
-    paymentMethod: order.payment_gateway_names?.join(', ') || '',
-
-    // Customer Info
-    customerId: customer.id || '',
-    customerEmail: customer.email || '',
-    customerPhone: customer.phone || '',
-    customerFirstName: customer.first_name || '',
-    customerLastName: customer.last_name || '',
-    customerFullName: `${customer.first_name || ''} ${customer.last_name || ''}`.trim(),
-
-    // Shipping Address
-    shippingName: shippingAddress.name || '',
-    shippingAddress1: shippingAddress.address1 || '',
-    shippingAddress2: shippingAddress.address2 || '',
-    shippingCity: shippingAddress.city || '',
-    shippingProvince: shippingAddress.province || '',
-    shippingZip: shippingAddress.zip || '',
-    shippingCountry: shippingAddress.country || '',
-    shippingPhone: shippingAddress.phone || '',
-
-    // Billing Address
-    billingName: billingAddress.name || '',
-    billingAddress1: billingAddress.address1 || '',
-    billingCity: billingAddress.city || '',
-    billingProvince: billingAddress.province || '',
-    billingZip: billingAddress.zip || '',
-    billingCountry: billingAddress.country || '',
-
-    // Line Items
-    itemsCount: order.line_items?.length || 0,
-    items: order.line_items?.map(item => `${item.name} (x${item.quantity})`).join(', ') || '',
-
-    // Tracking
-    trackingNumbers:
-      order.fulfillments
-        ?.map(f => f.tracking_number)
-        .filter(Boolean)
-        .join(', ') || '',
-    trackingUrls:
-      order.fulfillments
-        ?.map(f => f.tracking_url)
-        .filter(Boolean)
-        .join(', ') || '',
-
-    // Notes
-    note: order.note || '',
-    tags: order.tags || '',
-
-    // Timestamps
-    createdAt: order.created_at || '',
-    updatedAt: order.updated_at || ''
+    orderId: order.id?.toString() || '',
+    orderNumber,
+    rows
   };
 }
 

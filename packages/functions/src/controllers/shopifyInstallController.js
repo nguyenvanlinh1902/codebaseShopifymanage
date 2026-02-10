@@ -188,7 +188,7 @@ export async function handleCallback(req, res) {
       await storeRepo.update(existingStore.id, storeData);
     } else {
       await storeRepo.create({
-        userId: 'default-user',
+        userId: shopDomain, // Use shop domain as unique userId
         shopDomain,
         niche: '',
         connectedAt: new Date().toISOString(),

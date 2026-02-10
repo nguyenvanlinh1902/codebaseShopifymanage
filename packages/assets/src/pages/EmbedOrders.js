@@ -1,7 +1,7 @@
 import React, {useState, useEffect, useCallback, useRef} from 'react';
+import {useNavigate} from 'react-router-dom';
 import {
   Page,
-  Layout,
   Card,
   Select,
   Button,
@@ -10,10 +10,13 @@ import {
   DataTable,
   Badge,
   SkeletonBodyText,
-  List,
-  Collapsible,
-  Spinner
+  Spinner,
+  BlockStack,
+  InlineStack,
+  Box,
+  Icon
 } from '@shopify/polaris';
+import {OrderIcon} from '@shopify/polaris-icons';
 import {api} from '../helpers/api';
 
 /**
@@ -21,6 +24,7 @@ import {api} from '../helpers/api';
  * Features: Setup sync config, manual sync, webhook management
  */
 export default function EmbedOrders() {
+  const navigate = useNavigate();
   const [sheets, setSheets] = useState([]);
   const [selectedSheet, setSelectedSheet] = useState('');
   const [sheetTabs, setSheetTabs] = useState([]);
@@ -33,7 +37,6 @@ export default function EmbedOrders() {
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
   const [syncJob, setSyncJob] = useState(null);
-  const [showFields, setShowFields] = useState(false);
   const pollIntervalRef = useRef(null);
 
   const fetchQueueStats = useCallback(async () => {
@@ -148,9 +151,12 @@ export default function EmbedOrders() {
           const tab = matched || result.data[0];
           setSelectedTab(`${tab.title}|${tab.sheetId}`);
         }
+      } else {
+        setError(result.error || 'Failed to load sheet tabs');
       }
     } catch (err) {
       console.error('Error fetching sheet tabs:', err);
+      setError('Failed to load sheet tabs. Please check your Google connection.');
     } finally {
       setLoadingTabs(false);
     }
@@ -247,91 +253,98 @@ export default function EmbedOrders() {
       title="Orders Sync"
       subtitle="Export orders from Shopify to Google Sheets"
     >
-      <Layout>
+      <BlockStack gap="400">
         {error && (
-          <Layout.Section>
-            <Banner tone="critical" onDismiss={() => setError(null)}>{error}</Banner>
-          </Layout.Section>
+          <Banner tone="critical" onDismiss={() => setError(null)}>{error}</Banner>
         )}
         {successMessage && (
-          <Layout.Section>
-            <Banner tone="success" onDismiss={() => setSuccessMessage(null)}>
-              {successMessage}
-            </Banner>
-          </Layout.Section>
+          <Banner tone="success" onDismiss={() => setSuccessMessage(null)}>
+            {successMessage}
+          </Banner>
         )}
 
+        {/* Sync Progress */}
         {syncJob && syncJob.status === 'processing' && (
-          <Layout.Section>
-            <Card sectioned>
-              <div style={{display: 'flex', alignItems: 'center', gap: '8px'}}>
-                <Spinner size="small" />
-                <Text variant="headingMd" as="h2">Syncing orders...</Text>
-              </div>
-              <div style={{marginTop: '12px'}}>
-                <Text variant="headingLg" as="p">{syncJob.successCount || 0}</Text>
-                <Text variant="bodySm" as="p" tone="subdued">
-                  orders synced{syncJob.currentPage ? ` (page ${syncJob.currentPage})` : ''}
+          <Card>
+            <InlineStack gap="400" blockAlign="center">
+              <Spinner size="small" />
+              <BlockStack gap="050">
+                <Text variant="headingSm" as="h3" fontWeight="semibold">Syncing orders...</Text>
+                <Text variant="bodySm" tone="subdued">
+                  {syncJob.successCount || 0} orders synced
+                  {syncJob.currentPage ? ` (page ${syncJob.currentPage})` : ''}
                 </Text>
-              </div>
-            </Card>
-          </Layout.Section>
+              </BlockStack>
+            </InlineStack>
+          </Card>
         )}
 
-        <Layout.Section oneHalf>
-          <Card sectioned>
-            <Text variant="headingMd" as="h2">
-              {activeConfig ? 'Sync Config' : 'Setup Sync'}
-            </Text>
+        {/* Sync Configuration */}
+        <Card>
+          <BlockStack gap="400">
+            <InlineStack gap="300" blockAlign="center">
+              <Box background="bg-fill-success-secondary" borderRadius="300" padding="200">
+                <Icon source={OrderIcon} />
+              </Box>
+              <Text variant="headingMd" as="h2">
+                {activeConfig ? 'Sync Configuration' : 'Setup Sync'}
+              </Text>
+            </InlineStack>
 
             {activeConfig && (
-              <div style={{marginTop: '12px'}}>
-                <Banner tone="info">
-                  <p>
-                    Sheet: <strong>{activeConfig.sheetName}</strong> — Tab:{' '}
-                    <strong>{activeConfig.targetSheet}</strong>
-                  </p>
-                  <p>
-                    Orders synced: {activeConfig.totalOrdersSynced || 0} | Last sync:{' '}
-                    {activeConfig.lastSyncAt
-                      ? new Date(activeConfig.lastSyncAt).toLocaleString()
-                      : 'Never'}
-                  </p>
-                </Banner>
-              </div>
+              <Banner tone="info">
+                <BlockStack gap="100">
+                  <Text variant="bodySm" fontWeight="semibold">
+                    Sheet: {activeConfig.sheetName} / Tab: {activeConfig.targetSheet}
+                  </Text>
+                  <Text variant="bodySm">
+                    {activeConfig.totalOrdersSynced || 0} orders synced
+                    {activeConfig.lastSyncAt &&
+                      ` \u00B7 Last: ${new Date(activeConfig.lastSyncAt).toLocaleString()}`}
+                  </Text>
+                </BlockStack>
+              </Banner>
             )}
 
             {loading ? (
               <SkeletonBodyText lines={5} />
+            ) : sheets.length === 0 ? (
+              <Banner tone="warning">
+                <BlockStack gap="200">
+                  <Text variant="bodySm">
+                    No Google Sheets connected. Please connect your Google account and add a sheet
+                    first.
+                  </Text>
+                  <Button size="slim" onClick={() => navigate('/settings')}>
+                    Go to Settings
+                  </Button>
+                </BlockStack>
+              </Banner>
             ) : (
-              <div style={{marginTop: '16px'}}>
-                <div style={{marginBottom: '16px'}}>
-                  <Select
-                    label="Select Google Sheet"
-                    options={sheetOptions}
-                    value={selectedSheet}
-                    onChange={setSelectedSheet}
-                    placeholder="Choose a sheet"
-                  />
-                </div>
+              <BlockStack gap="400">
+                <Select
+                  label="Select Google Sheet"
+                  options={sheetOptions}
+                  value={selectedSheet}
+                  onChange={setSelectedSheet}
+                  placeholder="Choose a sheet"
+                />
 
-                <div style={{marginBottom: '16px'}}>
-                  <Select
-                    label="Sheet Tab"
-                    options={sheetTabs.map(tab => ({
-                      label: tab.title,
-                      value: `${tab.title}|${tab.sheetId}`
-                    }))}
-                    value={selectedTab}
-                    onChange={setSelectedTab}
-                    placeholder="Choose a tab"
-                    disabled={loadingTabs || sheetTabs.length === 0}
-                  />
-                </div>
+                <Select
+                  label="Sheet Tab"
+                  options={sheetTabs.map(tab => ({
+                    label: tab.title,
+                    value: `${tab.title}|${tab.sheetId}`
+                  }))}
+                  value={selectedTab}
+                  onChange={setSelectedTab}
+                  placeholder="Choose a tab"
+                  disabled={loadingTabs || sheetTabs.length === 0}
+                />
 
-                <div style={{display: 'flex', flexWrap: 'wrap', gap: '8px'}}>
+                <InlineStack gap="200" wrap>
                   <Button
-                    primary
+                    variant="primary"
                     onClick={handleSetupSync}
                     loading={settingUpSync}
                     disabled={!selectedSheet || !selectedTab}
@@ -348,62 +361,26 @@ export default function EmbedOrders() {
                       {syncJob?.status === 'processing' ? 'Sync In Progress...' : 'Manual Sync Now'}
                     </Button>
                   )}
-                </div>
-              </div>
+                </InlineStack>
+              </BlockStack>
             )}
-          </Card>
-        </Layout.Section>
+          </BlockStack>
+        </Card>
 
-        <Layout.Section oneHalf>
-          <Card sectioned>
-            <Text variant="headingMd" as="h2">Export Format</Text>
-            <div style={{marginTop: '16px'}}>
-              <Button plain onClick={() => setShowFields(!showFields)}>
-                {showFields ? 'Hide' : 'Show'} included fields
-              </Button>
-              <Collapsible open={showFields}>
-                <div style={{marginTop: '8px'}}>
-                  <Text variant="bodySm" as="p" fontWeight="semibold">Order Information:</Text>
-                  <List type="bullet">
-                    <List.Item>Order Number, ID, Date</List.Item>
-                    <List.Item>Status, Fulfillment Status</List.Item>
-                    <List.Item>Total Price, Currency</List.Item>
-                  </List>
-                  <div style={{marginTop: '8px'}}>
-                    <Text variant="bodySm" as="p" fontWeight="semibold">Customer Information:</Text>
-                    <List type="bullet">
-                      <List.Item>Customer ID, Email, Phone</List.Item>
-                      <List.Item>First Name, Last Name</List.Item>
-                    </List>
-                  </div>
-                  <div style={{marginTop: '8px'}}>
-                    <Text variant="bodySm" as="p" fontWeight="semibold">Items & Tracking:</Text>
-                    <List type="bullet">
-                      <List.Item>Line Items</List.Item>
-                      <List.Item>Tracking Numbers & URLs</List.Item>
-                    </List>
-                  </div>
-                </div>
-              </Collapsible>
-            </div>
-          </Card>
-        </Layout.Section>
-
+        {/* Sync History Table */}
         {syncConfigs.length > 0 && (
-          <Layout.Section>
-            <Card>
-              <div style={{padding: '16px'}}>
-                <Text variant="headingMd" as="h2">Sync History</Text>
-              </div>
+          <Card>
+            <BlockStack gap="300">
+              <Text variant="headingMd" as="h2">Sync History</Text>
               <DataTable
                 columnContentTypes={['text', 'text', 'text', 'numeric', 'text']}
                 headings={['Sheet', 'Target Tab', 'Status', 'Orders Synced', 'Last Sync']}
                 rows={configRows}
               />
-            </Card>
-          </Layout.Section>
+            </BlockStack>
+          </Card>
         )}
-      </Layout>
+      </BlockStack>
     </Page>
   );
 }

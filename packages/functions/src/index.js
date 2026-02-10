@@ -9,7 +9,6 @@ import {initializeApp} from 'firebase-admin/app';
 import authRoutes from './routes/authRoutes.js';
 import shopifyInstallRoutes from './routes/shopifyInstallRoutes.js';
 import oauthRoutes from './routes/oauthRoutes.js';
-import storeRoutes from './routes/storeRoutes.js';
 import googleAuthRoutes from './routes/googleAuthRoutes.js';
 import sheetRoutes from './routes/sheetRoutes.js';
 import productRoutes from './routes/productRoutes.js';
@@ -19,7 +18,7 @@ import themeRoutes from './routes/themeRoutes.js';
 import analyticsRoutes from './routes/analyticsRoutes.js';
 import setupRoutes from './routes/setupRoutes.js';
 import embedRoutes from './routes/embedRoutes.js';
-
+import gdprRoutes from './routes/gdprRoutes.js';
 // Controllers
 import * as googleAuthController from './controllers/googleAuthController.js';
 import * as webhookController from './controllers/webhookController.js';
@@ -61,13 +60,15 @@ app.post('/api/inventory/webhook', webhookController.handleInventoryWebhook);
 app.post('/api/themes/webhook', webhookController.handleThemeWebhook);
 app.post('/api/shop/webhook', webhookController.handleShopWebhook);
 
+// GDPR compliance webhooks (called directly by Shopify)
+app.use('/api/gdpr', gdprRoutes);
+
 // Google OAuth exchange
 app.post('/api/google/exchange', googleAuthController.exchangeGoogleCode);
 app.post('/api/google/exchange-temp', googleAuthController.exchangeGoogleCodeTemp);
 
 // ============ EMBEDDED APP ROUTES (session token auth) ============
 app.use('/api/embed', embedRoutes);
-
 // ============ USER ID MIDDLEWARE ============
 app.use((req, res, next) => {
   const clientId = req.headers['x-client-id'] || 'default-user';
@@ -79,7 +80,6 @@ app.use((req, res, next) => {
 
 // ============ APP ROUTES ============
 app.use('/api/oauth', oauthRoutes);
-app.use('/api/stores', storeRoutes);
 app.use('/api/google', googleAuthRoutes);
 app.use('/api/sheets', sheetRoutes);
 app.use('/api/products', productRoutes);

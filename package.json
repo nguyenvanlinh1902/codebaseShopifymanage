@@ -6,9 +6,16 @@
     "packages/*"
   ],
   "scripts": {
+    "setup": "bash scripts/setup.sh",
     "setup:pubsub": "node scripts/setup-pubsub.js",
+    "build": "yarn workspace @linhnv/assets run production && yarn workspace @linhnv/functions run production",
+    "build:frontend": "yarn workspace @linhnv/assets run production",
+    "build:backend": "yarn workspace @linhnv/functions run production",
     "deploy": "./node_modules/.bin/firebase deploy",
-    "deploy:full": "yarn setup:pubsub && yarn deploy",
+    "deploy:full": "bash scripts/deploy.sh",
+    "deploy:functions": "bash scripts/deploy.sh functions",
+    "deploy:hosting": "bash scripts/deploy.sh hosting",
+    "deploy:firestore": "bash scripts/deploy.sh firestore",
     "serve": "./node_modules/.bin/firebase serve",
     "logs": "./node_modules/.bin/firebase functions:log",
     "emulators": "GOOGLE_APPLICATION_CREDENTIALS=serviceAccount.development.json NODE_ENV=development ./node_modules/.bin/firebase emulators:start --only hosting,functions",

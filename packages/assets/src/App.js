@@ -18,11 +18,10 @@ import {AuthProvider} from './context/AuthContext';
 import EmbedDashboard from './pages/EmbedDashboard';
 import EmbedProducts from './pages/EmbedProducts';
 import EmbedOrders from './pages/EmbedOrders';
+import EmbedStoreSettings from './pages/embed/EmbedStoreSettings';
 
 // Pages - Standalone
 import Dashboard from './pages/Dashboard';
-import Stores from './pages/Stores';
-import StoresOAuth from './pages/StoresOAuth';
 import OAuthCallback from './pages/OAuthCallback';
 import Sheets from './pages/Sheets';
 import Products from './pages/Products';
@@ -70,6 +69,7 @@ function EmbeddedRoutes() {
         <Route path="/" element={<EmbedDashboard />} />
         <Route path="/products" element={<EmbedProducts />} />
         <Route path="/orders" element={<EmbedOrders />} />
+        <Route path="/settings" element={<EmbedStoreSettings />} />
         <Route path="*" element={<EmbedDashboard />} />
       </Routes>
     </EmbeddedLayout>
@@ -92,8 +92,6 @@ function StandaloneFrame() {
     <StandaloneLayout>
       <Routes>
         <Route path="/" element={<Dashboard />} />
-        <Route path="/stores" element={<Stores />} />
-        <Route path="/stores/oauth" element={<StoresOAuth />} />
         <Route path="/sheets" element={<Sheets />} />
         <Route path="/products" element={<Products />} />
         <Route path="/orders" element={<Orders />} />

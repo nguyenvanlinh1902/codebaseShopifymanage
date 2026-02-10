@@ -1,4 +1,5 @@
 import React, {useState, useEffect, useCallback, useRef} from 'react';
+import PropTypes from 'prop-types';
 import {useLocation, useSearchParams} from 'react-router-dom';
 import {
   Page,
@@ -163,6 +164,17 @@ function AccountsContent({
   );
 }
 
+AccountsContent.propTypes = {
+  accounts: PropTypes.array.isRequired,
+  pagination: PropTypes.object.isRequired,
+  onAddSheet: PropTypes.func.isRequired,
+  onDisconnect: PropTypes.func.isRequired,
+  onBulkDisconnect: PropTypes.func.isRequired,
+  onPageChange: PropTypes.func.isRequired,
+  loading: PropTypes.bool,
+  searchValue: PropTypes.string
+};
+
 /**
  * Sheets table content (IndexTable only, no IndexFilters)
  */
@@ -315,6 +327,18 @@ function SheetsContent({
     </>
   );
 }
+
+SheetsContent.propTypes = {
+  sheets: PropTypes.array.isRequired,
+  pagination: PropTypes.object.isRequired,
+  loading: PropTypes.bool,
+  onDelete: PropTypes.func.isRequired,
+  onBulkDelete: PropTypes.func.isRequired,
+  onPageChange: PropTypes.func.isRequired,
+  authenticated: PropTypes.bool,
+  onAuth: PropTypes.func,
+  searchValue: PropTypes.string
+};
 
 /**
  * Google Sheets Management Page
@@ -720,7 +744,7 @@ export default function Sheets() {
 
   if (authLoading) {
     return (
-      <Page title="Google Sheets">
+      <Page title="Google Sheets (Beta)">
         <Layout>
           <Layout.Section>
             <Card>
@@ -734,8 +758,8 @@ export default function Sheets() {
 
   return (
     <Page
-      title="Google Sheets"
-      subtitle="Manage your connected Google Sheets"
+      title="Google Sheets (Beta)"
+      subtitle="Manage your connected Google Sheets. This feature is currently in beta."
       primaryAction={
         authenticated
           ? {

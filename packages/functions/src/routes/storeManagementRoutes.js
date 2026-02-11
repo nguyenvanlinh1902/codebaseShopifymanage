@@ -2,7 +2,7 @@ import {Router} from 'express';
 import {verifyShopifySession} from '../middleware/verifyShopifySession.js';
 import * as storeManagementController from '../controllers/storeManagementController.js';
 
-const router = Router();
+const router = new Router();
 
 // All routes require Shopify session token
 router.use(verifyShopifySession);

@@ -1,8 +1,3 @@
-import createApp from '@shopify/app-bridge';
-import {Redirect} from '@shopify/app-bridge/actions';
-import {getSessionToken} from '@shopify/app-bridge-utils';
-
-let embedApp = null;
 let initPromise = null;
 
 /**
@@ -21,93 +16,51 @@ export function getHost() {
 }
 
 /**
- * Initialize App Bridge
- * @returns {Object|null} App Bridge app instance
+ * Initialize App Bridge (CDN version loaded via embed.html)
+ * The CDN script auto-sets window.shopify with .idToken() etc.
  */
 export function initAppBridge() {
-  // Return existing promise if initialization is in progress
-  if (initPromise) {
-    console.log('[AppBridge] Initialization in progress, returning existing promise');
-    return initPromise;
+  if (initPromise) return initPromise;
+
+  // CDN already ready
+  if (window.shopify?.idToken) {
+    console.log('[AppBridge] CDN already initialized');
+    return Promise.resolve();
   }
 
-  if (embedApp) {
-    console.log('[AppBridge] Already initialized');
-    return Promise.resolve(embedApp);
-  }
-
-  // Create initialization promise
+  // Wait for CDN to initialize window.shopify
   initPromise = new Promise((resolve, reject) => {
-    const host = getHost();
-    console.log('[AppBridge] Initializing with host:', host);
-    if (!host) {
-      console.warn('[AppBridge] No host parameter found for App Bridge');
-      reject(new Error('No host parameter found'));
-      return;
-    }
+    console.log('[AppBridge] Waiting for CDN App Bridge...');
+    const startTime = Date.now();
+    const timeout = 5000;
 
-    const apiKey = import.meta.env.VITE_SHOPIFY_API_KEY || '3de04076a60f0c67a6ce18f5e7ff2b30';
-    console.log('[AppBridge] Using API key:', apiKey?.substring(0, 8) + '...');
-
-    try {
-      embedApp = createApp({
-        apiKey,
-        host,
-        forceRedirect: false
-      });
-
-      console.log('[AppBridge] App created successfully');
-
-      // Set up global shopify object for compatibility
-      window.shopify = {
-        idToken: async () => {
-          if (!embedApp) {
-            console.error('[AppBridge] App Bridge not initialized');
-            return null;
-          }
-
-          try {
-            console.log('[AppBridge] Requesting session token...');
-            // Use correct getSessionToken utility function from app-bridge-utils
-            const token = await getSessionToken(embedApp);
-            console.log('[AppBridge] Got session token, length:', token?.length, 'parts:', token?.split('.').length);
-            return token;
-          } catch (error) {
-            console.error('[AppBridge] Failed to get session token:', error);
-            return null;
-          }
-        }
-      };
-
-      console.log('[AppBridge] window.shopify.idToken set up');
-      resolve(embedApp);
-    } catch (error) {
-      console.error('[AppBridge] Failed to create app:', error);
-      reject(error);
-    }
+    const check = () => {
+      if (window.shopify?.idToken) {
+        console.log('[AppBridge] CDN ready');
+        resolve();
+        return;
+      }
+      if (Date.now() - startTime > timeout) {
+        console.error('[AppBridge] Timeout waiting for CDN App Bridge');
+        reject(new Error('App Bridge CDN timeout'));
+        return;
+      }
+      setTimeout(check, 50);
+    };
+    check();
   });
 
   return initPromise;
 }
 
 /**
- * Get the App Bridge instance
- */
-export function getAppBridge() {
-  return embedApp;
-}
-
-/**
  * Check if reauthorization is needed
  */
-export function checkHeadersForReauthorization(headers, app) {
-  if (!app) return;
-
+export function checkHeadersForReauthorization(headers) {
   if (headers.get('X-Shopify-API-Request-Failure-Reauthorize') === '1') {
     const authUrl = headers.get('X-Shopify-API-Request-Failure-Reauthorize-Url');
     if (authUrl) {
-      const redirect = Redirect.create(app);
-      redirect.dispatch(Redirect.Action.REMOTE, authUrl);
+      window.open(authUrl, '_top');
     }
   }
 }

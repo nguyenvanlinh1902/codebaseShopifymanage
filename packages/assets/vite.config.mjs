@@ -28,14 +28,19 @@ export default defineConfig({
     {
       name: 'embed-spa-fallback',
       configureServer(server) {
-        // In dev mode: route /embed/** to embed.html for SPA fallback
-        server.middlewares.use((req, _res, next) => {
+        server.middlewares.use((req, res, next) => {
           const url = req.url || '';
-          if (
-            req.headers.accept?.includes('text/html') &&
-            url.startsWith('/embed') &&
-            !url.includes('.')
-          ) {
+          const isHtml = req.headers.accept?.includes('text/html');
+
+          // Redirect /?embedded=1 to /embed so embed.html is served
+          if (isHtml && !url.startsWith('/embed') && url.includes('embedded=1')) {
+            res.writeHead(302, {Location: '/embed' + (url.startsWith('/') ? url.slice(1) : url)});
+            res.end();
+            return;
+          }
+
+          // SPA fallback: route /embed/** to embed.html
+          if (isHtml && url.startsWith('/embed') && !url.includes('.')) {
             req.url = '/embed.html';
           }
           next();
@@ -68,7 +73,9 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@assets': path.resolve(__dirname, './src')
+      '@assets': path.resolve(__dirname, './src'),
+      react: path.resolve(__dirname, '../../node_modules/react'),
+      'react-dom': path.resolve(__dirname, '../../node_modules/react-dom')
     },
     dedupe: ['react', 'react-dom']
   },

@@ -21,14 +21,16 @@ export default function OAuthCallback() {
     const shop = urlParams.get('shop');
     const stateRaw = urlParams.get('state');
 
-    // Parse state to detect mode and extract userId
+    // Parse state to detect mode and extract userId, storeId
     let mode = 'connect';
     let stateUserId = '';
+    let stateStoreId = '';
     if (stateRaw) {
       try {
         const parsed = JSON.parse(stateRaw);
         mode = parsed.mode || 'connect';
         stateUserId = parsed.userId || '';
+        stateStoreId = parsed.storeId || '';
       } catch {
         // Legacy: state was just userId string
       }
@@ -39,7 +41,7 @@ export default function OAuthCallback() {
     } else if (code && mode === 'temp') {
       handleGoogleCallbackTemp(code);
     } else if (code) {
-      handleGoogleCallback(code, stateUserId);
+      handleGoogleCallback(code, stateUserId, stateStoreId);
     } else {
       setError('Missing authorization parameters');
       setStatus('error');
@@ -75,12 +77,12 @@ export default function OAuthCallback() {
     }
   };
 
-  const handleGoogleCallback = async (code, userId) => {
+  const handleGoogleCallback = async (code, userId, storeId) => {
     try {
       const response = await fetch('/api/google/exchange', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({code, userId})
+        body: JSON.stringify({code, userId, storeId})
       });
 
       const result = await response.json();

@@ -23,10 +23,14 @@ function createOAuth2Client() {
  */
 export async function getGoogleAuthUrl(req, res) {
   try {
-    const {userId, mode} = req.query;
+    const {userId, mode, storeId} = req.query;
     const oauth2Client = createOAuth2Client();
 
-    const state = JSON.stringify({userId: userId || '', mode: mode || 'connect'});
+    const state = JSON.stringify({
+      userId: userId || '',
+      mode: mode || 'connect',
+      storeId: storeId || ''
+    });
 
     const authUrl = oauth2Client.generateAuthUrl({
       access_type: 'offline',

@@ -1,5 +1,5 @@
 type="frontend"
-port=3000
+port=5173
 auth_callback_path = ["/auth/shopify/callback", "/authSa/shopify/callback", "/auth/shopify/embed/callback", "/auth/shopify/embed/callback/updateScopes"]
 
 [commands]

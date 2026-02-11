@@ -1,4 +1,5 @@
 import {useState, useCallback, useRef} from 'react';
+import {isEmbeddedApp} from '../config/app';
 
 const PICKER_SCRIPT_URL = 'https://apis.google.com/js/api.js';
 
@@ -61,7 +62,11 @@ export function useGooglePicker() {
         const builder = new window.google.picker.PickerBuilder()
           .addView(view)
           .setOAuthToken(accessToken)
-          .setOrigin(window.location.protocol + '//' + window.location.host)
+          .setOrigin(
+            isEmbeddedApp
+              ? 'https://admin.shopify.com'
+              : window.location.protocol + '//' + window.location.host
+          )
           .setCallback(data => {
             if (data.action === window.google.picker.Action.PICKED) {
               const doc = data.docs[0];

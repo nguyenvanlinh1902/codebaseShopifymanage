@@ -27,7 +27,26 @@ export async function processProductImport(messageData) {
     totalProducts
   } = data;
 
+  // Validate accessToken before starting
+  if (!accessToken || !accessToken.startsWith('shpat_')) {
+    const errMsg = `Invalid access token for ${storeName} (${shopDomain}). Please reinstall the app.`;
+    console.error(`Import ${importId} aborted: ${errMsg}`);
+    await importHistoryRepo.markFailed(importId, errMsg);
+    return;
+  }
+
   const shopifyService = new ShopifyService({shopDomain, accessToken});
+
+  // Verify credentials with a test API call before processing products
+  try {
+    await shopifyService.verifyCredentials();
+  } catch (verifyError) {
+    const errMsg = `Cannot connect to ${storeName} (${shopDomain}): ${verifyError.message || 'Invalid credentials'}. Please reinstall the app.`;
+    console.error(`Import ${importId} aborted: ${errMsg}`);
+    await importHistoryRepo.markFailed(importId, errMsg);
+    return;
+  }
+
   let successCount = 0;
   let failedCount = 0;
   let skippedCount = 0;

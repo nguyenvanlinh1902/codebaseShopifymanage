@@ -23,24 +23,12 @@ export class ShopifyService {
    * Maps CSV-parsed fields to Shopify metafield format.
    */
   static buildMetafieldsFromProduct(productData) {
-    const metafields = [];
-
-    // seo.hidden - Hide product from search engines
-    if (productData.seoHidden !== undefined && productData.seoHidden !== null) {
-      metafields.push({
-        namespace: 'seo',
-        key: 'hidden',
-        value: productData.seoHidden ? '1' : '0',
-        type: 'number_integer'
-      });
+    // Dynamic metafields auto-detected from CSV headers (product.metafields.{namespace}.{key})
+    // No need to hardcode each metafield - just add a new column to CSV and it works
+    if (!productData.dynamicMetafields || productData.dynamicMetafields.length === 0) {
+      return [];
     }
-
-    // Future metafields can be added here following the same pattern:
-    // if (productData.someField) {
-    //   metafields.push({ namespace: 'x', key: 'y', value: '...', type: '...' });
-    // }
-
-    return metafields;
+    return productData.dynamicMetafields;
   }
 
   /**
@@ -48,6 +36,31 @@ export class ShopifyService {
    */
   async createProduct(productData) {
     try {
+      // Build variant with ALL CSV fields
+      const variant = {
+        price: productData.price || '0.00',
+        compare_at_price: productData.compareAtPrice || null,
+        sku: productData.sku || '',
+        barcode: productData.barcode || '',
+        inventory_quantity: parseInt(productData.inventoryQuantity || 0),
+        inventory_management: productData.inventoryTracker || 'shopify',
+        inventory_policy: productData.inventoryPolicy || 'deny',
+        fulfillment_service: productData.fulfillmentService || 'manual',
+        weight: productData.weight || 0,
+        weight_unit: productData.weightUnit || 'lb',
+        requires_shipping:
+          productData.requiresShipping !== undefined ? productData.requiresShipping : true,
+        taxable: productData.taxable !== undefined ? productData.taxable : true
+      };
+
+      if (productData.cost) variant.cost = productData.cost;
+      if (productData.taxCode) variant.tax_code = productData.taxCode;
+
+      // Add option values to variant
+      if (productData.option1Value) variant.option1 = productData.option1Value;
+      if (productData.option2Value) variant.option2 = productData.option2Value;
+      if (productData.option3Value) variant.option3 = productData.option3Value;
+
       const shopifyProduct = {
         title: productData.title,
         body_html: productData.description || '',
@@ -56,27 +69,18 @@ export class ShopifyService {
         tags: productData.tags || '',
         status: productData.status || 'draft',
         handle: productData.handle || undefined,
-        variants: [
-          {
-            price: productData.price || '0.00',
-            compare_at_price: productData.compareAtPrice || null,
-            sku: productData.sku || '',
-            barcode: productData.barcode || '',
-            inventory_quantity: parseInt(productData.inventoryQuantity || 0),
-            inventory_management: 'shopify',
-            weight: productData.weight || 0,
-            weight_unit: productData.weightUnit || 'lb',
-            requires_shipping:
-              productData.requiresShipping !== undefined ? productData.requiresShipping : true,
-            taxable: productData.taxable !== undefined ? productData.taxable : true
-          }
-        ]
+        variants: [variant]
       };
 
-      // Add cost if provided (requires Shopify Plus for inventory cost tracking)
-      if (productData.cost) {
-        shopifyProduct.variants[0].cost = productData.cost;
-      }
+      // Add product options
+      const options = [];
+      if (productData.option1Name) options.push({name: productData.option1Name});
+      if (productData.option2Name) options.push({name: productData.option2Name});
+      if (productData.option3Name) options.push({name: productData.option3Name});
+      if (options.length > 0) shopifyProduct.options = options;
+
+      // Gift card
+      if (productData.giftCard) shopifyProduct.gift_card = true;
 
       // Add SEO fields if provided
       if (productData.seoTitle || productData.seoDescription) {
@@ -95,7 +99,8 @@ export class ShopifyService {
         shopifyProduct.images = [
           {
             src: productData.imageUrl,
-            alt: productData.imageAlt || undefined
+            alt: productData.imageAlt || undefined,
+            position: productData.imagePosition ? parseInt(productData.imagePosition) : undefined
           }
         ];
       }

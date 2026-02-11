@@ -176,6 +176,54 @@ function getField(product, ...names) {
 }
 
 /**
+ * Auto-detect metafield columns from CSV headers.
+ * Matches pattern: "Label (product.metafields.{namespace}.{key})"
+ * Returns array of { namespace, key, value, type }
+ */
+function extractMetafields(csvProduct) {
+  const metafields = [];
+  const metafieldRegex = /product\.metafields\.([^.]+)\.([^)]+)/;
+
+  for (const [header, rawValue] of Object.entries(csvProduct)) {
+    const match = header.match(metafieldRegex);
+    if (!match) continue;
+
+    const namespace = match[1];
+    const key = match[2];
+    const value = rawValue ? rawValue.trim() : '';
+
+    if (!value) continue;
+
+    // Auto-detect type from value
+    const type = inferMetafieldType(value);
+    metafields.push({namespace, key, value: formatMetafieldValue(value, type), type});
+  }
+
+  return metafields;
+}
+
+/**
+ * Infer Shopify metafield type from value string
+ */
+function inferMetafieldType(value) {
+  const lower = value.toLowerCase();
+  if (lower === 'true' || lower === 'false') return 'boolean';
+  if (/^\d+$/.test(value)) return 'number_integer';
+  if (/^\d+\.\d+$/.test(value)) return 'number_decimal';
+  return 'single_line_text_field';
+}
+
+/**
+ * Format metafield value for Shopify API (all values must be strings)
+ */
+function formatMetafieldValue(value, type) {
+  if (type === 'number_integer') return value;
+  if (type === 'number_decimal') return value;
+  if (type === 'boolean') return value.toLowerCase() === 'true' ? 'true' : 'false';
+  return value;
+}
+
+/**
  * Map CSV data to Shopify product format
  * Supports FULL Shopify export format with ALL columns:
  * - Basic product info (Handle, Title, Body, Vendor, Type, Tags, Published)
@@ -433,17 +481,9 @@ export function mapToShopifyProduct(csvProduct) {
       'seo_description',
       'seoDescription'
     ),
-    seoHidden: parseBoolean(
-      getField(csvProduct, 'SEO Hidden (product.metafields.seo.hidden)', 'seo_hidden'),
-      false
-    ),
 
-    // Color metafield (new format)
-    colorPattern: getField(
-      csvProduct,
-      'Color (product.metafields.shopify.color-pattern)',
-      'color_pattern'
-    )
+    // Dynamic metafields - auto-detected from CSV headers matching "product.metafields.{namespace}.{key}"
+    dynamicMetafields: extractMetafields(csvProduct)
   };
 
   return product;

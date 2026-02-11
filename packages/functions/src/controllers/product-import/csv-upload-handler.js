@@ -108,14 +108,29 @@ export function buildFilesToProcess(csvData, fileName, csvFiles) {
 
 /**
  * Validate and fetch all stores
+ * Checks: exists, active status, valid accessToken
  * Returns: { stores, error }
  */
 export async function validateAndFetchStores(targetStoreIds) {
   const stores = await Promise.all(targetStoreIds.map(id => storeRepo.getById(id)));
-  const missingStores = stores.filter(s => !s);
+  const missingStores = targetStoreIds.filter((id, i) => !stores[i]);
 
   if (missingStores.length > 0) {
-    return {stores: null, error: 'One or more stores not found'};
+    return {stores: null, error: `Store(s) not found: ${missingStores.join(', ')}`};
+  }
+
+  // Check for inactive/uninstalled stores
+  const inactiveStores = stores.filter(s => s.status !== 'active');
+  if (inactiveStores.length > 0) {
+    const names = inactiveStores.map(s => `${s.name || s.shopDomain} (${s.status})`).join(', ');
+    return {stores: null, error: `Store(s) not active: ${names}. Please reinstall the app.`};
+  }
+
+  // Check for missing or invalid accessToken
+  const noTokenStores = stores.filter(s => !s.accessToken || !s.accessToken.startsWith('shpat_'));
+  if (noTokenStores.length > 0) {
+    const names = noTokenStores.map(s => s.name || s.shopDomain).join(', ');
+    return {stores: null, error: `Store(s) missing valid access token: ${names}. Please reinstall the app.`};
   }
 
   return {stores, error: null};

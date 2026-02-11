@@ -1,5 +1,15 @@
 import React, {useState, useEffect, useCallback} from 'react';
-import {Page, Banner, BlockStack, Tabs, Card, Select, InlineStack, Text, Badge} from '@shopify/polaris';
+import {
+  Page,
+  Banner,
+  BlockStack,
+  Tabs,
+  Card,
+  Select,
+  InlineStack,
+  Text,
+  Badge
+} from '@shopify/polaris';
 import {ImportIcon} from '@shopify/polaris-icons';
 import {api} from '../helpers/api';
 import {useAuth} from '../context/AuthContext';
@@ -271,20 +281,39 @@ export default function Products() {
 
       const selectedProductDetails = products.filter(p => selectedProducts.includes(p.id));
       const csvHeaders = [
-        'Title', 'Body (HTML)', 'Vendor', 'Type', 'Tags', 'Published',
-        'Variant SKU', 'Variant Price', 'Variant Compare At Price', 'Variant Inventory Qty'
+        'Title',
+        'Body (HTML)',
+        'Vendor',
+        'Type',
+        'Tags',
+        'Published',
+        'Variant SKU',
+        'Variant Price',
+        'Variant Compare At Price',
+        'Variant Inventory Qty'
       ];
       const csvRows = selectedProductDetails.map(p => [
-        p.title || '', p.description || '', p.vendor || '', p.productType || '',
-        p.tags || '', p.status === 'active' ? 'TRUE' : 'FALSE',
-        p.sku || '', p.price || '', p.compareAtPrice || '', p.inventoryQuantity || 0
+        p.title || '',
+        p.description || '',
+        p.vendor || '',
+        p.productType || '',
+        p.tags || '',
+        p.status === 'active' ? 'TRUE' : 'FALSE',
+        p.sku || '',
+        p.price || '',
+        p.compareAtPrice || '',
+        p.inventoryQuantity || 0
       ]);
       const csvData = [csvHeaders.join(','), ...csvRows.map(row => row.join(','))].join('\n');
 
       const response = await api('/api/products/upload-csv', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({storeIds: reimportStores, csvData, fileName: `reimport-${Date.now()}.csv`})
+        body: JSON.stringify({
+          storeIds: reimportStores,
+          csvData,
+          fileName: `reimport-${Date.now()}.csv`
+        })
       });
       const result = await response.json();
       if (result.success) {
@@ -404,13 +433,13 @@ export default function Products() {
                     <Text variant="headingMd" as="h2">
                       Import History
                     </Text>
-                    {importHistory.length > 0 && (
-                      <Badge>{importHistory.length} records</Badge>
-                    )}
+                    {importHistory.length > 0 && <Badge>{importHistory.length} records</Badge>}
                   </InlineStack>
 
                   {importHistory.length === 0 ? (
-                    <Text tone="subdued">No import history yet. Import products from CSV to see history here.</Text>
+                    <Text tone="subdued">
+                      No import history yet. Import products from CSV to see history here.
+                    </Text>
                   ) : (
                     <BlockStack gap="300">
                       {importHistory.map(imp => (
@@ -422,9 +451,12 @@ export default function Products() {
                               </Text>
                               <Badge
                                 tone={
-                                  imp.status === 'completed' ? 'success'
-                                    : imp.status === 'failed' ? 'critical'
-                                    : imp.status === 'processing' ? 'attention'
+                                  imp.status === 'completed'
+                                    ? 'success'
+                                    : imp.status === 'failed'
+                                    ? 'critical'
+                                    : imp.status === 'processing'
+                                    ? 'attention'
                                     : 'info'
                                 }
                               >
@@ -477,14 +509,14 @@ export default function Products() {
         onUpload={handleUpload}
         onDownloadTemplate={handleDownloadTemplate}
         uploading={uploading}
-        stores={stores}
+        stores={stores.filter(s => s.status === 'active')}
         selectedStores={selectedStores}
         onStoresChange={setSelectedStores}
       />
 
       <ReimportModal
         open={showReimportModal}
-        stores={stores}
+        stores={stores.filter(s => s.status === 'active')}
         selectedProductsCount={selectedProducts.length}
         reimportStores={reimportStores}
         reimporting={reimporting}

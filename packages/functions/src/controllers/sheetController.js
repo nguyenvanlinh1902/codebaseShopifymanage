@@ -393,7 +393,7 @@ export async function getSheetTabs(req, res) {
  */
 export async function addSheetFromPicker(req, res) {
   try {
-    const {userId, spreadsheetId, name, refreshToken, googleEmail} = req.body;
+    const {userId, spreadsheetId, name, refreshToken, googleEmail, storeId} = req.body;
 
     if (!userId || !spreadsheetId) {
       return res.status(400).json({
@@ -402,12 +402,20 @@ export async function addSheetFromPicker(req, res) {
       });
     }
 
-    // Check if already connected
-    const existing = await sheetRepo.getBySpreadsheetId(spreadsheetId);
+    if (!storeId) {
+      return res.status(400).json({
+        success: false,
+        error: 'storeId is required'
+      });
+    }
+
+    // Check if this store already has this sheet (prevent duplicate)
+    // Note: Different stores CAN add the same sheet, but one store cannot add the same sheet twice
+    const existing = await sheetRepo.getByStoreAndSpreadsheet(storeId, spreadsheetId);
     if (existing) {
       return res.status(400).json({
         success: false,
-        error: 'This sheet is already connected'
+        error: 'This sheet is already added to your store'
       });
     }
 
@@ -440,6 +448,7 @@ export async function addSheetFromPicker(req, res) {
 
     const sheet = await sheetRepo.create({
       userId,
+      storeId,
       spreadsheetId,
       name: name || spreadsheetInfo.title,
       title: spreadsheetInfo.title,

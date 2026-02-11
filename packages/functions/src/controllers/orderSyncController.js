@@ -199,12 +199,14 @@ export async function manualSync(req, res) {
     }
 
     // Enqueue new orders from page 1
+    // Note: orderData is JSON-stringified because Firestore doesn't support nested arrays (rows: [[...]])
     for (const order of newOrders) {
       await orderSyncQueueRepo.enqueue({
         syncJobId: syncJob.id,
         storeId,
         orderId: order.orderId,
-        orderData: order,
+        orderNumber: order.orderNumber,
+        orderData: JSON.stringify(order),
         sheetId: syncConfig.sheetId,
         spreadsheetId: syncConfig.spreadsheetId,
         targetSheet: syncConfig.targetSheet
@@ -313,8 +315,11 @@ export async function processOrderSyncQueue() {
             // Mark as processing
             await orderSyncQueueRepo.updateStatus(item.id, 'processing');
 
-            ordersToAppend.push(item.orderData);
-            processedItemIds.push(item);
+            // Parse orderData (stored as JSON string to avoid Firestore nested array limitation)
+            const parsedOrderData =
+              typeof item.orderData === 'string' ? JSON.parse(item.orderData) : item.orderData;
+            ordersToAppend.push(parsedOrderData);
+            processedItemIds.push({...item, _parsedOrderData: parsedOrderData});
           } catch (error) {
             console.error(`[OrderSync] Error preparing item ${item.id}:`, error);
           }
@@ -343,16 +348,16 @@ export async function processOrderSyncQueue() {
             try {
               await orderSyncQueueRepo.updateStatus(item.id, 'completed');
               await orderRepo.saveOrder({
-                orderId: item.orderData.orderId,
-                orderNumber: item.orderData.orderNumber,
+                orderId: item.orderId || item._parsedOrderData?.orderId,
+                orderNumber: item.orderNumber || item._parsedOrderData?.orderNumber,
                 storeId: item.storeId,
                 syncedToSheet: true,
                 lastSheetSync: new Date().toISOString()
               });
               await orderSyncRepo.trackSyncedOrder({
                 storeId: item.storeId,
-                shopifyOrderId: item.orderData.orderId,
-                orderNumber: item.orderData.orderNumber
+                shopifyOrderId: item.orderId || item._parsedOrderData?.orderId,
+                orderNumber: item.orderNumber || item._parsedOrderData?.orderNumber
               });
               await updateJobProgress(syncJobId, 'success');
             } catch (error) {
@@ -521,12 +526,14 @@ async function fetchNextPage(syncJobId) {
     }
 
     // Enqueue new orders
+    // Note: orderData is JSON-stringified because Firestore doesn't support nested arrays (rows: [[...]])
     for (const order of newOrders) {
       await orderSyncQueueRepo.enqueue({
         syncJobId,
         storeId: job.storeId,
         orderId: order.orderId,
-        orderData: order,
+        orderNumber: order.orderNumber,
+        orderData: JSON.stringify(order),
         sheetId: job.sheetId,
         spreadsheetId: job.spreadsheetId,
         targetSheet: job.targetSheet

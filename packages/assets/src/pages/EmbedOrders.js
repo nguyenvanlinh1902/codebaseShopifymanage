@@ -421,9 +421,11 @@ export default function EmbedOrders() {
                       placeholder="Choose a sheet"
                     />
                   </Box>
-                  <Button onClick={handleAddSheet} loading={addingSheet}>
-                    Add Sheet
-                  </Button>
+                  <Box minWidth="fit-content" paddingBlockEnd="025">
+                    <Button onClick={handleAddSheet} loading={addingSheet}>
+                      Add Sheet
+                    </Button>
+                  </Box>
                 </InlineStack>
 
                 <Select

@@ -1,5 +1,5 @@
-import { Router } from 'express';
-import { verifyShopifySession } from '../middleware/verifyShopifySession.js';
+import {Router} from 'express';
+import {verifyShopifySession} from '../middleware/verifyShopifySession.js';
 import * as productImportController from '../controllers/productImportController.js';
 import * as orderSyncController from '../controllers/orderSyncController.js';
 import * as sheetController from '../controllers/sheetController.js';
@@ -13,12 +13,15 @@ router.use(verifyShopifySession);
 // Inject storeId from session into request for downstream controllers
 router.use((req, res, next) => {
   if (req.store) {
+    // In embedded mode, use storeId as userId for data scoping
+    const effectiveUserId = req.store.userId || req.store.id;
+
     req.query.storeId = req.store.id;
-    req.query.userId = req.store.userId || 'default-user';
-    req.userId = req.store.userId || 'default-user';
+    req.query.userId = effectiveUserId;
+    req.userId = effectiveUserId;
     if (req.body && typeof req.body === 'object') {
       req.body.storeId = req.store.id;
-      req.body.userId = req.store.userId || 'default-user';
+      req.body.userId = effectiveUserId;
     }
   }
   next();
@@ -27,7 +30,7 @@ router.use((req, res, next) => {
 // Get current store info
 router.get('/store', (req, res) => {
   if (!req.store) {
-    return res.status(404).json({ success: false, error: 'Store not found' });
+    return res.status(404).json({success: false, error: 'Store not found'});
   }
   return res.json({
     success: true,
@@ -45,15 +48,23 @@ router.get('/store', (req, res) => {
 router.get('/dashboard', async (req, res) => {
   try {
     if (!req.store) {
-      return res.status(404).json({ success: false, error: 'Store not found' });
+      return res.status(404).json({success: false, error: 'Store not found'});
     }
 
     // Helper to create mock response that captures data
     const createMockRes = () => {
       let capturedData = null;
       return {
-        json: (data) => { capturedData = data; return capturedData; },
-        status: () => ({ json: (data) => { capturedData = data; return capturedData; } }),
+        json: data => {
+          capturedData = data;
+          return capturedData;
+        },
+        status: () => ({
+          json: data => {
+            capturedData = data;
+            return capturedData;
+          }
+        }),
         data: () => capturedData
       };
     };
@@ -66,20 +77,11 @@ router.get('/dashboard', async (req, res) => {
 
     // Fetch all data in parallel with proper mock objects
     await Promise.all([
-      productImportController.getQueueStats(
-        { query: { storeId: req.store.id } },
-        productStatsMock
-      ),
-      orderSyncController.getSyncConfigs(
-        { query: { storeId: req.store.id } },
-        syncConfigsMock
-      ),
-      sheetController.getSheets(
-        { query: { storeId: req.store.id } },
-        sheetsMock
-      ),
+      productImportController.getQueueStats({query: {storeId: req.store.id}}, productStatsMock),
+      orderSyncController.getSyncConfigs({query: {storeId: req.store.id}}, syncConfigsMock),
+      sheetController.getSheets({query: {storeId: req.store.id}}, sheetsMock),
       googleAuthController.checkGoogleAuth(
-        { query: { storeId: req.store.id, userId: req.store.userId } },
+        {query: {storeId: req.store.id, userId: req.store.userId}},
         googleStatusMock
       )
     ]);
@@ -104,7 +106,8 @@ router.get('/dashboard', async (req, res) => {
         syncConfigs: syncConfigsRes?.data || [],
         sheets: sheetsRes?.data || [],
         googleStatus: {
-          connected: googleStatusRes?.data?.authenticated || googleStatusRes?.data?.connected || false
+          connected:
+            googleStatusRes?.data?.authenticated || googleStatusRes?.data?.connected || false
         }
       }
     });
@@ -118,13 +121,17 @@ router.get('/dashboard', async (req, res) => {
 });
 
 // Products - reuse existing controllers
-router.post('/products/upload-csv', (req, res, next) => {
-  // Embedded: auto-inject storeIds from session
-  if (req.store && !req.body.storeIds) {
-    req.body.storeIds = [req.store.id];
-  }
-  next();
-}, productImportController.uploadAndImport);
+router.post(
+  '/products/upload-csv',
+  (req, res, next) => {
+    // Embedded: auto-inject storeIds from session
+    if (req.store && !req.body.storeIds) {
+      req.body.storeIds = [req.store.id];
+    }
+    next();
+  },
+  productImportController.uploadAndImport
+);
 
 router.get('/products/list', productImportController.getProducts);
 router.get('/products/template', productImportController.downloadTemplate);
@@ -189,7 +196,26 @@ router.post('/google/disconnect', (req, res) => {
 router.get('/google/picker-token', googleAuthController.getPickerToken);
 
 // Sheets - reuse existing controllers
-router.get('/sheets', sheetController.getSheets);
+router.get(
+  '/sheets',
+  (req, res, next) => {
+    console.log('[embedRoutes] GET /sheets called');
+    console.log('[embedRoutes] Query:', JSON.stringify(req.query));
+    console.log('[embedRoutes] Store:', req.store?.id);
+    next();
+  },
+  sheetController.getSheets
+);
+router.post(
+  '/sheets',
+  (req, res, next) => {
+    console.log('[embedRoutes] POST /sheets called');
+    console.log('[embedRoutes] Body:', JSON.stringify(req.body));
+    console.log('[embedRoutes] Store:', req.store?.id);
+    next();
+  },
+  sheetController.addSheetFromPicker
+);
 router.get('/sheets/:sheetId/tabs', sheetController.getSheetTabs);
 router.get('/sheets/:sheetId', sheetController.getSheet);
 

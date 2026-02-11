@@ -68,7 +68,7 @@ function normalizeShopDomain(shop) {
  */
 export async function initiateInstall(req, res) {
   try {
-    const {shop} = req.query;
+    const {shop, force} = req.query;
 
     if (!shop) {
       return res.status(400).json({
@@ -82,10 +82,9 @@ export async function initiateInstall(req, res) {
       return res.status(400).json({success: false, error: 'Invalid shop domain'});
     }
 
-    // If store already installed, skip OAuth and redirect to embedded app
+    // If store already installed AND no force param, skip OAuth and redirect to embedded app
     const existingStore = await storeRepo.getByShopDomain(shopDomain);
-    if (existingStore && existingStore.status === 'active' && existingStore.accessToken) {
-      console.log(`Store ${shopDomain} already installed, skipping OAuth`);
+    if (existingStore && existingStore.status === 'active' && existingStore.accessToken && !force) {
       const embeddedUrl = `https://${shopDomain}.myshopify.com/admin/apps/${shopifyConfig.apiKey}`;
       return res.redirect(embeddedUrl);
     }

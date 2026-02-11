@@ -171,6 +171,30 @@ export class SheetRepository {
   }
 
   /**
+   * SECURITY: Check if a sheet already exists for a specific store and spreadsheetId
+   * Used to prevent a single store from adding the same sheet twice
+   * @param {string} storeId - Store ID
+   * @param {string} spreadsheetId - Google Spreadsheet ID
+   * @returns {object|null} - Sheet object if exists, null otherwise
+   */
+  async getByStoreAndSpreadsheet(storeId, spreadsheetId) {
+    const snapshot = await this.collection
+      .where('storeId', '==', storeId)
+      .where('spreadsheetId', '==', spreadsheetId)
+      .get();
+
+    if (snapshot.empty) {
+      return null;
+    }
+
+    const doc = snapshot.docs[0];
+    return {
+      id: doc.id,
+      ...doc.data()
+    };
+  }
+
+  /**
    * Update sheet
    */
   async update(sheetId, updateData) {

@@ -8,6 +8,7 @@
   "scripts": {
     "setup": "bash scripts/setup.sh",
     "setup:pubsub": "node scripts/setup-pubsub.js",
+    "setup:bigquery": "node scripts/setup-bigquery.js",
     "build": "yarn workspace @linhnv/assets run production && yarn workspace @linhnv/functions run production",
     "build:frontend": "yarn workspace @linhnv/assets run production",
     "build:backend": "yarn workspace @linhnv/functions run production",

@@ -46,28 +46,10 @@ export default function EmbedProducts() {
   const [itemsPerPage, setItemsPerPage] = useState(50);
   const [totalProducts, setTotalProducts] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
+  const pollIntervalRef = React.useRef(null);
 
-  useEffect(() => {
-    fetchProducts();
-    fetchQueueStats();
-    const interval = setInterval(fetchQueueStats, 10000);
-    return () => clearInterval(interval);
-  }, []);
-
-  useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(searchQuery), 1000);
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
-
-  useEffect(() => {
-    fetchProducts();
-  }, [currentPage, itemsPerPage, debouncedSearch]);
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [debouncedSearch]);
-
-  const fetchProducts = async () => {
+  // Wrap fetch functions in useCallback to prevent recreations
+  const fetchProducts = useCallback(async () => {
     try {
       setLoading(true);
       const params = new URLSearchParams({page: currentPage, limit: itemsPerPage});
@@ -87,17 +69,70 @@ export default function EmbedProducts() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentPage, itemsPerPage, debouncedSearch]);
 
-  const fetchQueueStats = async () => {
+  // Smart polling: only poll when there are active queue items
+  const startPolling = useCallback(() => {
+    if (pollIntervalRef.current) return; // Already polling
+    pollIntervalRef.current = setInterval(() => {
+      fetchQueueStats();
+    }, 10000); // Poll every 10s when active
+  }, []);
+
+  const stopPolling = useCallback(() => {
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = null;
+    }
+  }, []);
+
+  const fetchQueueStats = useCallback(async () => {
     try {
       const response = await api('/api/embed/products/queue-stats');
       const result = await response.json();
-      if (result.success) setQueueStats(result.data);
+      if (result.success) {
+        setQueueStats(result.data);
+
+        // Smart polling: check if we need to poll
+        const hasActiveItems = (result.data.pending || 0) > 0 || (result.data.processing || 0) > 0;
+
+        if (hasActiveItems) {
+          startPolling(); // Start if not already polling
+        } else {
+          stopPolling(); // Stop if no active items
+        }
+      }
     } catch (err) {
       console.error('Error fetching queue stats:', err);
     }
-  };
+  }, [startPolling, stopPolling]);
+
+  // Mount only - setup polling and cleanup
+  useEffect(() => {
+    fetchQueueStats(); // Check queue stats once, then smart polling takes over
+    // Cleanup on unmount
+    return () => stopPolling();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Debounce search input
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchQuery), 1000);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // Reset to page 1 when search changes (before fetchProducts)
+  useEffect(() => {
+    // Only reset if not already on page 1 to avoid unnecessary re-render
+    if (currentPage !== 1) {
+      setCurrentPage(1);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSearch]); // Intentionally exclude currentPage to avoid loop
+
+  // Fetch products when component mounts or when pagination/search changes
+  useEffect(() => {
+    fetchProducts(); // Called once on mount, then when deps change
+  }, [fetchProducts]); // fetchProducts recreates only when currentPage/itemsPerPage/debouncedSearch change
 
   const handleProcessQueue = async () => {
     try {
@@ -111,6 +146,8 @@ export default function EmbedProducts() {
       if (result.success) {
         setQueueStats(result.data);
         await fetchProducts();
+        // Trigger smart polling check after processing
+        await fetchQueueStats();
       } else {
         setError(result.error || 'Failed to process queue');
       }

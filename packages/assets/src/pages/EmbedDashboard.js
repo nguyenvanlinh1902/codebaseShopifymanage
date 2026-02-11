@@ -167,28 +167,25 @@ export default function EmbedDashboard() {
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
-      const [storeRes, productRes, configRes, sheetsRes, googleRes] = await Promise.all([
-        api('/api/embed/store'),
-        api('/api/embed/products/queue-stats'),
-        api('/api/embed/orders/sync-configs'),
-        api('/api/embed/sheets'),
-        api('/api/embed/google/status')
-      ]);
+      // Single API call instead of 5 parallel calls - reduces network overhead
+      const response = await api('/api/embed/dashboard');
+      const result = await response.json();
 
-      const [storeData, productData, configData, sheetsData, googleData] = await Promise.all([
-        storeRes.json(),
-        productRes.json(),
-        configRes.json(),
-        sheetsRes.json(),
-        googleRes.json()
-      ]);
-
-      if (storeData.success) setStore(storeData.data);
-      if (productData.success) setProductStats(productData.data);
-      if (configData.success) setSyncConfigs(configData.data || []);
-      if (sheetsData.success) setSheets(sheetsData.data || []);
-      if (googleData.success) {
-        setGoogleConnected(googleData.data?.connected || googleData.data?.authenticated || false);
+      if (result.success && result.data) {
+        const {
+          store: storeData,
+          productStats,
+          syncConfigs: configs,
+          sheets: sheetsData,
+          googleStatus
+        } = result.data;
+        setStore(storeData);
+        setProductStats(productStats);
+        setSyncConfigs(configs || []);
+        setSheets(sheetsData || []);
+        setGoogleConnected(googleStatus?.connected || false);
+      } else {
+        setError(result.error || 'Failed to load dashboard data');
       }
     } catch (err) {
       setError('Failed to load dashboard data');
@@ -196,11 +193,12 @@ export default function EmbedDashboard() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, []); // Empty deps is safe here - function is stable
 
+  // Mount only - fetch once
   useEffect(() => {
     fetchData();
-  }, [fetchData]);
+  }, []); // Remove fetchData dependency to prevent re-runs
 
   const activeSync = syncConfigs.find(c => c.status === 'active');
   const totalSynced = syncConfigs.reduce((sum, c) => sum + (c.totalOrdersSynced || 0), 0);

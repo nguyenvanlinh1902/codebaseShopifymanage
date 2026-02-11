@@ -41,10 +41,19 @@ export default function EmbedOrders() {
   const [syncJob, setSyncJob] = useState(null);
   const [addingSheet, setAddingSheet] = useState(false);
   const pollIntervalRef = useRef(null);
+  const syncingRef = useRef(false); // Use ref to avoid dependency chain
 
   // Google Auth & Picker (only for adding sheets)
   const {startAuth, getPickerToken} = useGoogleAuth();
   const {openPicker} = useGooglePicker();
+
+  // Stable stopPolling - no dependencies
+  const stopPolling = useCallback(() => {
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = null;
+    }
+  }, []);
 
   const fetchQueueStats = useCallback(async () => {
     try {
@@ -53,11 +62,18 @@ export default function EmbedOrders() {
       if (result.success) {
         setSyncJob(result.data.activeJob);
         if (result.data.activeJob?.status === 'processing') {
-          if (!pollIntervalRef.current) startPolling();
+          if (!pollIntervalRef.current) {
+            // Start polling if not already polling
+            pollIntervalRef.current = setInterval(() => {
+              fetchQueueStats();
+            }, 10000); // Increased from 5s to 10s
+          }
           setSyncing(true);
+          syncingRef.current = true;
         } else if (!result.data.activeJob || result.data.activeJob.status === 'completed') {
           stopPolling();
-          if (result.data.activeJob?.status === 'completed' && syncing) {
+          // Check ref instead of state to avoid stale closure
+          if (result.data.activeJob?.status === 'completed' && syncingRef.current) {
             const job = result.data.activeJob;
             const failedMsg = job.failedCount > 0 ? ` (${job.failedCount} failed)` : '';
             setSuccessMessage(
@@ -66,29 +82,20 @@ export default function EmbedOrders() {
             fetchSyncConfigs();
           }
           setSyncing(false);
+          syncingRef.current = false;
         }
       }
     } catch (err) {
       console.error('Error fetching queue stats:', err);
     }
-  }, [syncing]);
+  }, [stopPolling]); // Only depends on stopPolling (which is stable)
 
-  const startPolling = useCallback(() => {
-    stopPolling();
-    pollIntervalRef.current = setInterval(fetchQueueStats, 5000);
-  }, [fetchQueueStats]);
-
-  const stopPolling = useCallback(() => {
-    if (pollIntervalRef.current) {
-      clearInterval(pollIntervalRef.current);
-      pollIntervalRef.current = null;
-    }
-  }, []);
-
+  // Cleanup on unmount
   useEffect(() => {
     return () => stopPolling();
   }, [stopPolling]);
 
+  // Mount only - fetch once
   useEffect(() => {
     fetchData();
   }, []);

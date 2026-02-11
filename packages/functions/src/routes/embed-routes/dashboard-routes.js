@@ -40,10 +40,10 @@ router.get('/', async (req, res) => {
     // Fetch all data in parallel with proper mock objects
     await Promise.all([
       productImportController.getQueueStats({query: {storeId: req.store.id}}, productStatsMock),
-      orderSyncController.getSyncConfigs({query: {storeId: req.store.id}}, syncConfigsMock),
-      sheetController.getSheets({query: {storeId: req.store.id}}, sheetsMock),
+      orderSyncController.getSyncConfigs({query: {storeId: req.store.id, userId: req.store.userId || 'default-user'}}, syncConfigsMock),
+      sheetController.getSheets({query: {storeId: req.store.id, userId: req.store.userId || 'default-user'}}, sheetsMock),
       googleAuthController.checkGoogleAuth(
-        {query: {storeId: req.store.id, userId: req.store.userId}},
+        {query: {storeId: req.store.id, userId: req.store.userId || 'default-user'}},
         googleStatusMock
       )
     ]);

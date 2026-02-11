@@ -1,9 +1,9 @@
 import React, {useState, useEffect, useCallback, useRef} from 'react';
-import {Page, Banner, Badge, BlockStack} from '@shopify/polaris';
+import {Page, Banner, Badge, BlockStack, Modal, TextContainer, List, Text} from '@shopify/polaris';
 import {api} from '../helpers/api';
 import {useGoogleAuth} from '../hooks/useGoogleAuth';
 import {useGooglePicker} from '../hooks/useGooglePicker';
-import SyncProgressCard from './embed-orders/SyncProgressCard';
+// import SyncProgressCard from './embed-orders/SyncProgressCard';
 import SyncConfigurationCard from './embed-orders/SyncConfigurationCard';
 import SyncHistoryTable from './embed-orders/SyncHistoryTable';
 
@@ -26,6 +26,9 @@ export default function EmbedOrders() {
   const [successMessage, setSuccessMessage] = useState(null);
   const [syncJob, setSyncJob] = useState(null);
   const [addingSheet, setAddingSheet] = useState(false);
+  const [webhooks, setWebhooks] = useState(null);
+  const [checkingWebhooks, setCheckingWebhooks] = useState(false);
+  const [showWebhookModal, setShowWebhookModal] = useState(false);
   const pollIntervalRef = useRef(null);
   const syncingRef = useRef(false); // Use ref to avoid dependency chain
 
@@ -298,6 +301,27 @@ export default function EmbedOrders() {
     }
   };
 
+  const handleCheckWebhooks = async () => {
+    try {
+      setCheckingWebhooks(true);
+      setError(null);
+
+      const response = await api('/api/embed/orders/webhook-list');
+      const result = await response.json();
+
+      if (result.success) {
+        setWebhooks(result.data);
+        setShowWebhookModal(true);
+      } else {
+        setError(result.error || 'Failed to fetch webhooks');
+      }
+    } catch (err) {
+      setError('Failed to fetch webhooks');
+    } finally {
+      setCheckingWebhooks(false);
+    }
+  };
+
   const sheetOptions = sheets.map(sheet => ({label: sheet.name, value: sheet.id}));
   const activeConfig = syncConfigs.find(config => config.status === 'active');
 
@@ -327,7 +351,7 @@ export default function EmbedOrders() {
           </Banner>
         )}
 
-        <SyncProgressCard syncJob={syncJob} />
+        {/* <SyncProgressCard syncJob={syncJob} /> */}
 
         <SyncConfigurationCard
           activeConfig={activeConfig}
@@ -347,10 +371,92 @@ export default function EmbedOrders() {
           syncing={syncing}
           syncJob={syncJob}
           onManualSync={handleManualSync}
+          checkingWebhooks={checkingWebhooks}
+          onCheckWebhooks={handleCheckWebhooks}
         />
 
         <SyncHistoryTable syncConfigs={syncConfigs} />
       </BlockStack>
+
+      <Modal
+        open={showWebhookModal}
+        onClose={() => setShowWebhookModal(false)}
+        title="Registered Webhooks"
+        primaryAction={{
+          content: 'Close',
+          onAction: () => setShowWebhookModal(false)
+        }}
+      >
+        <Modal.Section>
+          {webhooks ? (
+            <BlockStack gap="400">
+              {webhooks.storeName && (
+                <Text variant="bodyMd" fontWeight="semibold">
+                  Store: {webhooks.storeName} ({webhooks.shopDomain})
+                </Text>
+              )}
+
+              <BlockStack gap="300">
+                <Text variant="headingSm" as="h3">
+                  Shopify Webhooks ({webhooks.shopify?.length || 0})
+                </Text>
+                {webhooks.shopify && webhooks.shopify.length > 0 ? (
+                  <List type="bullet">
+                    {webhooks.shopify.map(wh => (
+                      <List.Item key={wh.id}>
+                        <BlockStack gap="100">
+                          <Text variant="bodyMd" fontWeight="semibold">
+                            {wh.topic}
+                          </Text>
+                          <Text variant="bodySm" tone="subdued">
+                            URL: {wh.address}
+                          </Text>
+                          <Text variant="bodySm" tone="subdued">
+                            ID: {wh.id} | Format: {wh.format}
+                          </Text>
+                        </BlockStack>
+                      </List.Item>
+                    ))}
+                  </List>
+                ) : (
+                  <Banner tone="warning">
+                    No webhooks registered on Shopify. Orders will not sync automatically.
+                  </Banner>
+                )}
+              </BlockStack>
+
+              <BlockStack gap="300">
+                <Text variant="headingSm" as="h3">
+                  Local Database ({webhooks.local?.length || 0})
+                </Text>
+                {webhooks.local && webhooks.local.length > 0 ? (
+                  <List type="bullet">
+                    {webhooks.local.map(wh => (
+                      <List.Item key={wh.id}>
+                        <BlockStack gap="100">
+                          <Text variant="bodyMd" fontWeight="semibold">
+                            {wh.topic}
+                          </Text>
+                          <Text variant="bodySm" tone="subdued">
+                            URL: {wh.address}
+                          </Text>
+                          <Text variant="bodySm" tone="subdued">
+                            Shopify ID: {wh.shopifyWebhookId}
+                          </Text>
+                        </BlockStack>
+                      </List.Item>
+                    ))}
+                  </List>
+                ) : (
+                  <Banner tone="info">No webhooks tracked in local database.</Banner>
+                )}
+              </BlockStack>
+            </BlockStack>
+          ) : (
+            <Text>Loading webhook information...</Text>
+          )}
+        </Modal.Section>
+      </Modal>
     </Page>
   );
 }

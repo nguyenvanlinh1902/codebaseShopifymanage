@@ -32,9 +32,8 @@ export default function SyncConfigurationCard({
   loadingTabs,
   settingUpSync,
   onSetupSync,
-  syncing,
-  syncJob,
-  onManualSync
+  checkingWebhooks,
+  onCheckWebhooks
 }) {
   return (
     <Card>
@@ -79,9 +78,11 @@ export default function SyncConfigurationCard({
                   placeholder="Choose a sheet"
                 />
               </Box>
-              <Button onClick={onAddSheet} loading={addingSheet}>
-                Add Sheet
-              </Button>
+              <Box minWidth="fit-content">
+                <Button onClick={onAddSheet} loading={addingSheet}>
+                  Add Sheet
+                </Button>
+              </Box>
             </InlineStack>
 
             <Select
@@ -107,12 +108,8 @@ export default function SyncConfigurationCard({
               </Button>
 
               {activeConfig && (
-                <Button
-                  onClick={onManualSync}
-                  loading={syncing}
-                  disabled={syncJob?.status === 'processing'}
-                >
-                  {syncJob?.status === 'processing' ? 'Sync In Progress...' : 'Manual Sync Now'}
+                <Button onClick={onCheckWebhooks} loading={checkingWebhooks}>
+                  Check Webhooks
                 </Button>
               )}
             </InlineStack>

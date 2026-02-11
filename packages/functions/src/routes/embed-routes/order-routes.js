@@ -24,5 +24,6 @@ router.post('/manual-sync', (req, res) => {
 
 router.get('/sync-configs', orderSyncController.getSyncConfigs);
 router.get('/queue-stats', orderSyncController.getOrderSyncQueueStats);
+router.get('/webhook-list', orderSyncController.getWebhookList);
 
 export default router;

@@ -7,6 +7,7 @@ import {SheetRepository} from '../repositories/sheetRepository.js';
 import {ShopifyService} from '../services/shopifyService.js';
 import {GoogleSheetsService} from '../services/googleSheetsService.js';
 import crypto from 'crypto';
+import shopifyConfig from '../config/shopify.js';
 
 const ORDER_SYNC_PAGE_SIZE = 5;
 
@@ -22,7 +23,7 @@ const sheetRepo = new SheetRepository();
  */
 export async function setupSync(req, res) {
   try {
-    const {userId, storeId, sheetId, sheetName, targetSheetId, webhookUrl} = req.body;
+    const {userId, storeId, sheetId, sheetName, targetSheetId} = req.body;
 
     // Validate input
     if (!userId || !storeId || !sheetId) {
@@ -54,6 +55,10 @@ export async function setupSync(req, res) {
       }
     }
 
+    // Build webhook URL
+    const baseUrl = process.env.FUNCTION_URL || process.env.APP_URL;
+    const orderWebhookUrl = `${baseUrl}/api/orders/webhook`;
+
     // Create new sync configuration
     const syncConfig = await orderSyncRepo.createSyncJob({
       userId,
@@ -66,14 +71,67 @@ export async function setupSync(req, res) {
       targetSheet: sheetName || 'Orders',
       targetSheetId: targetSheetId || null,
       status: 'active',
-      webhookUrl: webhookUrl || null,
+      webhookUrl: orderWebhookUrl,
       totalOrdersSynced: 0
     });
 
+    // Auto-register orders/create webhook with Shopify
+    let webhookResult = null;
+    try {
+      const existingWebhooks = await orderSyncRepo.getWebhooksByStore(storeId);
+      const hasOrderWebhook = existingWebhooks.some(wh => wh.topic === 'orders/create');
+
+      if (!hasOrderWebhook) {
+        const shopifyService = new ShopifyService({
+          shopDomain: store.shopDomain,
+          accessToken: store.accessToken
+        });
+
+        // Check if webhook already exists on Shopify
+        const shopifyWebhooks = await shopifyService.listWebhooks();
+        const existingOnShopify = shopifyWebhooks.find(
+          wh => wh.topic === 'orders/create' && wh.address === orderWebhookUrl
+        );
+
+        let webhook;
+        if (existingOnShopify) {
+          console.log('[setupSync] Reusing existing Shopify webhook:', existingOnShopify.id);
+          webhook = existingOnShopify;
+        } else {
+          console.log('[setupSync] Registering new orders/create webhook');
+          webhook = await shopifyService.createWebhook({
+            topic: 'orders/create',
+            address: orderWebhookUrl,
+            format: 'json'
+          });
+        }
+
+        // Save webhook registration to local DB
+        await orderSyncRepo.registerWebhook({
+          storeId,
+          shopDomain: store.shopDomain,
+          shopifyWebhookId: webhook.id,
+          topic: 'orders/create',
+          address: orderWebhookUrl
+        });
+
+        webhookResult = {registered: true, webhookId: webhook.id};
+        console.log('[setupSync] Webhook registered successfully:', webhook.id);
+      } else {
+        webhookResult = {registered: true, alreadyExists: true};
+        console.log('[setupSync] Webhook already registered for store:', storeId);
+      }
+    } catch (webhookError) {
+      console.error('[setupSync] Failed to auto-register webhook:', webhookError.message);
+      webhookResult = {registered: false, error: webhookError.message};
+    }
+
     return res.json({
       success: true,
-      message: 'Order sync configured successfully',
-      data: syncConfig
+      message: webhookResult?.registered
+        ? 'Order sync configured and webhook registered successfully'
+        : 'Order sync configured (webhook registration failed - use Check Webhooks to debug)',
+      data: {...syncConfig, webhook: webhookResult}
     });
   } catch (error) {
     console.error('Setup sync error:', error);
@@ -842,41 +900,55 @@ export async function handleOrderWebhook(req, res) {
     const topic = req.get('X-Shopify-Topic');
     const order = req.body;
 
+    console.log('[WEBHOOK] ===== Incoming Order Webhook =====');
+    console.log('[WEBHOOK] Shop:', shopDomain);
+    console.log('[WEBHOOK] Topic:', topic);
+    console.log('[WEBHOOK] Order ID:', order?.id, '| Order #:', order?.name);
+    console.log('[WEBHOOK] HMAC present:', !!hmac);
+    console.log('[WEBHOOK] RawBody present:', !!req.rawBody, '| Body keys:', Object.keys(order || {}).length);
+
     // Verify webhook authenticity
     const store = await storeRepo.getByShopDomain(shopDomain);
     if (!store) {
-      console.error('Store not found for webhook:', shopDomain);
+      console.error('[WEBHOOK] Store not found for:', shopDomain);
       return res.status(404).json({error: 'Store not found'});
     }
+    console.log('[WEBHOOK] Store found:', store.id, '| hasAccessToken:', !!store.accessToken);
 
-    // Verify HMAC signature
-    const isValid = verifyWebhookHmac(req.rawBody, hmac, store.apiSecret);
+    // Verify HMAC signature using app's API secret (Shopify signs with app secret, not store secret)
+    const rawBody = req.rawBody || JSON.stringify(req.body);
+    const isValid = verifyWebhookHmac(rawBody, hmac, shopifyConfig.apiSecret);
     if (!isValid) {
-      console.error('[WEBHOOK] Invalid HMAC signature');
+      console.error('[WEBHOOK] HMAC verification FAILED');
+      console.error('[WEBHOOK] apiSecret present:', !!shopifyConfig.apiSecret, '| length:', shopifyConfig.apiSecret?.length);
       return res.status(401).json({error: 'Invalid webhook signature'});
     }
+    console.log('[WEBHOOK] HMAC verified OK');
 
     // Get active sync configuration
     const syncConfig = await orderSyncRepo.getActiveSyncConfig(store.id);
     if (!syncConfig) {
+      console.log('[WEBHOOK] No active sync config for store:', store.id, '- skipping');
       return res.status(200).json({message: 'No sync config, skipping'});
     }
+    console.log('[WEBHOOK] Sync config:', syncConfig.id, '| Sheet:', syncConfig.sheetName, '| Tab:', syncConfig.targetSheet);
 
     // Only process orders/create webhook
     if (topic !== 'orders/create') {
-      console.log('Ignoring non-update webhook:', topic);
+      console.log('[WEBHOOK] Ignoring topic:', topic);
       return res.status(200).json({message: 'Only orders/create is processed'});
     }
 
     // Check if order was already synced (prevent duplicates)
     const alreadySynced = await orderSyncRepo.isOrderSynced(store.id, order.id.toString());
     if (alreadySynced) {
-      console.log('Order already synced:', order.id);
+      console.log('[WEBHOOK] Order already synced:', order.id, '- skipping');
       return res.status(200).json({message: 'Already synced'});
     }
 
     // Format order for sheet (per-line-item rows)
     const formattedOrder = formatOrderRowsForSheet(order);
+    console.log('[WEBHOOK] Formatted order:', formattedOrder.orderId, '| rows:', formattedOrder.rows?.length || 0);
 
     // STEP 1: Save to Firestore first (always succeed, our backup)
     try {
@@ -886,8 +958,9 @@ export async function handleOrderWebhook(req, res) {
         storeId: store.id,
         syncConfigId: syncConfig.id
       });
+      console.log('[WEBHOOK] Step 1: Saved to Firestore OK');
     } catch (error) {
-      console.error('Error saving order to Firestore:', error);
+      console.error('[WEBHOOK] Step 1: Firestore save failed:', error.message);
       // Continue anyway - will try to sync to sheet
     }
 
@@ -895,6 +968,7 @@ export async function handleOrderWebhook(req, res) {
     let syncedToSheet = false;
     try {
       const sheet = await sheetRepo.getById(syncConfig.sheetId);
+      console.log('[WEBHOOK] Step 2: Sheet found:', sheet?.id, '| hasCredentials:', !!sheet?.credentials, '| hasRefreshToken:', !!sheet?.refreshToken);
 
       const sheetsService = sheet.credentials
         ? new GoogleSheetsService(sheet.credentials)
@@ -908,6 +982,7 @@ export async function handleOrderWebhook(req, res) {
         syncConfig.targetSheet,
         formattedOrder
       );
+      console.log('[WEBHOOK] Step 2: Appended to Google Sheets OK');
 
       // Track synced order
       await orderSyncRepo.trackSyncedOrder({
@@ -926,8 +1001,9 @@ export async function handleOrderWebhook(req, res) {
         totalOrdersSynced: (syncConfig.totalOrdersSynced || 0) + 1,
         lastSyncAt: new Date().toISOString()
       });
+      console.log('[WEBHOOK] ===== Order Synced Successfully =====');
     } catch (error) {
-      console.error('Error syncing to Google Sheets:', error);
+      console.error('[WEBHOOK] Step 2: Google Sheets sync FAILED:', error.message);
 
       // Increment sync attempt counter
       await orderRepo.incrementSyncAttempt(store.id, formattedOrder.orderId, error.message);
@@ -948,7 +1024,7 @@ export async function handleOrderWebhook(req, res) {
       syncedToSheet
     });
   } catch (error) {
-    console.error('Handle order webhook error:', error);
+    console.error('[WEBHOOK] ===== FATAL ERROR =====', error);
     return res.status(500).json({error: error.message});
   }
 }

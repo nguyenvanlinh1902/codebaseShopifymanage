@@ -56,15 +56,8 @@ export default function App() {
   useEffect(() => {
     if (isEmbeddedApp) {
       initAppBridge()
-        .then(() => {
-          console.log('[App] App Bridge initialized successfully');
-          setAppBridgeReady(true);
-        })
-        .catch(err => {
-          console.error('[App] Failed to initialize App Bridge:', err);
-          // Still render the app even if initialization fails
-          setAppBridgeReady(true);
-        });
+        .then(() => setAppBridgeReady(true))
+        .catch(() => setAppBridgeReady(true));
     }
   }, []);
 

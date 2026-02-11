@@ -1,14 +1,7 @@
 import React, {useState, useEffect, useCallback} from 'react';
 import {Page, Layout, InlineStack} from '@shopify/polaris';
-import {
-  StoreIcon,
-  NoteIcon,
-  OrderIcon,
-  ProductIcon,
-  DeliveryIcon
-} from '@shopify/polaris-icons';
+import {StoreIcon, NoteIcon, OrderIcon, ProductIcon, DeliveryIcon} from '@shopify/polaris-icons';
 import {api} from '../helpers/api';
-import DashboardLoadingSkeleton from './dashboard/DashboardLoadingSkeleton';
 import StatCard from './dashboard/StatCard';
 import SetupProgressCard from './dashboard/SetupProgressCard';
 import GuideCard from './dashboard/GuideCard';
@@ -69,10 +62,6 @@ export default function Dashboard() {
   const totalSteps = 5; // stores, sheets, orders, products, tracking
   const progressPct = Math.round((completedSteps / totalSteps) * 100);
 
-  if (loading) {
-    return <DashboardLoadingSkeleton />;
-  }
-
   return (
     <Page title="Dashboard" subtitle="Shopify - Google Sheets Integration">
       <Layout>
@@ -85,6 +74,7 @@ export default function Dashboard() {
               icon={StoreIcon}
               color="#5c6ac4"
               done={hasStores}
+              loading={loading}
             />
             <StatCard
               title="Google Sheets"
@@ -92,6 +82,7 @@ export default function Dashboard() {
               icon={NoteIcon}
               color="#00a0ac"
               done={hasSheets}
+              loading={loading}
             />
             <StatCard
               title="Order Sync"
@@ -100,6 +91,7 @@ export default function Dashboard() {
               color="#9c6ade"
               done={hasOrderSync}
               label="active configs"
+              loading={loading}
             />
           </InlineStack>
         </Layout.Section>

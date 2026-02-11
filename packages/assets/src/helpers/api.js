@@ -43,7 +43,6 @@ export async function api(url, options = {}) {
       console.error('[API] Failed to get session token from App Bridge');
       throw new Error('Failed to get session token');
     }
-    console.log('[API] Got session token, length:', token?.length);
     mergedOptions.headers.Authorization = `Bearer ${token}`;
   } else {
     mergedOptions.headers['x-client-id'] = 'default-user';

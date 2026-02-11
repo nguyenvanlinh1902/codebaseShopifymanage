@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Page, Banner, BlockStack, Tabs } from '@shopify/polaris';
-import { ImportIcon } from '@shopify/polaris-icons';
-import { api } from '../helpers/api';
+import React, {useState, useEffect, useCallback} from 'react';
+import {Page, Banner, BlockStack, Tabs} from '@shopify/polaris';
+import {ImportIcon} from '@shopify/polaris-icons';
+import {api} from '../helpers/api';
 import useImportProgress from '../hooks/useImportProgress';
 import ImportProgressCard from './embed-products/ImportProgressCard';
 import ProductsTab from './embed-products/ProductsTab';
@@ -31,7 +31,7 @@ export default function EmbedProducts() {
   const fetchProducts = useCallback(async () => {
     try {
       setLoading(true);
-      const params = new URLSearchParams({ page: currentPage, limit: itemsPerPage });
+      const params = new URLSearchParams({page: currentPage, limit: itemsPerPage});
       if (debouncedSearch) params.append('search', debouncedSearch);
 
       const response = await api(`/api/embed/products/list?${params}`);
@@ -51,48 +51,64 @@ export default function EmbedProducts() {
   }, [currentPage, itemsPerPage, debouncedSearch]);
 
   // Real-time import progress
-  const { importHistory } = useImportProgress({
-    storeId,
-    onComplete: async importData => {
-      setTimeout(() => setImportProgress(null), 3000);
-      await fetchProducts();
+  const {importHistory} = useImportProgress({storeId});
+  const [lastCompletedId, setLastCompletedId] = useState(null);
 
-      const status = importData.status;
-      if (status === 'completed') {
-        setSuccessMessage(
-          `Import complete: ${importData.successCount || 0} products imported successfully.`
-        );
-      } else if (status === 'partial') {
-        setSuccessMessage(
-          `Import partially complete: ${importData.successCount ||
-          0} imported, ${importData.failedCount || 0} failed.`
-        );
-      } else {
-        setError(`Import failed: ${importData.failedCount || 0} products could not be imported.`);
-      }
-    },
-    onProgress: importData => {
-      const total = importData.totalProducts || 0;
-      const processed = importData.processedProducts || 0;
+  // Watch importHistory for progress updates and completion
+  useEffect(() => {
+    if (!importHistory.length) return;
+
+    const latest = importHistory[0];
+
+    // Update progress bar for active imports
+    if (latest.status === 'pending' || latest.status === 'processing') {
+      const total = latest.totalProducts || 0;
+      const processed = latest.processedProducts || 0;
       const pct = total > 0 ? Math.round((processed / total) * 100) : 0;
 
       setImportProgress({
-        jobId: importData.id,
-        status: importData.status,
-        fileName: importData.fileName,
-        storeName: importData.storeName,
+        jobId: latest.id,
+        status: latest.status,
+        fileName: latest.fileName,
+        storeName: latest.storeName,
         totalProducts: total,
         processedProducts: processed,
-        successCount: importData.successCount || 0,
-        failedCount: importData.failedCount || 0,
-        skippedCount: importData.skippedCount || 0,
+        successCount: latest.successCount || 0,
+        failedCount: latest.failedCount || 0,
+        skippedCount: latest.skippedCount || 0,
         completionPercentage: pct
       });
     }
-  });
+
+    // Detect completion
+    const isComplete =
+      latest.status === 'completed' || latest.status === 'partial' || latest.status === 'failed';
+
+    if (isComplete && lastCompletedId !== latest.id) {
+      setLastCompletedId(latest.id);
+      setTimeout(() => setImportProgress(null), 3000);
+
+      if (latest.status === 'completed') {
+        setSuccessMessage(
+          `Import complete: ${latest.successCount || 0} products imported successfully.`
+        );
+      } else if (latest.status === 'partial') {
+        setSuccessMessage(
+          `Import partially complete: ${latest.successCount || 0} imported, ${latest.failedCount ||
+            0} failed.`
+        );
+      } else {
+        setError(`Import failed: ${latest.failedCount || 0} products could not be imported.`);
+      }
+
+      // Refetch products
+      setCurrentPage(1);
+      fetchProducts();
+    }
+  }, [importHistory]);
 
   const tabs = [
-    { id: 'products', content: 'Products', panelID: 'products-panel' },
+    {id: 'products', content: 'Products', panelID: 'products-panel'},
     {
       id: 'history',
       content: `Import History${importHistory.length > 0 ? ` (${importHistory.length})` : ''}`,
@@ -153,13 +169,13 @@ export default function EmbedProducts() {
       const csvFiles = [];
       for (const f of files) {
         const csvData = await readFileAsText(f);
-        csvFiles.push({ csvData, fileName: f.name });
+        csvFiles.push({csvData, fileName: f.name});
       }
 
       const response = await api('/api/embed/products/upload-csv', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ csvFiles })
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({csvFiles})
       });
 
       const result = await response.json();
@@ -216,7 +232,7 @@ export default function EmbedProducts() {
         icon: ImportIcon,
         onAction: () => setUploadModalOpen(true)
       }}
-      secondaryActions={[{ content: 'Download Template', onAction: handleDownloadTemplate }]}
+      secondaryActions={[{content: 'Download Template', onAction: handleDownloadTemplate}]}
     >
       <BlockStack gap="400">
         {error && (

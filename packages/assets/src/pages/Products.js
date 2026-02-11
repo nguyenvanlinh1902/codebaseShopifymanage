@@ -2,6 +2,9 @@ import React, {useState, useEffect, useCallback} from 'react';
 import {Page, Banner, BlockStack, Tabs, Card, Select, InlineStack, Text, Badge} from '@shopify/polaris';
 import {ImportIcon} from '@shopify/polaris-icons';
 import {api} from '../helpers/api';
+import {useAuth} from '../context/AuthContext';
+import useImportProgressAllStores from '../hooks/useImportProgressAllStores';
+import ImportProgressCard from './embed-products/ImportProgressCard';
 import UploadCsvModal from './products/UploadCsvModal';
 import ProductsTableSection from './products/ProductsTableSection';
 import ReimportModal from './products/ReimportModal';
@@ -12,6 +15,7 @@ import StoreImportStatusSection from './products/StoreImportStatusSection';
  * Store filter is shared across all tabs
  */
 export default function Products() {
+  const {user} = useAuth();
   const [selectedTab, setSelectedTab] = useState(0);
   const [stores, setStores] = useState([]);
   const [selectedStore, setSelectedStore] = useState('');
@@ -24,13 +28,58 @@ export default function Products() {
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
   const [storeImportStatus, setStoreImportStatus] = useState([]);
-  const [importHistory, setImportHistory] = useState([]);
+  const [importProgress, setImportProgress] = useState(null);
+  const [lastCompletedId, setLastCompletedId] = useState(null);
 
   // Selection states
   const [selectedProducts, setSelectedProducts] = useState([]);
   const [showReimportModal, setShowReimportModal] = useState(false);
   const [reimportStores, setReimportStores] = useState([]);
   const [reimporting, setReimporting] = useState(false);
+
+  // Real-time import progress (all stores or filtered by selected store)
+  const {importHistory} = useImportProgressAllStores({
+    userId: user?.id,
+    storeId: selectedStore || undefined
+  });
+
+  // Watch importHistory for progress updates and completion
+  useEffect(() => {
+    if (!importHistory.length) {
+      setImportProgress(null);
+      return;
+    }
+
+    const latest = importHistory[0];
+
+    if (latest.status === 'pending' || latest.status === 'processing') {
+      const total = latest.totalProducts || 0;
+      const processed = latest.processedProducts || 0;
+      const pct = total > 0 ? Math.round((processed / total) * 100) : 0;
+
+      setImportProgress({
+        jobId: latest.id,
+        status: latest.status,
+        fileName: latest.fileName,
+        storeName: latest.storeName,
+        totalProducts: total,
+        processedProducts: processed,
+        successCount: latest.successCount || 0,
+        failedCount: latest.failedCount || 0,
+        skippedCount: latest.skippedCount || 0,
+        completionPercentage: pct
+      });
+    }
+
+    const isComplete =
+      latest.status === 'completed' || latest.status === 'partial' || latest.status === 'failed';
+
+    if (isComplete && lastCompletedId !== latest.id) {
+      setLastCompletedId(latest.id);
+      setTimeout(() => setImportProgress(null), 3000);
+      fetchProducts();
+    }
+  }, [importHistory]);
 
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
@@ -42,11 +91,9 @@ export default function Products() {
     fetchStores();
     fetchProducts();
     fetchStoreImportStatus();
-    fetchImportHistory();
 
     const interval = setInterval(() => {
       fetchStoreImportStatus();
-      fetchImportHistory();
     }, 10000);
 
     return () => clearInterval(interval);
@@ -54,7 +101,6 @@ export default function Products() {
 
   useEffect(() => {
     fetchProducts();
-    fetchImportHistory();
   }, [selectedStore, currentPage, itemsPerPage]);
 
   useEffect(() => {
@@ -102,19 +148,6 @@ export default function Products() {
       if (result.success) setStoreImportStatus(result.data || []);
     } catch (err) {
       console.error('Error fetching store import status:', err);
-    }
-  };
-
-  const fetchImportHistory = async () => {
-    try {
-      const params = new URLSearchParams();
-      if (selectedStore) params.append('storeId', selectedStore);
-
-      const response = await api(`/api/products/import-history?${params.toString()}`);
-      const result = await response.json();
-      if (result.success) setImportHistory(result.data || []);
-    } catch (err) {
-      console.error('Error fetching import history:', err);
     }
   };
 
@@ -170,17 +203,16 @@ export default function Products() {
       const result = await response.json();
 
       if (result.success) {
-        const {totalSuccess, totalFailed} = result.data;
+        const jobs = result.data.importResults || [];
+        const totalProducts = jobs.reduce((sum, j) => sum + (j.totalProducts || 0), 0);
         setFiles([]);
         setSelectedStores([]);
         setUploadModalOpen(false);
-        await Promise.all([fetchProducts(), fetchStoreImportStatus(), fetchImportHistory()]);
+        await Promise.all([fetchProducts(), fetchStoreImportStatus()]);
 
-        if (totalFailed > 0) {
-          setSuccessMessage(`Import started: ${totalSuccess} created, ${totalFailed} queued for retry.`);
-        } else {
-          setSuccessMessage(`Import started! ${totalSuccess} products queued for processing.`);
-        }
+        setSuccessMessage(
+          `Import started! ${totalProducts} products queued for ${jobs.length} store(s). Progress will be shown below.`
+        );
       } else {
         let errorMsg = result.error || 'Import failed';
         if (result.fileErrors) {
@@ -260,7 +292,7 @@ export default function Products() {
         setReimportStores([]);
         setSelectedProducts([]);
         setSuccessMessage('Products re-imported successfully!');
-        await Promise.all([fetchProducts(), fetchStoreImportStatus(), fetchImportHistory()]);
+        await Promise.all([fetchProducts(), fetchStoreImportStatus()]);
       } else {
         setError(result.error || 'Failed to reimport products');
       }
@@ -315,6 +347,8 @@ export default function Products() {
             {successMessage}
           </Banner>
         )}
+
+        <ImportProgressCard importProgress={importProgress} />
 
         {/* Store filter - shared across all tabs */}
         <Card>

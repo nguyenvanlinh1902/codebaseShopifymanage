@@ -28,7 +28,7 @@ export async function getDashboardStats(req, res) {
     // Fetch stores and sheets in parallel
     const [stores, sheets] = await Promise.all([
       isStandalone ? storeRepo.getAll() : storeRepo.getByUser(userId),
-      isStandalone ? sheetRepo.getAll() : sheetRepo.getByUserId(userId)
+      sheetRepo.getAll()
     ]);
 
     // Fetch per-store data in parallel

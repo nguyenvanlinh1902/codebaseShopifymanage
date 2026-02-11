@@ -17,6 +17,7 @@ import themeRoutes from './routes/themeRoutes.js';
 import analyticsRoutes from './routes/analyticsRoutes.js';
 import storeRoutes from './routes/storeRoutes.js';
 import setupRoutes from './routes/setupRoutes.js';
+import dashboardRoutes from './routes/dashboardRoutes.js';
 import embedRoutes from './routes/embedRoutes.js';
 import gdprRoutes from './routes/gdprRoutes.js';
 // Controllers
@@ -96,6 +97,7 @@ app.use('/api/tracking', trackingRoutes);
 app.use('/api/themes', themeRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/setup', setupRoutes);
+app.use('/api/dashboard', dashboardRoutes);
 
 // ============ ERROR HANDLING ============
 app.use((req, res) => {

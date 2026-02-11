@@ -102,14 +102,11 @@ function StandaloneRoutes() {
 function AuthGate() {
   const {isAuthenticated} = useAuth();
 
-  if (!isAuthenticated) {
-    return <LoginPage />;
-  }
-
   return (
     <Routes>
+      {/* OAuth callback must be accessible without login */}
       <Route path="/oauth/callback" element={<OAuthCallback />} />
-      <Route path="*" element={<StandaloneFrame />} />
+      <Route path="*" element={isAuthenticated ? <StandaloneFrame /> : <LoginPage />} />
     </Routes>
   );
 }

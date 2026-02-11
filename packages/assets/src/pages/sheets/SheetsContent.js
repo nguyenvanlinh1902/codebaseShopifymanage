@@ -89,6 +89,7 @@ export default function SheetsContent({
         itemCount={sheets.length}
         headings={[
           {title: 'Spreadsheet'},
+          {title: 'Store'},
           {title: 'Google Account'},
           {title: 'Actions', alignment: 'center'}
         ]}
@@ -111,6 +112,9 @@ export default function SheetsContent({
                   </Text>
                 </div>
               </Tooltip>
+            </IndexTable.Cell>
+            <IndexTable.Cell>
+              <Text variant="bodySm" tone="subdued">{sheet.shopDomain || '\u2014'}</Text>
             </IndexTable.Cell>
             <IndexTable.Cell>{sheet.googleEmail || '\u2014'}</IndexTable.Cell>
             <IndexTable.Cell>

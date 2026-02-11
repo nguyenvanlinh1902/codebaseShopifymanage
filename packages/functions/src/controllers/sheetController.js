@@ -1,9 +1,11 @@
 import {SheetRepository} from '../repositories/sheetRepository.js';
 import {GoogleSheetsService} from '../services/googleSheetsService.js';
 import {GoogleAuthRepository} from '../repositories/googleAuthRepository.js';
+import {StoreRepository} from '../repositories/storeRepository.js';
 
 const sheetRepo = new SheetRepository();
 const authRepo = new GoogleAuthRepository();
+const storeRepo = new StoreRepository();
 
 /**
  * Sheet Controller
@@ -430,9 +432,9 @@ export async function addSheetFromPicker(req, res) {
     let tokenToSave = refreshToken;
     let emailToSave = googleEmail;
 
-    // Fallback 1: centralized auth (primary account)
+    // Fallback 1: centralized auth (store-scoped)
     if (!tokenToSave) {
-      const authRecord = await authRepo.getByUserId(userId);
+      const authRecord = await authRepo.getByStoreAndUser(storeId, userId);
       if (authRecord && (!emailToSave || authRecord.googleEmail === emailToSave)) {
         tokenToSave = authRecord.refreshToken;
         emailToSave = emailToSave || authRecord.googleEmail;
@@ -441,8 +443,8 @@ export async function addSheetFromPicker(req, res) {
 
     // Fallback 2: copy refreshToken from sibling sheet with same googleEmail
     if (!tokenToSave && emailToSave) {
-      const userSheets = await sheetRepo.getByUserId(userId);
-      const donor = userSheets.find(s => s.googleEmail === emailToSave && s.refreshToken);
+      const storeSheets = await sheetRepo.getByStoreAndUser(storeId, userId);
+      const donor = storeSheets.find(s => s.googleEmail === emailToSave && s.refreshToken);
       if (donor) tokenToSave = donor.refreshToken;
     }
 
@@ -453,9 +455,13 @@ export async function addSheetFromPicker(req, res) {
 
     const spreadsheetInfo = await sheetsService.getSpreadsheetInfo(spreadsheetId);
 
+    // Lookup store to save shopDomain
+    const store = await storeRepo.getById(storeId);
+
     const sheet = await sheetRepo.create({
       userId,
       storeId,
+      shopDomain: store?.shopDomain || '',
       spreadsheetId,
       name: name || spreadsheetInfo.title,
       title: spreadsheetInfo.title,

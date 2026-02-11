@@ -25,6 +25,11 @@ import {PAGE_LIMIT, TAB_KEYS} from './sheets/constants';
 export default function Sheets() {
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
+
+  // Store selector state (must be before useGoogleAuth)
+  const [stores, setStores] = useState([]);
+  const [selectedStoreId, setSelectedStoreId] = useState('');
+
   const {
     authenticated,
     loading: authLoading,
@@ -32,7 +37,7 @@ export default function Sheets() {
     setError: setAuthError,
     startAuth,
     checkAuth
-  } = useGoogleAuth();
+  } = useGoogleAuth(selectedStoreId);
   const {openPicker, loading: pickerLoading, error: pickerError} = useGooglePicker();
 
   // Tab state from URL
@@ -55,10 +60,6 @@ export default function Sheets() {
   ];
 
   const {mode, setMode} = useSetIndexFiltersMode();
-
-  // Store selector state
-  const [stores, setStores] = useState([]);
-  const [selectedStoreId, setSelectedStoreId] = useState('');
 
   const [sheets, setSheets] = useState([]);
   const [sheetsPagination, setSheetsPagination] = useState({page: 1, total: 0, totalPages: 0});
@@ -145,13 +146,13 @@ export default function Sheets() {
     fetchSheets(1, activeSheetSearch);
   }, [activeSheetSearch, selectedStoreId]);
 
-  // Fetch accounts when search changes (also handles initial load)
+  // Fetch accounts when search or store changes (also handles initial load)
   useEffect(() => {
-    const key = `accounts:${activeAccountSearch}`;
+    const key = `accounts:${activeAccountSearch}:${selectedStoreId}`;
     if (lastAccountsFetchKeyRef.current === key) return;
     lastAccountsFetchKeyRef.current = key;
     fetchAccounts(1, activeAccountSearch);
-  }, [activeAccountSearch]);
+  }, [activeAccountSearch, selectedStoreId]);
 
   // Search handlers
   const handleSheetSearchChange = useCallback(value => {
@@ -215,6 +216,7 @@ export default function Sheets() {
         limit: String(PAGE_LIMIT)
       });
       if (search) params.set('search', search);
+      if (selectedStoreId) params.set('storeId', selectedStoreId);
 
       const response = await api(`/api/google/connected-accounts?${params}`);
       const result = await response.json();
@@ -372,7 +374,7 @@ export default function Sheets() {
         const response = await api('/api/google/bulk-disconnect-accounts', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({emails: pendingDisconnectEmails})
+          body: JSON.stringify({emails: pendingDisconnectEmails, storeId: selectedStoreId})
         });
         const result = await response.json();
         if (result.success) {
@@ -388,7 +390,7 @@ export default function Sheets() {
         const response = await api('/api/google/disconnect-account', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({googleEmail: pendingDisconnectEmail})
+          body: JSON.stringify({googleEmail: pendingDisconnectEmail, storeId: selectedStoreId})
         });
         const result = await response.json();
         if (result.success) {
@@ -424,7 +426,9 @@ export default function Sheets() {
         setAddingSheet(true);
         setError(null);
 
-        const res = await api(`/api/google/account-token?googleEmail=${encodeURIComponent(email)}`);
+        const tokenParams = new URLSearchParams({googleEmail: email});
+        if (selectedStoreId) tokenParams.set('storeId', selectedStoreId);
+        const res = await api(`/api/google/account-token?${tokenParams}`);
         const result = await res.json();
 
         if (!result.success) {
@@ -446,7 +450,7 @@ export default function Sheets() {
         setAddingSheet(false);
       }
     },
-    [openPicker, saveSheet]
+    [openPicker, saveSheet, selectedStoreId]
   );
 
   const displayError = error || authError || pickerError;

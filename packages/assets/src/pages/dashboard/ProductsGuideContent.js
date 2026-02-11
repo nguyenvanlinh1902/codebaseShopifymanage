@@ -1,6 +1,5 @@
 import React from 'react';
 import {BlockStack, Text, List, Divider, Banner, Box} from '@shopify/polaris';
-import VideoDemo from './VideoDemo';
 
 export default function ProductsGuideContent() {
   return (
@@ -10,20 +9,33 @@ export default function ProductsGuideContent() {
       </Text>
       <List type="number">
         <List.Item>
-          Go to <strong>Products</strong> page
+          Go to <strong>Products</strong> page, click <strong>"Import CSV"</strong>
         </List.Item>
         <List.Item>
-          Select the target <strong>Store(s)</strong> to import to
+          Select one or more <strong>target stores</strong> to import to
         </List.Item>
         <List.Item>
-          Upload a <strong>CSV file</strong> with your product data (or download the template
-          first)
+          Upload <strong>CSV file(s)</strong> with product data, or click{' '}
+          <strong>"Download Template"</strong> first
         </List.Item>
         <List.Item>
-          Products are queued and processed asynchronously — you can track progress in real-time
+          Products are queued and processed in the background — track real-time progress on the page
         </List.Item>
         <List.Item>
-          Check <strong>Import History</strong> tab for past imports and their results
+          Switch to <strong>Import History</strong> tab for past imports and results
+        </List.Item>
+      </List>
+
+      <Divider />
+      <Text variant="bodySm" as="p" fontWeight="semibold">
+        Re-import existing products:
+      </Text>
+      <List type="number">
+        <List.Item>
+          In the <strong>Products</strong> tab, select products using the checkboxes
+        </List.Item>
+        <List.Item>
+          Click <strong>"Re-import to Store"</strong> and choose target store(s)
         </List.Item>
       </List>
 
@@ -43,15 +55,9 @@ export default function ProductsGuideContent() {
       <Banner tone="info">
         <p>
           Products can be imported to multiple stores at once. The import uses a background queue
-          (Pub/Sub) so large imports won't time out.
+          so large imports won't time out. Filter by store to see store-specific history.
         </p>
       </Banner>
-
-      <Divider />
-      <Text variant="bodySm" as="p" fontWeight="semibold">
-        Video Demo:
-      </Text>
-      <VideoDemo src="https://cdn.shopify.com/videos/c/o/v/1b67afc033314d00b134c6b984f83d7d.mov" />
     </BlockStack>
   );
 }

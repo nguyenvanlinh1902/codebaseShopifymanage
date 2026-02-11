@@ -1,32 +1,21 @@
 import React from 'react';
-import {IndexTable, SkeletonBodyText, EmptyState} from '@shopify/polaris';
-import StoresTableRow from './StoresTableRow';
+import {
+  ResourceList,
+  ResourceItem,
+  Text,
+  Badge,
+  InlineStack,
+  BlockStack,
+  Button,
+  SkeletonBodyText,
+  EmptyState
+} from '@shopify/polaris';
+import {EditIcon} from '@shopify/polaris-icons';
 
 /**
- * Main stores table with rows
+ * Stores list with name, domain, niche, status and edit action
  */
-export default function StoresTable({
-  stores,
-  loading,
-  activeSearch,
-  nicheFilter,
-  selectedResources,
-  allResourcesSelected,
-  onSelectionChange,
-  onDeleteClick,
-  onBulkDeleteClick,
-  onAddStore
-}) {
-  const resourceName = {singular: 'store', plural: 'stores'};
-
-  const promotedBulkActions = [
-    {
-      content: `Delete ${selectedResources.length} store(s)`,
-      onAction: onBulkDeleteClick,
-      destructive: true
-    }
-  ];
-
+export default function StoresTable({stores, loading, activeSearch, nicheFilter, onEditClick}) {
   if (loading) {
     return (
       <div style={{padding: '16px'}}>
@@ -46,40 +35,47 @@ export default function StoresTable({
     return (
       <EmptyState
         heading="No stores connected"
-        action={{content: 'Add Store', onAction: onAddStore}}
         image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
       >
-        <p>Add your first Shopify store to get started.</p>
+        <p>Stores are added automatically when merchants install the app from Shopify Admin.</p>
       </EmptyState>
     );
   }
 
-  const rowMarkup = stores.map((store, index) => (
-    <StoresTableRow
-      key={store.id}
-      store={store}
-      index={index}
-      isSelected={selectedResources.includes(store.id)}
-      onDeleteClick={onDeleteClick}
-    />
-  ));
-
   return (
-    <IndexTable
-      resourceName={resourceName}
-      itemCount={stores.length}
-      headings={[
-        {title: 'Name'},
-        {title: 'Shop Domain'},
-        {title: 'Niche'},
-        {title: 'Status'},
-        {title: 'Actions', alignment: 'center'}
-      ]}
-      selectedItemsCount={allResourcesSelected ? 'All' : selectedResources.length}
-      onSelectionChange={onSelectionChange}
-      promotedBulkActions={promotedBulkActions}
-    >
-      {rowMarkup}
-    </IndexTable>
+    <ResourceList
+      resourceName={{singular: 'store', plural: 'stores'}}
+      items={stores}
+      renderItem={store => (
+        <ResourceItem id={store.id} accessibilityLabel={store.name}>
+          <InlineStack align="space-between" blockAlign="center" wrap={false}>
+            <BlockStack gap="100">
+              <Text variant="bodyMd" fontWeight="bold">
+                {store.name}
+              </Text>
+              <Text variant="bodySm" tone="subdued">
+                {store.shopDomain}
+              </Text>
+              {store.niche && (
+                <Text variant="bodySm" tone="subdued">
+                  Niche: {store.niche}
+                </Text>
+              )}
+            </BlockStack>
+            <InlineStack gap="300" blockAlign="center">
+              <Badge tone={store.status === 'active' ? 'success' : 'warning'}>
+                {store.status}
+              </Badge>
+              <Button
+                icon={EditIcon}
+                variant="plain"
+                onClick={() => onEditClick(store)}
+                accessibilityLabel={`Edit niche for ${store.name}`}
+              />
+            </InlineStack>
+          </InlineStack>
+        </ResourceItem>
+      )}
+    />
   );
 }

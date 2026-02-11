@@ -19,7 +19,8 @@ export async function getAnalytics(req, res) {
       return res.status(400).json({success: false, error: 'userId is required'});
     }
 
-    const stores = await storeRepo.getByUser(userId);
+    const isStandalone = userId === 'default-user';
+    const stores = isStandalone ? await storeRepo.getAll() : await storeRepo.getByUser(userId);
 
     // Fetch per-store order stats and import history in parallel
     const [storeOrderStats, productImports, trackingImports] = await Promise.all([
@@ -54,8 +55,8 @@ export async function getAnalytics(req, res) {
           };
         })
       ),
-      importHistoryRepo.getByUser(userId),
-      trackingHistoryRepo.getByUser(userId)
+      isStandalone ? importHistoryRepo.getAll() : importHistoryRepo.getByUser(userId),
+      isStandalone ? trackingHistoryRepo.getAll() : trackingHistoryRepo.getByUser(userId)
     ]);
 
     // Aggregate totals across stores

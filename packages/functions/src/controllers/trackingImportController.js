@@ -166,6 +166,8 @@ export async function getImportHistory(req, res) {
     let imports;
     if (storeId) {
       imports = await trackingHistoryRepo.getByStore(storeId);
+    } else if (userId === 'default-user') {
+      imports = await trackingHistoryRepo.getAll();
     } else {
       imports = await trackingHistoryRepo.getByUser(userId);
     }

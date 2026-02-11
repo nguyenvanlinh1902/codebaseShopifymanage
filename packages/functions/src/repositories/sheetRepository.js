@@ -224,4 +224,26 @@ export class SheetRepository {
       ...doc.data()
     }));
   }
+
+  /**
+   * Get all sheets with pagination (no userId/storeId filter, for standalone admin)
+   */
+  async getAllPaginated({page = 1, limit = 5} = {}) {
+    const countSnapshot = await this.collection.count().get();
+    const total = countSnapshot.data().count;
+
+    const offset = (page - 1) * limit;
+    const snapshot = await this.collection
+      .orderBy('createdAt', 'desc')
+      .offset(offset)
+      .limit(limit)
+      .get();
+
+    const sheets = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+
+    return {sheets, total, page, limit};
+  }
 }

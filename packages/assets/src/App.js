@@ -12,7 +12,7 @@ import EmbeddedLayout from './layouts/EmbeddedLayout';
 import StandaloneLayout from './layouts/StandaloneLayout';
 
 // Context (standalone only)
-import {AuthProvider} from './context/AuthContext';
+import {AuthProvider, useAuth} from './context/AuthContext';
 
 // Pages - Embedded
 import EmbedDashboard from './pages/EmbedDashboard';
@@ -30,7 +30,9 @@ import Tracking from './pages/Tracking';
 import Analytics from './pages/Analytics';
 import Themes from './pages/Themes';
 import SetupStore from './pages/SetupStore';
+import Stores from './pages/Stores';
 import NotFound from './pages/NotFound';
+import LoginPage from './pages/LoginPage';
 
 // Polaris link component for standalone (React Router integration)
 const PolarisLink = forwardRef(({url, external, ...rest}, ref) => {
@@ -92,11 +94,23 @@ function EmbeddedRoutes() {
 function StandaloneRoutes() {
   return (
     <AuthProvider>
-      <Routes>
-        <Route path="/oauth/callback" element={<OAuthCallback />} />
-        <Route path="*" element={<StandaloneFrame />} />
-      </Routes>
+      <AuthGate />
     </AuthProvider>
+  );
+}
+
+function AuthGate() {
+  const {isAuthenticated} = useAuth();
+
+  if (!isAuthenticated) {
+    return <LoginPage />;
+  }
+
+  return (
+    <Routes>
+      <Route path="/oauth/callback" element={<OAuthCallback />} />
+      <Route path="*" element={<StandaloneFrame />} />
+    </Routes>
   );
 }
 
@@ -105,6 +119,7 @@ function StandaloneFrame() {
     <StandaloneLayout>
       <Routes>
         <Route path="/" element={<Dashboard />} />
+        <Route path="/stores" element={<Stores />} />
         <Route path="/sheets" element={<Sheets />} />
         <Route path="/products" element={<Products />} />
         <Route path="/orders" element={<Orders />} />

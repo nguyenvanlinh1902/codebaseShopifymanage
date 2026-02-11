@@ -158,7 +158,8 @@ export async function getImportedThemes(req, res) {
       return res.status(400).json({success: false, error: 'userId is required'});
     }
 
-    const records = await themeRepo.getByUserId(userId);
+    const records =
+      userId === 'default-user' ? await themeRepo.getAll() : await themeRepo.getByUserId(userId);
 
     return res.json({
       success: true,

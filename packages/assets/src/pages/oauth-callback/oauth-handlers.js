@@ -1,35 +1,7 @@
 /**
  * OAuth callback handler utilities
- * Handles Shopify, Google, and Google temp OAuth flows
+ * Handles Google OAuth flows (Shopify OAuth is handled server-side by shopifyInstallController)
  */
-
-export function handleShopifyCallback(urlParams, {setError, setStatus}) {
-  try {
-    const code = urlParams.get('code');
-    const shop = urlParams.get('shop');
-    const state = urlParams.get('state');
-    const hmac = urlParams.get('hmac');
-
-    if (!code || !shop) {
-      setError('Missing authorization code or shop parameter');
-      setStatus('error');
-      return;
-    }
-
-    if (window.opener) {
-      window.opener.postMessage({type: 'oauth-callback', code, shop, state, hmac}, '*');
-      setStatus('success');
-      setTimeout(() => window.close(), 2000);
-    } else {
-      setError('Parent window not found. Please close this window and try again.');
-      setStatus('error');
-    }
-  } catch (err) {
-    console.error('Shopify OAuth callback error:', err);
-    setError(err.message);
-    setStatus('error');
-  }
-}
 
 export async function handleGoogleCallback(code, userId, storeId, {setError, setStatus, navigate}) {
   try {

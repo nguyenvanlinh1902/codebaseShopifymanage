@@ -24,7 +24,8 @@ export default function AccountsContent({
   onBulkDisconnect,
   onPageChange,
   loading,
-  searchValue
+  searchValue,
+  onConnectAccount
 }) {
   const {
     selectedResources,
@@ -55,11 +56,16 @@ export default function AccountsContent({
       <EmptyState
         heading={searchValue ? 'No accounts found' : 'No accounts connected'}
         image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
+        action={
+          !searchValue && onConnectAccount
+            ? {content: 'Connect Google Account', onAction: onConnectAccount}
+            : undefined
+        }
       >
         <p>
           {searchValue
             ? 'Try a different search term.'
-            : 'Connect a Google account to get started.'}
+            : 'Connect your Google account to browse and select spreadsheets from Google Drive.'}
         </p>
       </EmptyState>
     );
@@ -150,5 +156,6 @@ AccountsContent.propTypes = {
   onBulkDisconnect: PropTypes.func.isRequired,
   onPageChange: PropTypes.func.isRequired,
   loading: PropTypes.bool,
-  searchValue: PropTypes.string
+  searchValue: PropTypes.string,
+  onConnectAccount: PropTypes.func
 };

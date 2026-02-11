@@ -782,8 +782,9 @@ export async function getSyncConfigs(req, res) {
     if (storeId) {
       configs = await orderSyncRepo.getSyncJobsByStore(storeId);
     } else {
-      // Get all stores for user and their configs
-      const stores = await storeRepo.getByUser(userId);
+      // Get all stores (standalone returns ALL, embed returns user-scoped)
+      const stores =
+        userId === 'default-user' ? await storeRepo.getAll() : await storeRepo.getByUser(userId);
       configs = [];
       for (const store of stores) {
         const storeConfigs = await orderSyncRepo.getSyncJobsByStore(store.id);

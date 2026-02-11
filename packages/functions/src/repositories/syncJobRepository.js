@@ -76,6 +76,17 @@ export class SyncJobRepository {
   }
 
   /**
+   * Get all jobs (no userId filter, for standalone admin)
+   */
+  async getAll(limit = 50) {
+    const snapshot = await this.collection
+      .orderBy('createdAt', 'desc')
+      .limit(limit)
+      .get();
+    return snapshot.docs.map(doc => ({id: doc.id, ...doc.data()}));
+  }
+
+  /**
    * Get jobs by store ID
    */
   async getByStoreId(storeId, limit = 50) {

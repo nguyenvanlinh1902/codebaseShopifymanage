@@ -17,32 +17,48 @@ export async function getConnectedAccounts(req, res) {
       return res.status(400).json({success: false, error: 'userId is required'});
     }
 
-    if (!storeId) {
+    const isStandalone = userId === 'default-user';
+
+    if (!isStandalone && !storeId) {
       return res.status(400).json({success: false, error: 'storeId is required for security'});
     }
 
     const pageNum = Math.max(1, parseInt(page) || 1);
     const limitNum = Math.min(50, Math.max(1, parseInt(limit) || 5));
 
-    // SECURITY FIX: Build accounts map from store-scoped records only
+    // Build accounts map
     const accountMap = new Map();
 
-    const allAuthRecords = await authRepo.getAllByStoreAndUser(storeId, userId);
-    allAuthRecords.forEach(record => {
-      if (record.googleEmail) {
-        accountMap.set(record.googleEmail, {email: record.googleEmail, sheetCount: 0});
-      }
-    });
+    if (isStandalone && !storeId) {
+      // Standalone mode: get all sheets and extract unique google emails
+      const allSheets = await sheetRepo.getAll();
+      allSheets.forEach(sheet => {
+        if (!sheet.googleEmail) return;
+        if (accountMap.has(sheet.googleEmail)) {
+          accountMap.get(sheet.googleEmail).sheetCount++;
+        } else {
+          accountMap.set(sheet.googleEmail, {email: sheet.googleEmail, sheetCount: 1});
+        }
+      });
+    } else {
+      // Store-scoped mode
+      const allAuthRecords = await authRepo.getAllByStoreAndUser(storeId, userId);
+      allAuthRecords.forEach(record => {
+        if (record.googleEmail) {
+          accountMap.set(record.googleEmail, {email: record.googleEmail, sheetCount: 0});
+        }
+      });
 
-    const userSheets = await sheetRepo.getByStoreAndUser(storeId, userId);
-    userSheets.forEach(sheet => {
-      if (!sheet.googleEmail) return;
-      if (accountMap.has(sheet.googleEmail)) {
-        accountMap.get(sheet.googleEmail).sheetCount++;
-      } else {
-        accountMap.set(sheet.googleEmail, {email: sheet.googleEmail, sheetCount: 1});
-      }
-    });
+      const userSheets = await sheetRepo.getByStoreAndUser(storeId, userId);
+      userSheets.forEach(sheet => {
+        if (!sheet.googleEmail) return;
+        if (accountMap.has(sheet.googleEmail)) {
+          accountMap.get(sheet.googleEmail).sheetCount++;
+        } else {
+          accountMap.set(sheet.googleEmail, {email: sheet.googleEmail, sheetCount: 1});
+        }
+      });
+    }
 
     let filteredAccounts = Array.from(accountMap.values());
 

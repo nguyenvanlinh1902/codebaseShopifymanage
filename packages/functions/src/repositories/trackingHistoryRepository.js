@@ -109,6 +109,17 @@ export class TrackingHistoryRepository {
   }
 
   /**
+   * Get all imports (no userId filter, for standalone admin)
+   */
+  async getAll(limit = 100) {
+    const snapshot = await this.collection
+      .orderBy('createdAt', 'desc')
+      .limit(limit)
+      .get();
+    return snapshot.docs.map(doc => doc.data());
+  }
+
+  /**
    * Get recent successful imports
    */
   async getRecentSuccessful(userId, limit = 10) {

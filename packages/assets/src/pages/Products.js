@@ -1,22 +1,15 @@
 import React, {useState, useEffect, useCallback} from 'react';
-import {Page, Layout, Card, Banner, Tabs} from '@shopify/polaris';
+import {Page, Banner, BlockStack, Tabs, Card, Select, InlineStack, Text, Badge} from '@shopify/polaris';
+import {ImportIcon} from '@shopify/polaris-icons';
 import {api} from '../helpers/api';
-import FileUploadSection from './products/FileUploadSection';
-import StoreSelectionSection from './products/StoreSelectionSection';
-import QueueStatusSection from './products/QueueStatusSection';
-import StoreImportStatusSection from './products/StoreImportStatusSection';
+import UploadCsvModal from './products/UploadCsvModal';
 import ProductsTableSection from './products/ProductsTableSection';
 import ReimportModal from './products/ReimportModal';
+import StoreImportStatusSection from './products/StoreImportStatusSection';
 
 /**
- * Products Page - Enhanced version
- * Features:
- * - Multi-store CSV import
- * - Multi-select products with checkboxes using IndexTable
- * - Re-import selected products to other stores
- * - Real-time import status per store
- * - Auto CronJob + Manual processing
- * - Full product field support (48 columns)
+ * Products Page - Redesigned to match embed pattern
+ * Store filter is shared across all tabs
  */
 export default function Products() {
   const [selectedTab, setSelectedTab] = useState(0);
@@ -25,12 +18,13 @@ export default function Products() {
   const [selectedStores, setSelectedStores] = useState([]);
   const [files, setFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
+  const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [queueStats, setQueueStats] = useState(null);
-  const [processingQueue, setProcessingQueue] = useState(false);
+  const [successMessage, setSuccessMessage] = useState(null);
   const [storeImportStatus, setStoreImportStatus] = useState([]);
+  const [importHistory, setImportHistory] = useState([]);
 
   // Selection states
   const [selectedProducts, setSelectedProducts] = useState([]);
@@ -47,22 +41,21 @@ export default function Products() {
   useEffect(() => {
     fetchStores();
     fetchProducts();
-    fetchQueueStats();
     fetchStoreImportStatus();
+    fetchImportHistory();
 
     const interval = setInterval(() => {
-      fetchQueueStats();
       fetchStoreImportStatus();
+      fetchImportHistory();
     }, 10000);
 
     return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
-    if (selectedTab === 1) {
-      fetchProducts();
-    }
-  }, [selectedStore, selectedTab, currentPage, itemsPerPage]);
+    fetchProducts();
+    fetchImportHistory();
+  }, [selectedStore, currentPage, itemsPerPage]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -83,18 +76,11 @@ export default function Products() {
   const fetchProducts = async () => {
     try {
       setLoading(true);
-      const params = new URLSearchParams({
-        page: currentPage,
-        limit: itemsPerPage
-      });
-
-      if (selectedStore) {
-        params.append('storeId', selectedStore);
-      }
+      const params = new URLSearchParams({page: currentPage, limit: itemsPerPage});
+      if (selectedStore) params.append('storeId', selectedStore);
 
       const response = await api(`/api/products/list?${params.toString()}`);
       const result = await response.json();
-
       if (result.success) {
         setProducts(result.data || []);
         if (result.pagination) {
@@ -109,54 +95,26 @@ export default function Products() {
     }
   };
 
-  const fetchQueueStats = async () => {
-    try {
-      const response = await api('/api/products/queue-stats');
-      const result = await response.json();
-      if (result.success) {
-        setQueueStats(result.data);
-      }
-    } catch (err) {
-      console.error('Error fetching queue stats:', err);
-    }
-  };
-
   const fetchStoreImportStatus = async () => {
     try {
       const response = await api('/api/products/successful-imports');
       const result = await response.json();
-      if (result.success) {
-        setStoreImportStatus(result.data || []);
-      }
+      if (result.success) setStoreImportStatus(result.data || []);
     } catch (err) {
       console.error('Error fetching store import status:', err);
     }
   };
 
-  const handleProcessQueue = async () => {
+  const fetchImportHistory = async () => {
     try {
-      setProcessingQueue(true);
-      setError(null);
+      const params = new URLSearchParams();
+      if (selectedStore) params.append('storeId', selectedStore);
 
-      const response = await api('/api/products/process-queue', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'}
-      });
-
+      const response = await api(`/api/products/import-history?${params.toString()}`);
       const result = await response.json();
-
-      if (result.success) {
-        setQueueStats(result.data);
-        await fetchProducts();
-        await fetchStoreImportStatus();
-      } else {
-        setError(result.error || 'Failed to process queue');
-      }
+      if (result.success) setImportHistory(result.data || []);
     } catch (err) {
-      console.error('Error processing queue:', err);
-      setError('Failed to process queue');
-    } finally {
-      setProcessingQueue(false);
+      console.error('Error fetching import history:', err);
     }
   };
 
@@ -183,15 +141,14 @@ export default function Products() {
       setError('Please select at least one store');
       return;
     }
-
     if (files.length === 0) {
       setError('Please select at least one CSV file');
       return;
     }
-
     try {
       setUploading(true);
       setError(null);
+      setSuccessMessage(null);
 
       const csvFiles = [];
       for (const f of files) {
@@ -208,26 +165,21 @@ export default function Products() {
       const response = await api('/api/products/upload-csv', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
-          storeIds: selectedStores,
-          csvFiles
-        })
+        body: JSON.stringify({storeIds: selectedStores, csvFiles})
       });
-
       const result = await response.json();
 
       if (result.success) {
         const {totalSuccess, totalFailed} = result.data;
         setFiles([]);
         setSelectedStores([]);
-        await fetchProducts();
-        await fetchStoreImportStatus();
-        await fetchQueueStats();
+        setUploadModalOpen(false);
+        await Promise.all([fetchProducts(), fetchStoreImportStatus(), fetchImportHistory()]);
 
         if (totalFailed > 0) {
-          setError(
-            `Import completed with errors: ${totalSuccess} created, ${totalFailed} failed (queued for retry)`
-          );
+          setSuccessMessage(`Import started: ${totalSuccess} created, ${totalFailed} queued for retry.`);
+        } else {
+          setSuccessMessage(`Import started! ${totalSuccess} products queued for processing.`);
         }
       } else {
         let errorMsg = result.error || 'Import failed';
@@ -236,11 +188,9 @@ export default function Products() {
         }
         setError(errorMsg);
       }
-
-      setUploading(false);
     } catch (err) {
-      console.error('Error uploading CSV:', err);
       setError('Failed to upload CSV files');
+    } finally {
       setUploading(false);
     }
   };
@@ -258,7 +208,6 @@ export default function Products() {
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
     } catch (err) {
-      console.error('Error downloading template:', err);
       setError('Failed to download template');
     }
   };
@@ -284,86 +233,63 @@ export default function Products() {
       setError('Please select at least one store to import to');
       return;
     }
-
     try {
       setReimporting(true);
       setError(null);
 
       const selectedProductDetails = products.filter(p => selectedProducts.includes(p.id));
-
       const csvHeaders = [
-        'Title',
-        'Body (HTML)',
-        'Vendor',
-        'Type',
-        'Tags',
-        'Published',
-        'Variant SKU',
-        'Variant Price',
-        'Variant Compare At Price',
-        'Variant Inventory Qty'
+        'Title', 'Body (HTML)', 'Vendor', 'Type', 'Tags', 'Published',
+        'Variant SKU', 'Variant Price', 'Variant Compare At Price', 'Variant Inventory Qty'
       ];
-
       const csvRows = selectedProductDetails.map(p => [
-        p.title || '',
-        p.description || '',
-        p.vendor || '',
-        p.productType || '',
-        p.tags || '',
-        p.status === 'active' ? 'TRUE' : 'FALSE',
-        p.sku || '',
-        p.price || '',
-        p.compareAtPrice || '',
-        p.inventoryQuantity || 0
+        p.title || '', p.description || '', p.vendor || '', p.productType || '',
+        p.tags || '', p.status === 'active' ? 'TRUE' : 'FALSE',
+        p.sku || '', p.price || '', p.compareAtPrice || '', p.inventoryQuantity || 0
       ]);
-
       const csvData = [csvHeaders.join(','), ...csvRows.map(row => row.join(','))].join('\n');
 
       const response = await api('/api/products/upload-csv', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
-          storeIds: reimportStores,
-          csvData,
-          fileName: `reimport-${Date.now()}.csv`
-        })
+        body: JSON.stringify({storeIds: reimportStores, csvData, fileName: `reimport-${Date.now()}.csv`})
       });
-
       const result = await response.json();
-
       if (result.success) {
         setShowReimportModal(false);
         setReimportStores([]);
         setSelectedProducts([]);
-        await fetchProducts();
-        await fetchStoreImportStatus();
-        await fetchQueueStats();
+        setSuccessMessage('Products re-imported successfully!');
+        await Promise.all([fetchProducts(), fetchStoreImportStatus(), fetchImportHistory()]);
       } else {
         setError(result.error || 'Failed to reimport products');
       }
     } catch (err) {
-      console.error('Error reimporting products:', err);
       setError('Failed to reimport products');
     } finally {
       setReimporting(false);
     }
   };
 
-  const handleCloseReimportModal = () => {
-    setShowReimportModal(false);
-    setReimportStores([]);
+  const handleCloseUploadModal = () => {
+    if (!uploading) {
+      setUploadModalOpen(false);
+      setFiles([]);
+      setSelectedStores([]);
+    }
   };
 
+  const storeOptions = [
+    {label: 'All Stores', value: ''},
+    ...stores.map(store => ({label: `${store.name} (${store.shopDomain})`, value: store.id}))
+  ];
+
   const tabs = [
+    {id: 'products', content: 'Products', panelID: 'products-panel'},
     {
-      id: 'upload',
-      content: 'Upload & Import',
-      panelID: 'upload-panel'
-    },
-    {
-      id: 'products',
-      content: 'Products List',
-      panelID: 'products-panel'
+      id: 'history',
+      content: `Import History${importHistory.length > 0 ? ` (${importHistory.length})` : ''}`,
+      panelID: 'history-panel'
     }
   ];
 
@@ -371,77 +297,156 @@ export default function Products() {
     <Page
       title="Product Management"
       subtitle="Import products from CSV to multiple Shopify stores"
-      secondaryActions={[{content: 'Download CSV Template', onAction: handleDownloadTemplate}]}
+      primaryAction={{
+        content: 'Import CSV',
+        icon: ImportIcon,
+        onAction: () => setUploadModalOpen(true)
+      }}
+      secondaryActions={[{content: 'Download Template', onAction: handleDownloadTemplate}]}
     >
-      <Layout>
+      <BlockStack gap="400">
         {error && (
-          <Layout.Section>
-            <Banner tone="critical" onDismiss={() => setError(null)}>
-              {error}
-            </Banner>
-          </Layout.Section>
+          <Banner tone="critical" onDismiss={() => setError(null)}>
+            {error}
+          </Banner>
+        )}
+        {successMessage && (
+          <Banner tone="success" onDismiss={() => setSuccessMessage(null)}>
+            {successMessage}
+          </Banner>
         )}
 
-        <Layout.Section>
-          <Card>
-            <Tabs tabs={tabs} selected={selectedTab} onSelect={setSelectedTab}>
-              <div style={{padding: '16px'}}>
-                {selectedTab === 0 && (
-                  <div style={{display: 'flex', flexDirection: 'column', gap: '16px'}}>
-                    <FileUploadSection
-                      files={files}
-                      uploading={uploading}
-                      onDrop={handleDropZoneDrop}
-                      onFileRemove={handleFileRemove}
-                    />
+        {/* Store filter - shared across all tabs */}
+        <Card>
+          <InlineStack align="space-between" blockAlign="center">
+            <Text variant="headingSm" as="h3">
+              Filter by Store
+            </Text>
+            <div style={{minWidth: '300px'}}>
+              <Select
+                label="Store"
+                labelHidden
+                options={storeOptions}
+                value={selectedStore}
+                onChange={setSelectedStore}
+              />
+            </div>
+          </InlineStack>
+        </Card>
 
-                    <StoreSelectionSection
-                      stores={stores}
-                      selectedStores={selectedStores}
-                      files={files}
-                      uploading={uploading}
-                      onStoresChange={setSelectedStores}
-                      onUpload={handleUpload}
-                    />
+        <Tabs tabs={tabs} selected={selectedTab} onSelect={setSelectedTab}>
+          {selectedTab === 0 && (
+            <Card>
+              <ProductsTableSection
+                stores={stores}
+                products={products}
+                loading={loading}
+                selectedStore={selectedStore}
+                selectedProducts={selectedProducts}
+                currentPage={currentPage}
+                itemsPerPage={itemsPerPage}
+                totalProducts={totalProducts}
+                totalPages={totalPages}
+                onStoreChange={setSelectedStore}
+                onProductSelect={handleProductSelect}
+                onSelectAll={handleSelectAll}
+                onOpenReimportModal={() => setShowReimportModal(true)}
+                onClearSelection={() => setSelectedProducts([])}
+                onPageChange={setCurrentPage}
+                onItemsPerPageChange={value => {
+                  setItemsPerPage(value);
+                  setCurrentPage(1);
+                }}
+              />
+            </Card>
+          )}
 
-                    <QueueStatusSection
-                      queueStats={queueStats}
-                      processingQueue={processingQueue}
-                      onProcessQueue={handleProcessQueue}
-                    />
+          {selectedTab === 1 && (
+            <BlockStack gap="400">
+              {/* Import History Records */}
+              <Card>
+                <BlockStack gap="400">
+                  <InlineStack align="space-between" blockAlign="center">
+                    <Text variant="headingMd" as="h2">
+                      Import History
+                    </Text>
+                    {importHistory.length > 0 && (
+                      <Badge>{importHistory.length} records</Badge>
+                    )}
+                  </InlineStack>
 
-                    <StoreImportStatusSection storeImportStatus={storeImportStatus} />
-                  </div>
-                )}
+                  {importHistory.length === 0 ? (
+                    <Text tone="subdued">No import history yet. Import products from CSV to see history here.</Text>
+                  ) : (
+                    <BlockStack gap="300">
+                      {importHistory.map(imp => (
+                        <Card key={imp.id}>
+                          <BlockStack gap="200">
+                            <InlineStack align="space-between" blockAlign="center">
+                              <Text variant="bodyMd" fontWeight="semibold">
+                                {imp.fileName || 'Unknown file'}
+                              </Text>
+                              <Badge
+                                tone={
+                                  imp.status === 'completed' ? 'success'
+                                    : imp.status === 'failed' ? 'critical'
+                                    : imp.status === 'processing' ? 'attention'
+                                    : 'info'
+                                }
+                              >
+                                {imp.status}
+                              </Badge>
+                            </InlineStack>
+                            <InlineStack gap="400">
+                              <Text variant="bodySm" tone="subdued">
+                                {imp.storeName || 'Unknown store'}
+                              </Text>
+                              <Text variant="bodySm" tone="subdued">
+                                {imp.createdAt ? new Date(imp.createdAt).toLocaleString() : '-'}
+                              </Text>
+                              {(imp.totalProducts || 0) > 0 && (
+                                <Text variant="bodySm" tone="subdued">
+                                  {imp.totalProducts} products
+                                </Text>
+                              )}
+                              {(imp.successCount || imp.results?.successCount || 0) > 0 && (
+                                <Text variant="bodySm" tone="success">
+                                  {imp.successCount || imp.results?.successCount || 0} success
+                                </Text>
+                              )}
+                              {(imp.failedCount || 0) > 0 && (
+                                <Text variant="bodySm" tone="critical">
+                                  {imp.failedCount} failed
+                                </Text>
+                              )}
+                            </InlineStack>
+                          </BlockStack>
+                        </Card>
+                      ))}
+                    </BlockStack>
+                  )}
+                </BlockStack>
+              </Card>
 
-                {selectedTab === 1 && (
-                  <ProductsTableSection
-                    stores={stores}
-                    products={products}
-                    loading={loading}
-                    selectedStore={selectedStore}
-                    selectedProducts={selectedProducts}
-                    currentPage={currentPage}
-                    itemsPerPage={itemsPerPage}
-                    totalProducts={totalProducts}
-                    totalPages={totalPages}
-                    onStoreChange={setSelectedStore}
-                    onProductSelect={handleProductSelect}
-                    onSelectAll={handleSelectAll}
-                    onOpenReimportModal={() => setShowReimportModal(true)}
-                    onClearSelection={() => setSelectedProducts([])}
-                    onPageChange={setCurrentPage}
-                    onItemsPerPageChange={value => {
-                      setItemsPerPage(value);
-                      setCurrentPage(1);
-                    }}
-                  />
-                )}
-              </div>
-            </Tabs>
-          </Card>
-        </Layout.Section>
-      </Layout>
+              <StoreImportStatusSection storeImportStatus={storeImportStatus} />
+            </BlockStack>
+          )}
+        </Tabs>
+      </BlockStack>
+
+      <UploadCsvModal
+        open={uploadModalOpen}
+        onClose={handleCloseUploadModal}
+        files={files}
+        onDrop={handleDropZoneDrop}
+        onRemove={handleFileRemove}
+        onUpload={handleUpload}
+        onDownloadTemplate={handleDownloadTemplate}
+        uploading={uploading}
+        stores={stores}
+        selectedStores={selectedStores}
+        onStoresChange={setSelectedStores}
+      />
 
       <ReimportModal
         open={showReimportModal}
@@ -449,7 +454,10 @@ export default function Products() {
         selectedProductsCount={selectedProducts.length}
         reimportStores={reimportStores}
         reimporting={reimporting}
-        onClose={handleCloseReimportModal}
+        onClose={() => {
+          setShowReimportModal(false);
+          setReimportStores([]);
+        }}
         onReimportStoresChange={setReimportStores}
         onReimport={handleReimport}
       />

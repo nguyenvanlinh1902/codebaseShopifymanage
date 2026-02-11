@@ -35,14 +35,6 @@ export default function ProductsTableSection({
   onPageChange,
   onItemsPerPageChange
 }) {
-  const storeOptions = [
-    { label: 'All Stores', value: '' },
-    ...stores.map(store => ({
-      label: `${store.name} (${store.shopDomain})`,
-      value: store.id
-    }))
-  ];
-
   const resourceName = {
     singular: 'product',
     plural: 'products'
@@ -76,25 +68,11 @@ export default function ProductsTableSection({
           </Text>
           {totalProducts > 0 && <Badge tone="info">{totalProducts} total</Badge>}
         </InlineStack>
-        <InlineStack gap="200">
-          {selectedProducts.length > 0 && (
-            <Button onClick={onOpenReimportModal} variant="primary">
-              Import {selectedProducts.length} Selected
-            </Button>
-          )}
-          <div style={{ minWidth: '250px' }}>
-            <Select
-              label="Filter by Store"
-              labelHidden
-              options={storeOptions}
-              value={selectedStore}
-              onChange={value => {
-                onStoreChange(value);
-                onClearSelection();
-              }}
-            />
-          </div>
-        </InlineStack>
+        {selectedProducts.length > 0 && (
+          <Button onClick={onOpenReimportModal} variant="primary">
+            Import {selectedProducts.length} Selected
+          </Button>
+        )}
       </InlineStack>
 
       {selectedProducts.length > 0 && (

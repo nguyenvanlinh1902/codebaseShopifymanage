@@ -20,9 +20,13 @@ export async function getImportHistory(req, res) {
       });
     }
 
+    const isStandalone = userId === 'default-user';
+
     let imports;
     if (storeId) {
       imports = await importHistoryRepo.getByStore(storeId);
+    } else if (isStandalone) {
+      imports = await importHistoryRepo.getAll(100);
     } else {
       imports = await importHistoryRepo.getByUser(userId);
     }
@@ -143,7 +147,10 @@ export async function getSuccessfulImports(req, res) {
       });
     }
 
-    const successfulImports = await importHistoryRepo.getRecentSuccessful(userId, 20);
+    const isStandalone = userId === 'default-user';
+    const successfulImports = isStandalone
+      ? await importHistoryRepo.getAllRecentSuccessful(20)
+      : await importHistoryRepo.getRecentSuccessful(userId, 20);
 
     // Group by store
     const storeImports = {};

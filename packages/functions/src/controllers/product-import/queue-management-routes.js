@@ -45,6 +45,24 @@ export async function getQueueStats(req, res) {
     } else {
       // Global stats (standalone app)
       stats = await productQueueRepo.getQueueStats();
+
+      // Get all active import jobs across all stores
+      const activeImportJobs = await importHistoryRepo.getAllActiveImports();
+      activeImports = activeImportJobs.map(imp => ({
+        importId: imp.id,
+        fileName: imp.fileName,
+        storeName: imp.storeName || 'Unknown',
+        status: imp.status,
+        totalProducts: imp.totalProducts,
+        processedProducts: imp.processedProducts || 0,
+        successCount: imp.successCount || 0,
+        failedCount: imp.failedCount || 0,
+        skippedCount: imp.skippedCount || 0,
+        completionPercentage:
+          imp.totalProducts > 0
+            ? Math.round(((imp.processedProducts || 0) / imp.totalProducts) * 100)
+            : 0
+      }));
     }
 
     // Return both queue stats and actual product count

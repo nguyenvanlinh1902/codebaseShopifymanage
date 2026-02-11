@@ -2,14 +2,13 @@ import React, {useEffect, useState, useRef} from 'react';
 import {useNavigate} from 'react-router-dom';
 import {Page, Layout, Card, Banner, Text, Spinner, BlockStack} from '@shopify/polaris';
 import {
-  handleShopifyCallback,
   handleGoogleCallback,
   handleGoogleCallbackTemp
 } from './oauth-callback/oauth-handlers';
 
 /**
  * OAuth Callback Page
- * Handles redirects from both Shopify and Google OAuth
+ * Handles redirects from Google OAuth (Shopify OAuth is handled server-side)
  */
 export default function OAuthCallback() {
   const [status, setStatus] = useState('processing');
@@ -23,7 +22,6 @@ export default function OAuthCallback() {
 
     const urlParams = new URLSearchParams(window.location.search);
     const code = urlParams.get('code');
-    const shop = urlParams.get('shop');
     const stateRaw = urlParams.get('state');
 
     let mode = 'connect';
@@ -42,9 +40,7 @@ export default function OAuthCallback() {
 
     const handlers = {setError, setStatus, navigate};
 
-    if (shop) {
-      handleShopifyCallback(urlParams, handlers);
-    } else if (code && mode === 'temp') {
+    if (code && mode === 'temp') {
       handleGoogleCallbackTemp(code, handlers);
     } else if (code) {
       handleGoogleCallback(code, stateUserId, stateStoreId, handlers);

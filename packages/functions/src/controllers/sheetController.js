@@ -138,7 +138,9 @@ export async function getSheets(req, res) {
       });
     }
 
-    if (!storeId) {
+    const isStandalone = userId === 'default-user';
+
+    if (!isStandalone && !storeId) {
       return res.status(400).json({
         success: false,
         error: 'storeId is required for security'
@@ -151,7 +153,12 @@ export async function getSheets(req, res) {
     let sheets;
     let total;
 
-    if (search) {
+    if (isStandalone && !storeId) {
+      // Standalone mode: return ALL sheets (no store/user filter)
+      const result = await sheetRepo.getAllPaginated({page: pageNum, limit: limitNum});
+      sheets = result.sheets;
+      total = result.total;
+    } else if (search) {
       // SECURITY FIX: Fetch all from store-scoped method
       const allSheets = await sheetRepo.getByStoreAndUser(storeId, userId);
       const searchLower = search.toLowerCase();

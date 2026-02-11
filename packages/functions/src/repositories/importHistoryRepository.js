@@ -109,11 +109,35 @@ export class ImportHistoryRepository {
   }
 
   /**
+   * Get all imports (no userId filter, for standalone admin)
+   */
+  async getAll(limit = 100) {
+    const snapshot = await this.collection
+      .orderBy('createdAt', 'desc')
+      .limit(limit)
+      .get();
+    return snapshot.docs.map(doc => doc.data());
+  }
+
+  /**
    * Get recent successful imports
    */
   async getRecentSuccessful(userId, limit = 10) {
     const snapshot = await this.collection
       .where('userId', '==', userId)
+      .where('status', '==', 'completed')
+      .orderBy('completedAt', 'desc')
+      .limit(limit)
+      .get();
+
+    return snapshot.docs.map(doc => doc.data());
+  }
+
+  /**
+   * Get all recent successful imports (no userId filter, for standalone admin)
+   */
+  async getAllRecentSuccessful(limit = 20) {
+    const snapshot = await this.collection
       .where('status', '==', 'completed')
       .orderBy('completedAt', 'desc')
       .limit(limit)
@@ -150,6 +174,19 @@ export class ImportHistoryRepository {
   async getActiveImports(storeId, limit = 5) {
     const snapshot = await this.collection
       .where('storeId', '==', storeId)
+      .where('status', 'in', ['pending', 'processing'])
+      .orderBy('createdAt', 'desc')
+      .limit(limit)
+      .get();
+
+    return snapshot.docs.map(doc => doc.data());
+  }
+
+  /**
+   * Get all active import jobs across all stores (for standalone admin)
+   */
+  async getAllActiveImports(limit = 20) {
+    const snapshot = await this.collection
       .where('status', 'in', ['pending', 'processing'])
       .orderBy('createdAt', 'desc')
       .limit(limit)

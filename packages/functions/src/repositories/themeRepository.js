@@ -48,6 +48,14 @@ export class ThemeRepository {
     return {id, ...data, updatedAt: now};
   }
 
+  /**
+   * Get all imported themes (no userId filter, for standalone admin)
+   */
+  async getAll() {
+    const snapshot = await this.collection.orderBy('createdAt', 'desc').get();
+    return snapshot.docs.map(doc => ({id: doc.id, ...doc.data()}));
+  }
+
   async delete(id) {
     await this.collection.doc(id).delete();
     return true;

@@ -1,8 +1,9 @@
-import React, {createContext, useContext} from 'react';
+import React, {createContext, useContext, useState, useCallback} from 'react';
 
 const AuthContext = createContext(null);
+const AUTH_KEY = 'sheetbridge_auth';
 
-const DEFAULT_USER = {
+const ADMIN_USER = {
   id: 'default-user',
   username: 'admin',
   displayName: 'Admin',
@@ -10,8 +11,24 @@ const DEFAULT_USER = {
 };
 
 export function AuthProvider({children}) {
+  const [isAuthenticated, setIsAuthenticated] = useState(
+    () => localStorage.getItem(AUTH_KEY) === 'true'
+  );
+
+  const login = useCallback(() => {
+    localStorage.setItem(AUTH_KEY, 'true');
+    setIsAuthenticated(true);
+  }, []);
+
+  const logout = useCallback(() => {
+    localStorage.removeItem(AUTH_KEY);
+    setIsAuthenticated(false);
+  }, []);
+
   return (
-    <AuthContext.Provider value={{isAuthenticated: true, user: DEFAULT_USER, loading: false}}>
+    <AuthContext.Provider
+      value={{isAuthenticated, user: ADMIN_USER, loading: false, login, logout}}
+    >
       {children}
     </AuthContext.Provider>
   );
@@ -27,7 +44,7 @@ export function useAuth() {
 
 export function getAuthHeaders() {
   return {
-    'x-client-id': DEFAULT_USER.id
+    'x-client-id': ADMIN_USER.id
   };
 }
 
@@ -35,6 +52,8 @@ export function getRefreshToken() {
   return null;
 }
 
-export function clearAuth() {}
+export function clearAuth() {
+  localStorage.removeItem(AUTH_KEY);
+}
 
 export function saveTokens() {}

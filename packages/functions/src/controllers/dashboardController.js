@@ -23,10 +23,12 @@ export async function getDashboardStats(req, res) {
       return res.status(400).json({success: false, error: 'userId is required'});
     }
 
+    const isStandalone = userId === 'default-user';
+
     // Fetch stores and sheets in parallel
     const [stores, sheets] = await Promise.all([
-      storeRepo.getByUser(userId),
-      sheetRepo.getByUserId(userId)
+      isStandalone ? storeRepo.getAll() : storeRepo.getByUser(userId),
+      isStandalone ? sheetRepo.getAll() : sheetRepo.getByUserId(userId)
     ]);
 
     // Fetch per-store data in parallel
@@ -71,13 +73,17 @@ export async function getDashboardStats(req, res) {
     let recentImports = [];
     let recentTracking = [];
     try {
-      recentImports = await importHistoryRepo.getByUser(userId);
+      recentImports = isStandalone
+        ? await importHistoryRepo.getAll(10)
+        : await importHistoryRepo.getByUser(userId);
       recentImports = recentImports.slice(0, 10);
     } catch (e) {
       // ignore
     }
     try {
-      recentTracking = await trackingHistoryRepo.getByUser(userId);
+      recentTracking = isStandalone
+        ? await trackingHistoryRepo.getAll(10)
+        : await trackingHistoryRepo.getByUser(userId);
       recentTracking = recentTracking.slice(0, 10);
     } catch (e) {
       // ignore

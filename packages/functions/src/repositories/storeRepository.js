@@ -219,6 +219,43 @@ export class StoreRepository {
   }
 
   /**
+   * Get all stores with pagination (no userId filter)
+   */
+  async getAllPaginated({page = 1, limit = 10} = {}) {
+    const countSnapshot = await this.collection.count().get();
+    const total = countSnapshot.data().count;
+
+    const offset = (page - 1) * limit;
+    const snapshot = await this.collection
+      .orderBy('createdAt', 'desc')
+      .offset(offset)
+      .limit(limit)
+      .get();
+
+    const stores = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+
+    return {stores, total, page, limit};
+  }
+
+  /**
+   * Get all unique niche values across all stores
+   */
+  async getAllNiches() {
+    const snapshot = await this.collection.select('niche').get();
+
+    const niches = new Set();
+    snapshot.docs.forEach(doc => {
+      const niche = doc.data().niche;
+      if (niche) niches.add(niche);
+    });
+
+    return [...niches].sort();
+  }
+
+  /**
    * Update store
    */
   async update(storeId, updateData) {

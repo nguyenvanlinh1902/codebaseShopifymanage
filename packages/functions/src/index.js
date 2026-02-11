@@ -8,7 +8,6 @@ import {initializeApp} from 'firebase-admin/app';
 // Route modules
 import authRoutes from './routes/authRoutes.js';
 import shopifyInstallRoutes from './routes/shopifyInstallRoutes.js';
-import oauthRoutes from './routes/oauthRoutes.js';
 import googleAuthRoutes from './routes/googleAuthRoutes.js';
 import sheetRoutes from './routes/sheetRoutes.js';
 import productRoutes from './routes/productRoutes.js';
@@ -16,6 +15,7 @@ import orderRoutes from './routes/orderRoutes.js';
 import trackingRoutes from './routes/trackingRoutes.js';
 import themeRoutes from './routes/themeRoutes.js';
 import analyticsRoutes from './routes/analyticsRoutes.js';
+import storeRoutes from './routes/storeRoutes.js';
 import setupRoutes from './routes/setupRoutes.js';
 import embedRoutes from './routes/embedRoutes.js';
 import gdprRoutes from './routes/gdprRoutes.js';
@@ -87,7 +87,7 @@ app.use((req, res, next) => {
 });
 
 // ============ APP ROUTES ============
-app.use('/api/oauth', oauthRoutes);
+app.use('/api/stores', storeRoutes);
 app.use('/api/google', googleAuthRoutes);
 app.use('/api/sheets', sheetRoutes);
 app.use('/api/products', productRoutes);

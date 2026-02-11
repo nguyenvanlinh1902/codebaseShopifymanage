@@ -192,6 +192,8 @@ export async function getJobs(req, res) {
     let jobs;
     if (storeId) {
       jobs = await syncJobRepo.getByStoreId(storeId);
+    } else if (userId === 'default-user') {
+      jobs = await syncJobRepo.getAll();
     } else if (userId) {
       jobs = await syncJobRepo.getByUserId(userId);
     } else {

@@ -7,14 +7,14 @@ import {
   IndexFilters,
   useSetIndexFiltersMode,
   Banner,
-  SkeletonBodyText
+  SkeletonBodyText,
+  Select
 } from '@shopify/polaris';
 import {useGoogleAuth} from '../hooks/useGoogleAuth';
 import {useGooglePicker} from '../hooks/useGooglePicker';
 import {api} from '../helpers/api';
 import AccountsContent from './sheets/AccountsContent';
 import SheetsContent from './sheets/SheetsContent';
-import ConnectAccountCard from './sheets/ConnectAccountCard';
 import DeleteConfirmationModal from './sheets/DeleteConfirmationModal';
 import DisconnectConfirmationModal from './sheets/DisconnectConfirmationModal';
 import {PAGE_LIMIT, TAB_KEYS} from './sheets/constants';
@@ -56,6 +56,10 @@ export default function Sheets() {
 
   const {mode, setMode} = useSetIndexFiltersMode();
 
+  // Store selector state
+  const [stores, setStores] = useState([]);
+  const [selectedStoreId, setSelectedStoreId] = useState('');
+
   const [sheets, setSheets] = useState([]);
   const [sheetsPagination, setSheetsPagination] = useState({page: 1, total: 0, totalPages: 0});
   const [loading, setLoading] = useState(true);
@@ -92,6 +96,25 @@ export default function Sheets() {
   const lastSheetsFetchKeyRef = useRef(null);
   const lastAccountsFetchKeyRef = useRef(null);
 
+  // Fetch stores on mount
+  const storesFetchedRef = useRef(false);
+  useEffect(() => {
+    if (storesFetchedRef.current) return;
+    storesFetchedRef.current = true;
+    (async () => {
+      try {
+        const res = await api('/api/stores?limit=50');
+        const result = await res.json();
+        if (result.success && result.data?.length > 0) {
+          setStores(result.data);
+          setSelectedStoreId(result.data[0].id);
+        }
+      } catch (err) {
+        console.error('Error fetching stores:', err);
+      }
+    })();
+  }, []);
+
   // Track authenticated state to refetch data when user connects
   const wasAuthenticated = useRef(authenticated);
   useEffect(() => {
@@ -116,11 +139,11 @@ export default function Sheets() {
 
   // Fetch sheets when search changes (also handles initial load)
   useEffect(() => {
-    const key = `sheets:${activeSheetSearch}`;
+    const key = `sheets:${activeSheetSearch}:${selectedStoreId}`;
     if (lastSheetsFetchKeyRef.current === key) return;
     lastSheetsFetchKeyRef.current = key;
     fetchSheets(1, activeSheetSearch);
-  }, [activeSheetSearch]);
+  }, [activeSheetSearch, selectedStoreId]);
 
   // Fetch accounts when search changes (also handles initial load)
   useEffect(() => {
@@ -169,6 +192,7 @@ export default function Sheets() {
         limit: String(PAGE_LIMIT)
       });
       if (search) params.set('search', search);
+      if (selectedStoreId) params.set('storeId', selectedStoreId);
 
       const response = await api(`/api/sheets?${params}`);
       const result = await response.json();
@@ -217,11 +241,16 @@ export default function Sheets() {
 
   const saveSheet = useCallback(
     async (spreadsheet, refreshToken, googleEmail) => {
+      if (!selectedStoreId) {
+        setError('Please select a store first');
+        return;
+      }
       try {
         setAddingSheet(true);
         const body = {
           spreadsheetId: spreadsheet.spreadsheetId,
-          name: spreadsheet.name
+          name: spreadsheet.name,
+          storeId: selectedStoreId
         };
         if (refreshToken) body.refreshToken = refreshToken;
         if (googleEmail) body.googleEmail = googleEmail;
@@ -247,7 +276,7 @@ export default function Sheets() {
         setAddingSheet(false);
       }
     },
-    [refreshData]
+    [refreshData, selectedStoreId]
   );
 
   const handleConnectAccount = useCallback(async () => {
@@ -440,15 +469,11 @@ export default function Sheets() {
     <Page
       title="Google Sheets (Beta)"
       subtitle="Manage your connected Google Sheets. This feature is currently in beta."
-      primaryAction={
-        authenticated
-          ? {
-              content: 'Connect new account',
-              onAction: handleConnectNewAccount,
-              loading: addingSheet || pickerLoading
-            }
-          : undefined
-      }
+      primaryAction={{
+        content: 'Connect new account',
+        onAction: authenticated ? handleConnectNewAccount : handleConnectAccount,
+        loading: addingSheet || pickerLoading
+      }}
     >
       <Layout>
         {successMessage && (
@@ -473,63 +498,67 @@ export default function Sheets() {
           </Layout.Section>
         )}
 
-        {!authenticated && (
+        {stores.length > 0 && (
           <Layout.Section>
-            <ConnectAccountCard onConnect={handleConnectAccount} />
+            <Select
+              label="Store"
+              options={stores.map(s => ({label: s.name || s.shopDomain, value: s.id}))}
+              value={selectedStoreId}
+              onChange={setSelectedStoreId}
+            />
           </Layout.Section>
         )}
 
-        {authenticated && (
-          <Layout.Section>
-            <Card padding="0">
-              <IndexFilters
-                tabs={indexFiltersTabs}
-                selected={selectedTab}
-                onSelect={handleTabChange}
-                queryValue={currentSearchValue}
-                queryPlaceholder={currentSearchPlaceholder}
-                onQueryChange={currentSearchChange}
-                onQueryClear={currentSearchClear}
-                filters={[]}
-                appliedFilters={[]}
-                onClearAll={currentSearchClear}
-                mode={mode}
-                setMode={setMode}
-                cancelAction={{
-                  onAction: () => {
-                    currentSearchClear();
-                    setMode('DEFAULT');
-                  }
-                }}
-                canCreateNewView={false}
+        <Layout.Section>
+          <Card padding="0">
+            <IndexFilters
+              tabs={indexFiltersTabs}
+              selected={selectedTab}
+              onSelect={handleTabChange}
+              queryValue={currentSearchValue}
+              queryPlaceholder={currentSearchPlaceholder}
+              onQueryChange={currentSearchChange}
+              onQueryClear={currentSearchClear}
+              filters={[]}
+              appliedFilters={[]}
+              onClearAll={currentSearchClear}
+              mode={mode}
+              setMode={setMode}
+              cancelAction={{
+                onAction: () => {
+                  currentSearchClear();
+                  setMode('DEFAULT');
+                }
+              }}
+              canCreateNewView={false}
+            />
+            {selectedTab === 0 ? (
+              <AccountsContent
+                accounts={accounts}
+                pagination={accountsPagination}
+                onAddSheet={handleAddSheetFromAccount}
+                onDisconnect={handleDisconnectAccountClick}
+                onBulkDisconnect={handleBulkDisconnectClick}
+                onPageChange={page => fetchAccounts(page, activeAccountSearch)}
+                loading={addingSheet || pickerLoading}
+                searchValue={accountSearchValue}
+                onConnectAccount={authenticated ? handleConnectNewAccount : handleConnectAccount}
               />
-              {selectedTab === 0 ? (
-                <AccountsContent
-                  accounts={accounts}
-                  pagination={accountsPagination}
-                  onAddSheet={handleAddSheetFromAccount}
-                  onDisconnect={handleDisconnectAccountClick}
-                  onBulkDisconnect={handleBulkDisconnectClick}
-                  onPageChange={page => fetchAccounts(page, activeAccountSearch)}
-                  loading={addingSheet || pickerLoading}
-                  searchValue={accountSearchValue}
-                />
-              ) : (
-                <SheetsContent
-                  sheets={sheets}
-                  pagination={sheetsPagination}
-                  loading={loading}
-                  onDelete={handleDeleteClick}
-                  onBulkDelete={handleBulkDeleteClick}
-                  onPageChange={page => fetchSheets(page, activeSheetSearch)}
-                  authenticated={authenticated}
-                  onAuth={handleConnectAccount}
-                  searchValue={sheetSearchValue}
-                />
-              )}
-            </Card>
-          </Layout.Section>
-        )}
+            ) : (
+              <SheetsContent
+                sheets={sheets}
+                pagination={sheetsPagination}
+                loading={loading}
+                onDelete={handleDeleteClick}
+                onBulkDelete={handleBulkDeleteClick}
+                onPageChange={page => fetchSheets(page, activeSheetSearch)}
+                authenticated={authenticated}
+                onAuth={handleConnectAccount}
+                searchValue={sheetSearchValue}
+              />
+            )}
+          </Card>
+        </Layout.Section>
       </Layout>
 
       <DeleteConfirmationModal

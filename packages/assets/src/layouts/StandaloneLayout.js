@@ -4,6 +4,7 @@ import {Frame, Navigation} from '@shopify/polaris';
 import {useLocation} from 'react-router-dom';
 import {
   HomeIcon,
+  StoreIcon,
   NoteIcon,
   ProductIcon,
   OrderIcon,
@@ -25,6 +26,7 @@ export default function StandaloneLayout({children}) {
       <Navigation.Section
         items={[
           {label: 'Dashboard', icon: HomeIcon, url: '/', exactMatch: true},
+          {label: 'Stores', icon: StoreIcon, url: '/stores'},
           {label: 'Google Sheets (Beta)', icon: NoteIcon, url: '/sheets'},
           {label: 'Products', icon: ProductIcon, url: '/products'},
           {label: 'Orders', icon: OrderIcon, url: '/orders'},

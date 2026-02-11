@@ -906,7 +906,12 @@ export async function handleOrderWebhook(req, res) {
     console.log('[WEBHOOK] Topic:', topic);
     console.log('[WEBHOOK] Order ID:', order?.id, '| Order #:', order?.name);
     console.log('[WEBHOOK] HMAC present:', !!hmac);
-    console.log('[WEBHOOK] RawBody present:', !!req.rawBody, '| Body keys:', Object.keys(order || {}).length);
+    console.log(
+      '[WEBHOOK] RawBody present:',
+      !!req.rawBody,
+      '| Body keys:',
+      Object.keys(order || {}).length
+    );
 
     // Verify webhook authenticity
     const store = await storeRepo.getByShopDomain(shopDomain);
@@ -921,7 +926,12 @@ export async function handleOrderWebhook(req, res) {
     const isValid = verifyWebhookHmac(rawBody, hmac, shopifyConfig.apiSecret);
     if (!isValid) {
       console.error('[WEBHOOK] HMAC verification FAILED');
-      console.error('[WEBHOOK] apiSecret present:', !!shopifyConfig.apiSecret, '| length:', shopifyConfig.apiSecret?.length);
+      console.error(
+        '[WEBHOOK] apiSecret present:',
+        !!shopifyConfig.apiSecret,
+        '| length:',
+        shopifyConfig.apiSecret?.length
+      );
       return res.status(401).json({error: 'Invalid webhook signature'});
     }
     console.log('[WEBHOOK] HMAC verified OK');
@@ -932,7 +942,14 @@ export async function handleOrderWebhook(req, res) {
       console.log('[WEBHOOK] No active sync config for store:', store.id, '- skipping');
       return res.status(200).json({message: 'No sync config, skipping'});
     }
-    console.log('[WEBHOOK] Sync config:', syncConfig.id, '| Sheet:', syncConfig.sheetName, '| Tab:', syncConfig.targetSheet);
+    console.log(
+      '[WEBHOOK] Sync config:',
+      syncConfig.id,
+      '| Sheet:',
+      syncConfig.sheetName,
+      '| Tab:',
+      syncConfig.targetSheet
+    );
 
     // Only process orders/create webhook
     if (topic !== 'orders/create') {
@@ -949,7 +966,12 @@ export async function handleOrderWebhook(req, res) {
 
     // Format order for sheet (per-line-item rows)
     const formattedOrder = formatOrderRowsForSheet(order);
-    console.log('[WEBHOOK] Formatted order:', formattedOrder.orderId, '| rows:', formattedOrder.rows?.length || 0);
+    console.log(
+      '[WEBHOOK] Formatted order:',
+      formattedOrder.orderId,
+      '| rows:',
+      formattedOrder.rows?.length || 0
+    );
 
     // STEP 1: Save to Firestore first (always succeed, our backup)
     try {
@@ -969,7 +991,14 @@ export async function handleOrderWebhook(req, res) {
     let syncedToSheet = false;
     try {
       const sheet = await sheetRepo.getById(syncConfig.sheetId);
-      console.log('[WEBHOOK] Step 2: Sheet found:', sheet?.id, '| hasCredentials:', !!sheet?.credentials, '| hasRefreshToken:', !!sheet?.refreshToken);
+      console.log(
+        '[WEBHOOK] Step 2: Sheet found:',
+        sheet?.id,
+        '| hasCredentials:',
+        !!sheet?.credentials,
+        '| hasRefreshToken:',
+        !!sheet?.refreshToken
+      );
 
       const sheetsService = sheet.credentials
         ? new GoogleSheetsService(sheet.credentials)

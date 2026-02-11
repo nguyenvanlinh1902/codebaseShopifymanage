@@ -547,11 +547,27 @@ export async function downloadTemplate(req, res) {
  */
 export async function getQueueStats(req, res) {
   try {
-    const stats = await productQueueRepo.getQueueStats();
+    const {storeId} = req.query;
 
+    let stats;
+    let actualProductCount = 0;
+
+    // If storeId provided (embedded app), filter by store and get actual product count
+    if (storeId) {
+      stats = await productQueueRepo.getQueueStatsByStore(storeId);
+      actualProductCount = await productRepo.getCountByStore(storeId);
+    } else {
+      // Global stats (standalone app)
+      stats = await productQueueRepo.getQueueStats();
+    }
+
+    // Return both queue stats and actual product count
     return res.json({
       success: true,
-      data: stats
+      data: {
+        ...stats,
+        actualProductCount // Actual number of successfully imported products
+      }
     });
   } catch (error) {
     console.error('Get queue stats error:', error);

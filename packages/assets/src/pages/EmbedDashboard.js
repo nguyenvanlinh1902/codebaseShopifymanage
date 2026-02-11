@@ -241,7 +241,7 @@ export default function EmbedDashboard() {
       id: 'products',
       label: 'Import Your First Products',
       description: 'Upload a CSV file to bulk import products into your Shopify store.',
-      completed: (productStats?.completed || 0) > 0,
+      completed: (productStats?.actualProductCount || 0) > 0,
       buttons: [
         {
           text: 'Go to Products',
@@ -336,7 +336,7 @@ export default function EmbedDashboard() {
         <InlineGrid columns={3} gap="400">
           <StatCard
             title="Products Imported"
-            value={productStats ? (productStats.completed || 0).toLocaleString() : '0'}
+            value={productStats ? (productStats.actualProductCount || 0).toLocaleString() : '0'}
             icon={ProductIcon}
             iconBg="bg-fill-info-secondary"
             status={

@@ -143,6 +143,31 @@ export class ProductQueueRepository {
   }
 
   /**
+   * Get queue statistics by store
+   * @param {string} storeId - Store ID to filter by
+   */
+  async getQueueStatsByStore(storeId) {
+    const [pendingSnapshot, processingSnapshot, completedSnapshot, failedSnapshot] = await Promise.all([
+      this.collection.where('storeId', '==', storeId).where('status', '==', 'pending').count().get(),
+      this.collection.where('storeId', '==', storeId).where('status', '==', 'processing').count().get(),
+      this.collection.where('storeId', '==', storeId).where('status', '==', 'completed').count().get(),
+      this.collection.where('storeId', '==', storeId).where('status', '==', 'failed').count().get()
+    ]);
+
+    return {
+      pending: pendingSnapshot.data().count,
+      processing: processingSnapshot.data().count,
+      completed: completedSnapshot.data().count,
+      failed: failedSnapshot.data().count,
+      total:
+        pendingSnapshot.data().count +
+        processingSnapshot.data().count +
+        completedSnapshot.data().count +
+        failedSnapshot.data().count
+    };
+  }
+
+  /**
    * Clean up old completed queue items
    */
   async cleanup(daysOld = 7) {

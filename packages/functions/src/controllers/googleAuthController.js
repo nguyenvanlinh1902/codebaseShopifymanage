@@ -12,4 +12,4 @@ export {
   disconnectAccount,
   bulkDisconnectAccounts
 } from './google-auth/account-disconnect-handlers.js';
-export {getConnectedAccounts} from './google-auth/connected-accounts-handler.js';
+export {getConnectedAccounts} from './google-auth/connected-accounts-handler';

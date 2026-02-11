@@ -11,14 +11,11 @@ export default function ProductsListTab({
   loading,
   selectedStore,
   selectedProducts,
-  searchQuery,
   currentPage,
   itemsPerPage,
   totalProducts,
   totalPages,
   onStoreChange,
-  onSearchChange,
-  onClearSearch,
   onProductSelect,
   onSelectAll,
   onOpenReimportModal,
@@ -33,14 +30,11 @@ export default function ProductsListTab({
       loading={loading}
       selectedStore={selectedStore}
       selectedProducts={selectedProducts}
-      searchQuery={searchQuery}
       currentPage={currentPage}
       itemsPerPage={itemsPerPage}
       totalProducts={totalProducts}
       totalPages={totalPages}
       onStoreChange={onStoreChange}
-      onSearchChange={onSearchChange}
-      onClearSearch={onClearSearch}
       onProductSelect={onProductSelect}
       onSelectAll={onSelectAll}
       onOpenReimportModal={onOpenReimportModal}

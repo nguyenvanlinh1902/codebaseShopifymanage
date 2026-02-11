@@ -5,20 +5,17 @@ import {
   Text,
   Button,
   Select,
-  TextField,
   Banner,
   SkeletonBodyText,
   EmptyState,
-  DataTable,
+  IndexTable,
   Box,
-  Checkbox,
-  Icon
+  Badge
 } from '@shopify/polaris';
-import {SearchIcon} from '@shopify/polaris-icons';
 
 /**
  * ProductsTableSection Component
- * Displays products table with search, filtering, and pagination
+ * Displays products using modern IndexTable with store filtering and pagination
  */
 export default function ProductsTableSection({
   stores,
@@ -26,14 +23,11 @@ export default function ProductsTableSection({
   loading,
   selectedStore,
   selectedProducts,
-  searchQuery,
   currentPage,
   itemsPerPage,
   totalProducts,
   totalPages,
   onStoreChange,
-  onSearchChange,
-  onClearSearch,
   onProductSelect,
   onSelectAll,
   onOpenReimportModal,
@@ -42,41 +36,53 @@ export default function ProductsTableSection({
   onItemsPerPageChange
 }) {
   const storeOptions = [
-    {label: 'All Stores', value: ''},
+    { label: 'All Stores', value: '' },
     ...stores.map(store => ({
       label: `${store.name} (${store.shopDomain})`,
       value: store.id
     }))
   ];
 
-  const productRows = products.map(product => [
-    <Checkbox
-      key={`checkbox-${product.id}`}
-      checked={selectedProducts.includes(product.id)}
-      onChange={checked => onProductSelect(product.id, checked)}
-    />,
-    product.title,
-    product.sku || '-',
-    product.price ? `$${product.price}` : '-',
-    product.vendor || '-',
-    product.productType || '-',
-    stores.find(s => s.id === product.storeId)?.name || product.storeName || '-',
-    new Date(product.createdAt).toLocaleString()
-  ]);
+  const resourceName = {
+    singular: 'product',
+    plural: 'products'
+  };
+
+  const rowMarkup = products.map((product, index) => (
+    <IndexTable.Row
+      id={product.id}
+      key={product.id}
+      selected={selectedProducts.includes(product.id)}
+      position={index}
+    >
+      <IndexTable.Cell>{product.title}</IndexTable.Cell>
+      <IndexTable.Cell>{product.sku || '-'}</IndexTable.Cell>
+      <IndexTable.Cell>{product.price ? `$${product.price}` : '-'}</IndexTable.Cell>
+      <IndexTable.Cell>{product.vendor || '-'}</IndexTable.Cell>
+      <IndexTable.Cell>{product.productType || '-'}</IndexTable.Cell>
+      <IndexTable.Cell>
+        {stores.find(s => s.id === product.storeId)?.name || product.storeName || '-'}
+      </IndexTable.Cell>
+      <IndexTable.Cell>{new Date(product.createdAt).toLocaleString()}</IndexTable.Cell>
+    </IndexTable.Row>
+  ));
 
   return (
     <BlockStack gap="400">
       <InlineStack align="space-between" blockAlign="center" wrap={false}>
-        <Text as="h2" variant="headingMd">
-          Imported Products
-        </Text>
+        <InlineStack gap="300" blockAlign="center">
+          <Text as="h2" variant="headingMd">
+            Imported Products
+          </Text>
+          {totalProducts > 0 && <Badge tone="info">{totalProducts} total</Badge>}
+        </InlineStack>
         <InlineStack gap="200">
           {selectedProducts.length > 0 && (
             <Button onClick={onOpenReimportModal} variant="primary">
               Import {selectedProducts.length} Selected
             </Button>
           )}
-          <div style={{minWidth: '250px'}}>
+          <div style={{ minWidth: '250px' }}>
             <Select
               label="Filter by Store"
               labelHidden
@@ -90,17 +96,6 @@ export default function ProductsTableSection({
           </div>
         </InlineStack>
       </InlineStack>
-
-      <TextField
-        label="Search"
-        labelHidden
-        value={searchQuery}
-        onChange={onSearchChange}
-        placeholder="Search by title, SKU, or vendor..."
-        prefix={<Icon source={SearchIcon} />}
-        clearButton
-        onClearButtonClick={onClearSearch}
-      />
 
       {selectedProducts.length > 0 && (
         <Banner tone="info">
@@ -120,35 +115,46 @@ export default function ProductsTableSection({
         <SkeletonBodyText lines={8} />
       ) : products.length === 0 ? (
         <EmptyState
-          heading={searchQuery ? 'No products found' : 'No products yet'}
+          heading="No products yet"
           image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
         >
-          {searchQuery ? (
-            <p>Try adjusting your search query</p>
-          ) : (
-            <p>Import products from CSV to see them here.</p>
-          )}
+          <p>Import products from CSV to see them here.</p>
         </EmptyState>
       ) : (
         <>
-          <DataTable
-            columnContentTypes={['text', 'text', 'text', 'numeric', 'text', 'text', 'text', 'text']}
+          <IndexTable
+            resourceName={resourceName}
+            itemCount={products.length}
+            selectedItemsCount={
+              selectedProducts.length === products.length ? 'All' : selectedProducts.length
+            }
+            onSelectionChange={(selectionType, isSelecting, selection) => {
+              if (selectionType === 'all') {
+                onSelectAll();
+              } else if (selectionType === 'single') {
+                onProductSelect(selection, isSelecting);
+              } else if (selectionType === 'page') {
+                products.forEach(product => {
+                  if (isSelecting && !selectedProducts.includes(product.id)) {
+                    onProductSelect(product.id, true);
+                  } else if (!isSelecting && selectedProducts.includes(product.id)) {
+                    onProductSelect(product.id, false);
+                  }
+                });
+              }
+            }}
             headings={[
-              <Checkbox
-                key="select-all"
-                checked={selectedProducts.length === products.length && products.length > 0}
-                onChange={onSelectAll}
-              />,
-              'Title',
-              'SKU',
-              'Price',
-              'Vendor',
-              'Type',
-              'Store',
-              'Imported At'
+              { title: 'Title' },
+              { title: 'SKU' },
+              { title: 'Price' },
+              { title: 'Vendor' },
+              { title: 'Type' },
+              { title: 'Store' },
+              { title: 'Imported At' }
             ]}
-            rows={productRows}
-          />
+          >
+            {rowMarkup}
+          </IndexTable>
 
           {/* Backend Pagination */}
           {totalProducts > 0 && (
@@ -157,7 +163,6 @@ export default function ProductsTableSection({
                 <Text as="p" variant="bodySm" tone="subdued">
                   Showing {(currentPage - 1) * itemsPerPage + 1}-
                   {Math.min(currentPage * itemsPerPage, totalProducts)} of {totalProducts}
-                  {searchQuery && ` (filtered)`}
                 </Text>
 
                 <InlineStack gap="300" blockAlign="center">
@@ -165,10 +170,9 @@ export default function ProductsTableSection({
                     label="Per page"
                     labelInline
                     options={[
-                      {label: '5', value: '5'},
-                      {label: '50', value: '50'},
-                      {label: '100', value: '100'},
-                      {label: '200', value: '200'}
+                      { label: '50', value: '50' },
+                      { label: '100', value: '100' },
+                      { label: '200', value: '200' }
                     ]}
                     value={String(itemsPerPage)}
                     onChange={value => onItemsPerPageChange(Number(value))}

@@ -12,8 +12,7 @@ import ReimportModal from './products/ReimportModal';
  * Products Page - Enhanced version
  * Features:
  * - Multi-store CSV import
- * - Multi-select products with checkboxes
- * - Search functionality (title, SKU, vendor, type)
+ * - Multi-select products with checkboxes using IndexTable
  * - Re-import selected products to other stores
  * - Real-time import status per store
  * - Auto CronJob + Manual processing
@@ -33,9 +32,7 @@ export default function Products() {
   const [processingQueue, setProcessingQueue] = useState(false);
   const [storeImportStatus, setStoreImportStatus] = useState([]);
 
-  // Search and selection states
-  const [searchQuery, setSearchQuery] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
+  // Selection states
   const [selectedProducts, setSelectedProducts] = useState([]);
   const [showReimportModal, setShowReimportModal] = useState(false);
   const [reimportStores, setReimportStores] = useState([]);
@@ -62,22 +59,14 @@ export default function Products() {
   }, []);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedSearch(searchQuery);
-    }, 1000);
-
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
-
-  useEffect(() => {
     if (selectedTab === 1) {
       fetchProducts();
     }
-  }, [selectedStore, selectedTab, currentPage, itemsPerPage, debouncedSearch]);
+  }, [selectedStore, selectedTab, currentPage, itemsPerPage]);
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [debouncedSearch, selectedStore]);
+  }, [selectedStore]);
 
   const fetchStores = async () => {
     try {
@@ -101,10 +90,6 @@ export default function Products() {
 
       if (selectedStore) {
         params.append('storeId', selectedStore);
-      }
-
-      if (debouncedSearch) {
-        params.append('search', debouncedSearch);
       }
 
       const response = await api(`/api/products/list?${params.toString()}`);
@@ -436,14 +421,11 @@ export default function Products() {
                     loading={loading}
                     selectedStore={selectedStore}
                     selectedProducts={selectedProducts}
-                    searchQuery={searchQuery}
                     currentPage={currentPage}
                     itemsPerPage={itemsPerPage}
                     totalProducts={totalProducts}
                     totalPages={totalPages}
                     onStoreChange={setSelectedStore}
-                    onSearchChange={setSearchQuery}
-                    onClearSearch={() => setSearchQuery('')}
                     onProductSelect={handleProductSelect}
                     onSelectAll={handleSelectAll}
                     onOpenReimportModal={() => setShowReimportModal(true)}

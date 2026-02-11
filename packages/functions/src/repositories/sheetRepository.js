@@ -101,9 +101,7 @@ export class SheetRepository {
    * @param {object} options - Pagination options
    */
   async getByStoreAndUserPaginated(storeId, userId, {page = 1, limit = 5} = {}) {
-    const baseQuery = this.collection
-      .where('storeId', '==', storeId)
-      .where('userId', '==', userId);
+    const baseQuery = this.collection.where('storeId', '==', storeId).where('userId', '==', userId);
 
     // Get total count
     const countSnapshot = await baseQuery.count().get();
@@ -130,7 +128,9 @@ export class SheetRepository {
    * @deprecated Use getByStoreAndUserPaginated for proper data isolation
    */
   async getByUserIdPaginated(userId, {page = 1, limit = 5} = {}) {
-    console.warn('[SheetRepository] getByUserIdPaginated is deprecated - use getByStoreAndUserPaginated');
+    console.warn(
+      '[SheetRepository] getByUserIdPaginated is deprecated - use getByStoreAndUserPaginated'
+    );
     const baseQuery = this.collection.where('userId', '==', userId);
 
     // Get total count

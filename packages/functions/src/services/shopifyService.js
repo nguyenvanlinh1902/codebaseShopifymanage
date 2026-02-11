@@ -231,6 +231,39 @@ export class ShopifyService {
   }
 
   /**
+   * Get product by handle using GraphQL
+   * Used to detect duplicate handles before import
+   */
+  async getProductByHandle(handle) {
+    try {
+      const query = `
+        query GetProductByHandle($query: String!) {
+          products(first: 1, query: $query) {
+            edges {
+              node {
+                id
+                title
+                handle
+              }
+            }
+          }
+        }
+      `;
+
+      const result = await this.shopify.graphql(query, {query: `handle:${handle}`});
+
+      if (result.products.edges.length > 0) {
+        return result.products.edges[0].node;
+      }
+
+      return null;
+    } catch (error) {
+      console.error('Error getting product by handle:', error);
+      throw new Error(`Failed to get product by handle: ${error.message}`);
+    }
+  }
+
+  /**
    * Get orders from Shopify
    * @param {Object} params - Query parameters (status, limit, since_id, etc.)
    */

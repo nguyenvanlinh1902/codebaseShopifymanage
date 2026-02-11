@@ -4,5 +4,11 @@ service cloud.firestore {
     match /{document=**} {
       allow read, write: if false;
     }
+    match /backgroundUploadVideo/{document} {
+      allow read: if true;
+    }
+    match /product_imports/{document} {
+      allow read: if true;
+    }
   }
 }

@@ -1,6 +1,12 @@
 import React, {useEffect, useState, useRef} from 'react';
 import {useNavigate} from 'react-router-dom';
 import {Page, Layout, Card, Banner, Text, Spinner, BlockStack} from '@shopify/polaris';
+import {
+  handleShopifyCallback,
+  handleGoogleCallback,
+  handleGoogleCallbackTemp
+} from './oauth-callback/oauth-handlers';
+
 /**
  * OAuth Callback Page
  * Handles redirects from both Shopify and Google OAuth
@@ -12,7 +18,6 @@ export default function OAuthCallback() {
   const processedRef = useRef(false);
 
   useEffect(() => {
-    // Guard against StrictMode double-execution
     if (processedRef.current) return;
     processedRef.current = true;
 
@@ -21,7 +26,6 @@ export default function OAuthCallback() {
     const shop = urlParams.get('shop');
     const stateRaw = urlParams.get('state');
 
-    // Parse state to detect mode and extract userId, storeId
     let mode = 'connect';
     let stateUserId = '';
     let stateStoreId = '';
@@ -36,144 +40,19 @@ export default function OAuthCallback() {
       }
     }
 
+    const handlers = {setError, setStatus, navigate};
+
     if (shop) {
-      handleShopifyCallback(urlParams);
+      handleShopifyCallback(urlParams, handlers);
     } else if (code && mode === 'temp') {
-      handleGoogleCallbackTemp(code);
+      handleGoogleCallbackTemp(code, handlers);
     } else if (code) {
-      handleGoogleCallback(code, stateUserId, stateStoreId);
+      handleGoogleCallback(code, stateUserId, stateStoreId, handlers);
     } else {
       setError('Missing authorization parameters');
       setStatus('error');
     }
   }, []);
-
-  const handleShopifyCallback = urlParams => {
-    try {
-      const code = urlParams.get('code');
-      const shop = urlParams.get('shop');
-      const state = urlParams.get('state');
-      const hmac = urlParams.get('hmac');
-
-      if (!code || !shop) {
-        setError('Missing authorization code or shop parameter');
-        setStatus('error');
-        return;
-      }
-
-      // Send data to parent window (popup flow)
-      if (window.opener) {
-        window.opener.postMessage({type: 'oauth-callback', code, shop, state, hmac}, '*');
-        setStatus('success');
-        setTimeout(() => window.close(), 2000);
-      } else {
-        setError('Parent window not found. Please close this window and try again.');
-        setStatus('error');
-      }
-    } catch (err) {
-      console.error('Shopify OAuth callback error:', err);
-      setError(err.message);
-      setStatus('error');
-    }
-  };
-
-  const handleGoogleCallback = async (code, userId, storeId) => {
-    try {
-      const response = await fetch('/api/google/exchange', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({code, userId, storeId})
-      });
-
-      const result = await response.json();
-
-      if (result.success) {
-        setStatus('success');
-        // Notify parent window and close popup
-        if (window.opener) {
-          window.opener.postMessage(
-            {
-              type: 'google-auth-callback',
-              success: true,
-              googleEmail: result.data?.googleEmail || ''
-            },
-            '*'
-          );
-          setTimeout(() => window.close(), 1500);
-        } else {
-          // Fallback: redirect if not in popup
-          setTimeout(() => navigate('/sheets', {state: {authSuccess: true}}), 1500);
-        }
-      } else {
-        setError(result.error || 'Failed to connect Google account');
-        setStatus('error');
-        if (window.opener) {
-          window.opener.postMessage(
-            {type: 'google-auth-callback', success: false, error: result.error},
-            '*'
-          );
-        }
-      }
-    } catch (err) {
-      console.error('Google OAuth callback error:', err);
-      setError('Failed to connect Google account');
-      setStatus('error');
-      if (window.opener) {
-        window.opener.postMessage(
-          {type: 'google-auth-callback', success: false, error: 'Failed to connect Google account'},
-          '*'
-        );
-      }
-    }
-  };
-
-  const handleGoogleCallbackTemp = async code => {
-    try {
-      const response = await fetch('/api/google/exchange-temp', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({code})
-      });
-
-      const result = await response.json();
-
-      if (result.success) {
-        setStatus('success');
-        if (window.opener) {
-          window.opener.postMessage(
-            {
-              type: 'google-auth-temp',
-              success: true,
-              accessToken: result.data.accessToken,
-              refreshToken: result.data.refreshToken,
-              googleEmail: result.data.googleEmail || ''
-            },
-            '*'
-          );
-          setTimeout(() => window.close(), 1500);
-        }
-      } else {
-        setError(result.error || 'Failed to authenticate');
-        setStatus('error');
-        if (window.opener) {
-          window.opener.postMessage(
-            {type: 'google-auth-temp', success: false, error: result.error},
-            '*'
-          );
-        }
-      }
-    } catch (err) {
-      console.error('Google OAuth temp callback error:', err);
-      setError('Failed to authenticate');
-      setStatus('error');
-      if (window.opener) {
-        window.opener.postMessage(
-          {type: 'google-auth-temp', success: false, error: 'Failed to authenticate'},
-          '*'
-        );
-      }
-    }
-  };
 
   return (
     <Page title="OAuth Authorization">

@@ -37,9 +37,5 @@ export default function StandaloneLayout({children}) {
     </Navigation>
   );
 
-  return (
-    <Frame navigation={navigationMarkup}>
-      {children}
-    </Frame>
-  );
+  return <Frame navigation={navigationMarkup}>{children}</Frame>;
 }

@@ -1,20 +1,11 @@
 import React, {useState, useEffect} from 'react';
-import {
-  Page,
-  Layout,
-  Card,
-  Select,
-  IndexTable,
-  Button,
-  Banner,
-  SkeletonBodyText,
-  Badge,
-  InlineStack,
-  Text,
-  BlockStack,
-  ChoiceList
-} from '@shopify/polaris';
+import {Page, Layout, Banner} from '@shopify/polaris';
 import {api} from '../helpers/api';
+import MetafieldDefinitionsTable from './setup-store/MetafieldDefinitionsTable';
+import ThemeSelection from './setup-store/ThemeSelection';
+import StoreSelection from './setup-store/StoreSelection';
+import CheckResults from './setup-store/CheckResults';
+import ApplyResults from './setup-store/ApplyResults';
 
 export default function SetupStore() {
   // Stores
@@ -90,7 +81,7 @@ export default function SetupStore() {
     }
   };
 
-  const formatFileSize = (bytes) => {
+  const formatFileSize = bytes => {
     if (!bytes) return '';
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -174,7 +165,7 @@ export default function SetupStore() {
           }
         }
 
-        // Also handle stores that weren't in metafield results (e.g. if metafield call failed)
+        // Also handle stores that weren't in metafield results
         for (const storeId of selectedStoreIds) {
           if (!results.find(r => r.storeId === storeId)) {
             const store = stores.find(s => s.id === storeId);
@@ -220,7 +211,8 @@ export default function SetupStore() {
 
       const msgs = [];
       if (totalCreated > 0) msgs.push(`Created ${totalCreated} metafield definition(s)`);
-      if (totalCreated === 0 && totalErrors === 0) msgs.push('All metafield definitions already exist');
+      if (totalCreated === 0 && totalErrors === 0)
+        msgs.push('All metafield definitions already exist');
       if (totalErrors > 0) msgs.push(`${totalErrors} metafield error(s)`);
       if (themeSuccessCount > 0) msgs.push(`Theme imported to ${themeSuccessCount} store(s)`);
       if (themeFailCount > 0) msgs.push(`Theme failed on ${themeFailCount} store(s)`);
@@ -238,35 +230,6 @@ export default function SetupStore() {
       setApplying(false);
     }
   };
-
-  const themeOptions = [
-    {label: 'No theme (metafields only)', value: ''},
-    ...savedThemes.map(t => ({
-      label: `${t.themeName} (${t.fileName}${t.fileSize ? ' - ' + formatFileSize(t.fileSize) : ''})`,
-      value: t.id
-    }))
-  ];
-
-  // Definitions table
-  const definitionRows = definitions.map((def, index) => (
-    <IndexTable.Row id={`${def.namespace}.${def.key}`} key={`${def.namespace}.${def.key}`} position={index}>
-      <IndexTable.Cell>
-        <Text variant="bodyMd" fontWeight="bold">{def.name}</Text>
-      </IndexTable.Cell>
-      <IndexTable.Cell>
-        <Text variant="bodyMd">{def.namespace}.{def.key}</Text>
-      </IndexTable.Cell>
-      <IndexTable.Cell>
-        <Badge>{def.type}</Badge>
-      </IndexTable.Cell>
-      <IndexTable.Cell>
-        <Badge tone="info">{def.ownerType}</Badge>
-      </IndexTable.Cell>
-      <IndexTable.Cell>
-        <Text tone="subdued" variant="bodySm">{def.description}</Text>
-      </IndexTable.Cell>
-    </IndexTable.Row>
-  ));
 
   return (
     <Page title="Setup Store">
@@ -286,200 +249,46 @@ export default function SetupStore() {
           </Layout.Section>
         )}
 
-        {/* Predefined Metafield Definitions */}
         <Layout.Section>
-          <Card>
-            <BlockStack gap="400">
-              <Text as="h2" variant="headingMd">Predefined Metafield Definitions</Text>
-              <Text tone="subdued" variant="bodySm">
-                These metafield definitions will be created on selected stores during setup.
-              </Text>
-              {definitions.length > 0 ? (
-                <IndexTable
-                  itemCount={definitions.length}
-                  headings={[
-                    {title: 'Name'},
-                    {title: 'Namespace.Key'},
-                    {title: 'Type'},
-                    {title: 'Owner'},
-                    {title: 'Description'}
-                  ]}
-                  selectable={false}
-                >
-                  {definitionRows}
-                </IndexTable>
-              ) : (
-                <SkeletonBodyText lines={3} />
-              )}
-            </BlockStack>
-          </Card>
+          <MetafieldDefinitionsTable definitions={definitions} />
         </Layout.Section>
 
-        {/* Theme Selection */}
         <Layout.Section>
-          <Card>
-            <BlockStack gap="400">
-              <Text as="h2" variant="headingMd">Theme (Optional)</Text>
-              <Text tone="subdued" variant="bodySm">
-                Optionally select a saved theme to import to the selected stores during setup.
-              </Text>
-              {savedThemesLoading ? (
-                <SkeletonBodyText lines={2} />
-              ) : savedThemes.length === 0 ? (
-                <Banner tone="info">
-                  No saved themes available. Upload themes via the Themes page first.
-                </Banner>
-              ) : (
-                <Select
-                  label="Select a saved theme"
-                  options={themeOptions}
-                  value={selectedThemeId}
-                  onChange={setSelectedThemeId}
-                  disabled={checking || applying}
-                />
-              )}
-            </BlockStack>
-          </Card>
+          <ThemeSelection
+            savedThemes={savedThemes}
+            savedThemesLoading={savedThemesLoading}
+            selectedThemeId={selectedThemeId}
+            onThemeChange={setSelectedThemeId}
+            checking={checking}
+            applying={applying}
+            formatFileSize={formatFileSize}
+          />
         </Layout.Section>
 
-        {/* Store Selection */}
         <Layout.Section>
-          <Card>
-            <BlockStack gap="400">
-              <Text as="h2" variant="headingMd">Select Stores</Text>
-              {storesLoading ? (
-                <SkeletonBodyText lines={4} />
-              ) : stores.length === 0 ? (
-                <Banner tone="warning">No stores found. Please add stores first.</Banner>
-              ) : (
-                <ChoiceList
-                  title="Select stores to check/setup"
-                  allowMultiple
-                  choices={stores.map(store => ({
-                    label: `${store.name || store.shopDomain} (${store.shopDomain}.myshopify.com)`,
-                    value: store.id
-                  }))}
-                  selected={selectedStoreIds}
-                  onChange={setSelectedStoreIds}
-                  disabled={checking || applying}
-                />
-              )}
-
-              {selectedStoreIds.length > 0 && selectedThemeId && (
-                <Banner tone="info">
-                  <Text as="p">
-                    Setup will create metafield definitions and import theme{' '}
-                    <strong>"{savedThemes.find(t => t.id === selectedThemeId)?.themeName}"</strong>{' '}
-                    to <strong>{selectedStoreIds.length} store(s)</strong>.
-                  </Text>
-                </Banner>
-              )}
-
-              <InlineStack gap="300">
-                <Button
-                  onClick={handleCheck}
-                  loading={checking}
-                  disabled={selectedStoreIds.length === 0 || applying}
-                >
-                  Check Stores
-                </Button>
-                <Button
-                  variant="primary"
-                  onClick={handleApply}
-                  loading={applying}
-                  disabled={selectedStoreIds.length === 0 || checking}
-                >
-                  Apply Setup to {selectedStoreIds.length} Store{selectedStoreIds.length !== 1 ? 's' : ''}
-                </Button>
-              </InlineStack>
-            </BlockStack>
-          </Card>
+          <StoreSelection
+            stores={stores}
+            storesLoading={storesLoading}
+            selectedStoreIds={selectedStoreIds}
+            onStoreSelectionChange={setSelectedStoreIds}
+            selectedThemeId={selectedThemeId}
+            savedThemes={savedThemes}
+            checking={checking}
+            applying={applying}
+            onCheck={handleCheck}
+            onApply={handleApply}
+          />
         </Layout.Section>
 
-        {/* Check Results */}
         {checkResults.length > 0 && (
           <Layout.Section>
-            <Card>
-              <BlockStack gap="400">
-                <Text as="h2" variant="headingMd">Check Results</Text>
-                {checkResults.map((storeResult) => (
-                  <Card key={storeResult.storeId}>
-                    <BlockStack gap="200">
-                      <InlineStack gap="200" blockAlign="center">
-                        <Text variant="bodyMd" fontWeight="bold">
-                          {storeResult.storeName}
-                        </Text>
-                        {storeResult.shopDomain && (
-                          <Text tone="subdued" variant="bodySm">
-                            ({storeResult.shopDomain}.myshopify.com)
-                          </Text>
-                        )}
-                        {storeResult.error && (
-                          <Badge tone="critical">Error: {storeResult.error}</Badge>
-                        )}
-                      </InlineStack>
-                      {storeResult.metafields.map((mf) => (
-                        <InlineStack key={`${mf.namespace}.${mf.key}`} gap="200" blockAlign="center">
-                          <Badge tone={mf.status === 'exists' ? 'success' : mf.status === 'missing' ? 'warning' : 'critical'}>
-                            {mf.status === 'exists' ? 'OK' : mf.status === 'missing' ? 'Missing' : 'Error'}
-                          </Badge>
-                          <Text variant="bodySm">
-                            {mf.name} ({mf.namespace}.{mf.key})
-                          </Text>
-                        </InlineStack>
-                      ))}
-                    </BlockStack>
-                  </Card>
-                ))}
-              </BlockStack>
-            </Card>
+            <CheckResults checkResults={checkResults} />
           </Layout.Section>
         )}
 
-        {/* Apply Results */}
         {applyResults.length > 0 && (
           <Layout.Section>
-            <Card>
-              <BlockStack gap="400">
-                <Text as="h2" variant="headingMd">Setup Results</Text>
-                {applyResults.map((storeResult) => (
-                  <Card key={storeResult.storeId}>
-                    <BlockStack gap="200">
-                      <Text variant="bodyMd" fontWeight="bold">
-                        {storeResult.storeName}
-                        {storeResult.shopDomain && ` (${storeResult.shopDomain}.myshopify.com)`}
-                      </Text>
-                      {storeResult.created?.map((item, i) => (
-                        <InlineStack key={`c-${i}`} gap="200" blockAlign="center">
-                          <Badge tone="success">Created</Badge>
-                          <Text variant="bodySm">{item.name}</Text>
-                        </InlineStack>
-                      ))}
-                      {storeResult.skipped?.map((item, i) => (
-                        <InlineStack key={`s-${i}`} gap="200" blockAlign="center">
-                          <Badge>Skipped</Badge>
-                          <Text variant="bodySm">{item.name} - {item.reason}</Text>
-                        </InlineStack>
-                      ))}
-                      {storeResult.errors?.map((item, i) => (
-                        <InlineStack key={`e-${i}`} gap="200" blockAlign="center">
-                          <Badge tone="critical">Error</Badge>
-                          <Text variant="bodySm">{item.name} - {item.error}</Text>
-                        </InlineStack>
-                      ))}
-                      {storeResult.themeResult && (
-                        <InlineStack gap="200" blockAlign="center">
-                          <Badge tone={storeResult.themeResult.success ? 'success' : 'critical'}>
-                            {storeResult.themeResult.success ? 'Theme OK' : 'Theme Failed'}
-                          </Badge>
-                          <Text variant="bodySm">{storeResult.themeResult.message}</Text>
-                        </InlineStack>
-                      )}
-                    </BlockStack>
-                  </Card>
-                ))}
-              </BlockStack>
-            </Card>
+            <ApplyResults applyResults={applyResults} />
           </Layout.Section>
         )}
       </Layout>

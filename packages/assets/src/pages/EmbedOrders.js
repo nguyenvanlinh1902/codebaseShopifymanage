@@ -1,25 +1,11 @@
 import React, {useState, useEffect, useCallback, useRef} from 'react';
-import {
-  Page,
-  Card,
-  Select,
-  Button,
-  Banner,
-  Text,
-  DataTable,
-  Badge,
-  SkeletonBodyText,
-  Spinner,
-  BlockStack,
-  InlineStack,
-  Box,
-  Icon,
-  EmptyState
-} from '@shopify/polaris';
-import {OrderIcon} from '@shopify/polaris-icons';
+import {Page, Banner, Badge, BlockStack} from '@shopify/polaris';
 import {api} from '../helpers/api';
 import {useGoogleAuth} from '../hooks/useGoogleAuth';
 import {useGooglePicker} from '../hooks/useGooglePicker';
+import SyncProgressCard from './embed-orders/SyncProgressCard';
+import SyncConfigurationCard from './embed-orders/SyncConfigurationCard';
+import SyncHistoryTable from './embed-orders/SyncHistoryTable';
 
 /**
  * Embedded Orders Page - Single store (from session token)
@@ -315,15 +301,13 @@ export default function EmbedOrders() {
   const sheetOptions = sheets.map(sheet => ({label: sheet.name, value: sheet.id}));
   const activeConfig = syncConfigs.find(config => config.status === 'active');
 
-  const configRows = syncConfigs.map(config => [
-    config.sheetName || 'N/A',
-    config.targetSheet || 'N/A',
-    <Badge key={`status-${config.id}`} tone={config.status === 'active' ? 'success' : 'info'}>
-      {config.status}
-    </Badge>,
-    config.totalOrdersSynced || 0,
-    config.lastSyncAt ? new Date(config.lastSyncAt).toLocaleString() : 'Never'
-  ]);
+  const startPolling = () => {
+    if (!pollIntervalRef.current) {
+      pollIntervalRef.current = setInterval(() => {
+        fetchQueueStats();
+      }, 10000);
+    }
+  };
 
   return (
     <Page
@@ -343,143 +327,29 @@ export default function EmbedOrders() {
           </Banner>
         )}
 
-        {/* Sync Progress */}
-        {syncJob && syncJob.status === 'processing' && (
-          <Card>
-            <InlineStack gap="400" blockAlign="center">
-              <Spinner size="small" />
-              <BlockStack gap="050">
-                <Text variant="headingSm" as="h3" fontWeight="semibold">
-                  Syncing orders...
-                </Text>
-                <Text variant="bodySm" tone="subdued">
-                  {syncJob.successCount || 0} orders synced
-                  {syncJob.currentPage ? ` (page ${syncJob.currentPage})` : ''}
-                </Text>
-              </BlockStack>
-            </InlineStack>
-          </Card>
-        )}
+        <SyncProgressCard syncJob={syncJob} />
 
-        {/* Sync Configuration */}
-        <Card>
-          <BlockStack gap="400">
-            <InlineStack gap="300" blockAlign="center">
-              <Box background="bg-fill-success-secondary" borderRadius="300" padding="200">
-                <Icon source={OrderIcon} />
-              </Box>
-              <Text variant="headingMd" as="h2">
-                {activeConfig ? 'Sync Configuration' : 'Setup Sync'}
-              </Text>
-            </InlineStack>
+        <SyncConfigurationCard
+          activeConfig={activeConfig}
+          loading={loading}
+          sheets={sheets}
+          sheetOptions={sheetOptions}
+          selectedSheet={selectedSheet}
+          onSheetChange={setSelectedSheet}
+          addingSheet={addingSheet}
+          onAddSheet={handleAddSheet}
+          sheetTabs={sheetTabs}
+          selectedTab={selectedTab}
+          onTabChange={setSelectedTab}
+          loadingTabs={loadingTabs}
+          settingUpSync={settingUpSync}
+          onSetupSync={handleSetupSync}
+          syncing={syncing}
+          syncJob={syncJob}
+          onManualSync={handleManualSync}
+        />
 
-            {activeConfig && (
-              <Banner tone="info">
-                <BlockStack gap="100">
-                  <Text variant="bodySm" fontWeight="semibold">
-                    Sheet: {activeConfig.sheetName} / Tab: {activeConfig.targetSheet}
-                  </Text>
-                  <Text variant="bodySm">
-                    {activeConfig.totalOrdersSynced || 0} orders synced
-                    {activeConfig.lastSyncAt &&
-                      ` \u00B7 Last: ${new Date(activeConfig.lastSyncAt).toLocaleString()}`}
-                  </Text>
-                </BlockStack>
-              </Banner>
-            )}
-
-            {loading ? (
-              <SkeletonBodyText lines={5} />
-            ) : sheets.length === 0 ? (
-              <EmptyState
-                heading="Connect Google Sheets"
-                image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
-              >
-                <BlockStack gap="400">
-                  <Text variant="bodyMd" as="p" tone="subdued">
-                    Connect your Google account and select a spreadsheet to start syncing orders.
-                  </Text>
-                  <Text variant="bodySm" as="p" tone="subdued">
-                    <Badge tone="info">Beta</Badge> Google Sheets integration is currently in beta.
-                  </Text>
-                  <InlineStack gap="200" align="center">
-                    <Button variant="primary" onClick={handleAddSheet} loading={addingSheet}>
-                      Connect & Select Sheet
-                    </Button>
-                  </InlineStack>
-                </BlockStack>
-              </EmptyState>
-            ) : (
-              <BlockStack gap="400">
-                <InlineStack gap="200" blockAlign="end" wrap={false}>
-                  <Box width="100%">
-                    <Select
-                      label="Select Google Sheet"
-                      options={sheetOptions}
-                      value={selectedSheet}
-                      onChange={setSelectedSheet}
-                      placeholder="Choose a sheet"
-                    />
-                  </Box>
-                  <Box minWidth="fit-content" paddingBlockEnd="025">
-                    <Button onClick={handleAddSheet} loading={addingSheet}>
-                      Add Sheet
-                    </Button>
-                  </Box>
-                </InlineStack>
-
-                <Select
-                  label="Sheet Tab"
-                  options={sheetTabs.map(tab => ({
-                    label: tab.title,
-                    value: `${tab.title}|${tab.sheetId}`
-                  }))}
-                  value={selectedTab}
-                  onChange={setSelectedTab}
-                  placeholder="Choose a tab"
-                  disabled={loadingTabs || sheetTabs.length === 0}
-                />
-
-                <InlineStack gap="200" wrap>
-                  <Button
-                    variant="primary"
-                    onClick={handleSetupSync}
-                    loading={settingUpSync}
-                    disabled={!selectedSheet || !selectedTab}
-                  >
-                    {activeConfig ? 'Update Config' : 'Setup Sync'}
-                  </Button>
-
-                  {activeConfig && (
-                    <Button
-                      onClick={handleManualSync}
-                      loading={syncing}
-                      disabled={syncJob?.status === 'processing'}
-                    >
-                      {syncJob?.status === 'processing' ? 'Sync In Progress...' : 'Manual Sync Now'}
-                    </Button>
-                  )}
-                </InlineStack>
-              </BlockStack>
-            )}
-          </BlockStack>
-        </Card>
-
-        {/* Sync History Table */}
-        {syncConfigs.length > 0 && (
-          <Card>
-            <BlockStack gap="300">
-              <Text variant="headingMd" as="h2">
-                Sync History
-              </Text>
-              <DataTable
-                columnContentTypes={['text', 'text', 'text', 'numeric', 'text']}
-                headings={['Sheet', 'Target Tab', 'Status', 'Orders Synced', 'Last Sync']}
-                rows={configRows}
-              />
-            </BlockStack>
-          </Card>
-        )}
+        <SyncHistoryTable syncConfigs={syncConfigs} />
       </BlockStack>
     </Page>
   );

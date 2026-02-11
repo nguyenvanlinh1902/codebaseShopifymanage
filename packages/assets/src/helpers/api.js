@@ -56,13 +56,8 @@ export async function api(url, options = {}) {
 
   const response = await fetch(url, mergedOptions);
 
-  if (
-    isEmbeddedApp &&
-    response.headers.get('X-Shopify-API-Request-Failure-Reauthorize') === '1'
-  ) {
-    const reauthorizeUrl = response.headers.get(
-      'X-Shopify-API-Request-Failure-Reauthorize-Url'
-    );
+  if (isEmbeddedApp && response.headers.get('X-Shopify-API-Request-Failure-Reauthorize') === '1') {
+    const reauthorizeUrl = response.headers.get('X-Shopify-API-Request-Failure-Reauthorize-Url');
     if (reauthorizeUrl) {
       window.open(reauthorizeUrl, '_top');
       return response;

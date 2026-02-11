@@ -118,53 +118,30 @@ export class ProductQueueRepository {
     });
   }
 
-  /**
-   * Get queue statistics
-   */
-  async getQueueStats() {
-    const [pendingSnapshot, processingSnapshot, completedSnapshot, failedSnapshot] = await Promise.all([
-      this.collection.where('status', '==', 'pending').count().get(),
-      this.collection.where('status', '==', 'processing').count().get(),
-      this.collection.where('status', '==', 'completed').count().get(),
-      this.collection.where('status', '==', 'failed').count().get()
-    ]);
-
-    return {
-      pending: pendingSnapshot.data().count,
-      processing: processingSnapshot.data().count,
-      completed: completedSnapshot.data().count,
-      failed: failedSnapshot.data().count,
-      total:
-        pendingSnapshot.data().count +
-        processingSnapshot.data().count +
-        completedSnapshot.data().count +
-        failedSnapshot.data().count
-    };
+  /** Count documents matching a base query for each status */
+  async _countByStatus(baseQuery) {
+    const statuses = ['pending', 'processing', 'completed', 'failed'];
+    const snapshots = await Promise.all(
+      statuses.map(s =>
+        baseQuery
+          .where('status', '==', s)
+          .count()
+          .get()
+      )
+    );
+    const counts = Object.fromEntries(statuses.map((s, i) => [s, snapshots[i].data().count]));
+    counts.total = statuses.reduce((sum, s) => sum + counts[s], 0);
+    return counts;
   }
 
-  /**
-   * Get queue statistics by store
-   * @param {string} storeId - Store ID to filter by
-   */
-  async getQueueStatsByStore(storeId) {
-    const [pendingSnapshot, processingSnapshot, completedSnapshot, failedSnapshot] = await Promise.all([
-      this.collection.where('storeId', '==', storeId).where('status', '==', 'pending').count().get(),
-      this.collection.where('storeId', '==', storeId).where('status', '==', 'processing').count().get(),
-      this.collection.where('storeId', '==', storeId).where('status', '==', 'completed').count().get(),
-      this.collection.where('storeId', '==', storeId).where('status', '==', 'failed').count().get()
-    ]);
+  /** Get queue statistics (all stores) */
+  async getQueueStats() {
+    return this._countByStatus(this.collection);
+  }
 
-    return {
-      pending: pendingSnapshot.data().count,
-      processing: processingSnapshot.data().count,
-      completed: completedSnapshot.data().count,
-      failed: failedSnapshot.data().count,
-      total:
-        pendingSnapshot.data().count +
-        processingSnapshot.data().count +
-        completedSnapshot.data().count +
-        failedSnapshot.data().count
-    };
+  /** Get queue statistics filtered by store */
+  async getQueueStatsByStore(storeId) {
+    return this._countByStatus(this.collection.where('storeId', '==', storeId));
   }
 
   /**

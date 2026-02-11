@@ -1,344 +1,23 @@
 import React, {useState, useEffect, useCallback, useRef} from 'react';
-import PropTypes from 'prop-types';
 import {useLocation, useSearchParams} from 'react-router-dom';
 import {
   Page,
   Layout,
   Card,
-  IndexTable,
   IndexFilters,
   useSetIndexFiltersMode,
-  Button,
   Banner,
-  SkeletonBodyText,
-  EmptyState,
-  Text,
-  InlineStack,
-  BlockStack,
-  Modal,
-  Tooltip,
-  Pagination,
-  useIndexResourceState
+  SkeletonBodyText
 } from '@shopify/polaris';
-import {DeleteIcon, PlusIcon, ExternalIcon} from '@shopify/polaris-icons';
 import {useGoogleAuth} from '../hooks/useGoogleAuth';
 import {useGooglePicker} from '../hooks/useGooglePicker';
 import {api} from '../helpers/api';
-
-const truncateStyle = {
-  maxWidth: 200,
-  overflow: 'hidden',
-  textOverflow: 'ellipsis',
-  whiteSpace: 'nowrap'
-};
-
-const PAGE_LIMIT = 10;
-const TAB_KEYS = ['accounts', 'sheets'];
-
-/**
- * Accounts table content (IndexTable only, no IndexFilters)
- */
-function AccountsContent({
-  accounts,
-  pagination,
-  onAddSheet,
-  onDisconnect,
-  onBulkDisconnect,
-  onPageChange,
-  loading,
-  searchValue
-}) {
-  const {
-    selectedResources,
-    allResourcesSelected,
-    handleSelectionChange,
-    clearSelection
-  } = useIndexResourceState(accounts, {resourceIDResolver: account => account.email});
-
-  const {page, total, totalPages} = pagination;
-  const start = (page - 1) * PAGE_LIMIT + 1;
-  const end = Math.min(page * PAGE_LIMIT, total);
-
-  const resourceName = {singular: 'account', plural: 'accounts'};
-
-  const promotedBulkActions = [
-    {
-      content: `Disconnect ${selectedResources.length} account(s)`,
-      onAction: () => {
-        onBulkDisconnect(selectedResources);
-        clearSelection();
-      },
-      destructive: true
-    }
-  ];
-
-  if (accounts.length === 0) {
-    return (
-      <EmptyState
-        heading={searchValue ? 'No accounts found' : 'No accounts connected'}
-        image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
-      >
-        <p>
-          {searchValue
-            ? 'Try a different search term.'
-            : 'Connect a Google account to get started.'}
-        </p>
-      </EmptyState>
-    );
-  }
-
-  return (
-    <>
-      <IndexTable
-        resourceName={resourceName}
-        itemCount={accounts.length}
-        headings={[{title: 'Email'}, {title: 'Sheets'}, {title: 'Actions', alignment: 'center'}]}
-        selectedItemsCount={allResourcesSelected ? 'All' : selectedResources.length}
-        onSelectionChange={handleSelectionChange}
-        promotedBulkActions={promotedBulkActions}
-      >
-        {accounts.map((account, index) => (
-          <IndexTable.Row
-            id={account.email}
-            key={account.email}
-            position={index}
-            selected={selectedResources.includes(account.email)}
-          >
-            <IndexTable.Cell>
-              <Text as="span" fontWeight="semibold">
-                {account.email}
-              </Text>
-            </IndexTable.Cell>
-            <IndexTable.Cell>
-              <Text as="span" tone="subdued">
-                {account.sheetCount} {account.sheetCount === 1 ? 'sheet' : 'sheets'}
-              </Text>
-            </IndexTable.Cell>
-            <IndexTable.Cell>
-              <InlineStack gap="200" align="center">
-                <Tooltip content="Add sheet">
-                  <Button
-                    icon={PlusIcon}
-                    variant="plain"
-                    onClick={e => {
-                      e.stopPropagation();
-                      onAddSheet(account.email);
-                    }}
-                    loading={loading}
-                    accessibilityLabel="Add sheet"
-                  />
-                </Tooltip>
-                <Tooltip content="Disconnect account">
-                  <Button
-                    icon={DeleteIcon}
-                    variant="plain"
-                    tone="critical"
-                    onClick={e => {
-                      e.stopPropagation();
-                      onDisconnect(account.email);
-                    }}
-                    accessibilityLabel="Disconnect account"
-                  />
-                </Tooltip>
-              </InlineStack>
-            </IndexTable.Cell>
-          </IndexTable.Row>
-        ))}
-      </IndexTable>
-      {totalPages > 1 && (
-        <div style={{padding: '16px', borderTop: '1px solid #e1e3e5'}}>
-          <InlineStack align="center" blockAlign="center" gap="400">
-            <Text as="span" tone="subdued">
-              {start}-{end} of {total}
-            </Text>
-            <Pagination
-              hasPrevious={page > 1}
-              hasNext={page < totalPages}
-              onPrevious={() => onPageChange(page - 1)}
-              onNext={() => onPageChange(page + 1)}
-            />
-          </InlineStack>
-        </div>
-      )}
-    </>
-  );
-}
-
-AccountsContent.propTypes = {
-  accounts: PropTypes.array.isRequired,
-  pagination: PropTypes.object.isRequired,
-  onAddSheet: PropTypes.func.isRequired,
-  onDisconnect: PropTypes.func.isRequired,
-  onBulkDisconnect: PropTypes.func.isRequired,
-  onPageChange: PropTypes.func.isRequired,
-  loading: PropTypes.bool,
-  searchValue: PropTypes.string
-};
-
-/**
- * Sheets table content (IndexTable only, no IndexFilters)
- */
-function SheetsContent({
-  sheets,
-  pagination,
-  loading,
-  onDelete,
-  onBulkDelete,
-  onPageChange,
-  authenticated,
-  onAuth,
-  searchValue
-}) {
-  const {
-    selectedResources,
-    allResourcesSelected,
-    handleSelectionChange,
-    clearSelection
-  } = useIndexResourceState(sheets);
-
-  const {page, total, totalPages} = pagination;
-  const start = (page - 1) * PAGE_LIMIT + 1;
-  const end = Math.min(page * PAGE_LIMIT, total);
-
-  const resourceName = {singular: 'sheet', plural: 'sheets'};
-
-  const promotedBulkActions = [
-    {
-      content: `Delete ${selectedResources.length} sheet(s)`,
-      onAction: () => {
-        onBulkDelete(selectedResources);
-        clearSelection();
-      },
-      destructive: true
-    }
-  ];
-
-  if (loading) {
-    return (
-      <div style={{padding: '16px'}}>
-        <SkeletonBodyText lines={5} />
-      </div>
-    );
-  }
-
-  if (sheets.length === 0) {
-    return (
-      <EmptyState
-        heading={searchValue ? 'No sheets found' : 'No sheets connected'}
-        action={
-          !authenticated && !searchValue
-            ? {content: 'Connect Google Account', onAction: onAuth}
-            : undefined
-        }
-        image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
-      >
-        <p>
-          {searchValue
-            ? 'Try a different search term.'
-            : authenticated
-            ? 'Switch to the Accounts tab and use the add icon to connect a Google Sheet.'
-            : 'Connect your Google account first, then add sheets from Google Drive.'}
-        </p>
-      </EmptyState>
-    );
-  }
-
-  return (
-    <>
-      <IndexTable
-        resourceName={resourceName}
-        itemCount={sheets.length}
-        headings={[
-          {title: 'Spreadsheet'},
-          {title: 'Google Account'},
-          {title: 'Actions', alignment: 'center'}
-        ]}
-        selectedItemsCount={allResourcesSelected ? 'All' : selectedResources.length}
-        onSelectionChange={handleSelectionChange}
-        promotedBulkActions={promotedBulkActions}
-      >
-        {sheets.map((sheet, index) => (
-          <IndexTable.Row
-            id={sheet.id}
-            key={sheet.id}
-            position={index}
-            selected={selectedResources.includes(sheet.id)}
-          >
-            <IndexTable.Cell>
-              <Tooltip content={sheet.name}>
-                <div style={truncateStyle}>
-                  <Text variant="bodyMd" fontWeight="bold">
-                    {sheet.name}
-                  </Text>
-                </div>
-              </Tooltip>
-            </IndexTable.Cell>
-            <IndexTable.Cell>{sheet.googleEmail || '\u2014'}</IndexTable.Cell>
-            <IndexTable.Cell>
-              <InlineStack gap="200" align="center">
-                {sheet.spreadsheetId && (
-                  <Tooltip content="Open in Google Sheets">
-                    <Button
-                      icon={ExternalIcon}
-                      variant="plain"
-                      onClick={e => {
-                        e.stopPropagation();
-                        window.open(
-                          `https://docs.google.com/spreadsheets/d/${sheet.spreadsheetId}/edit`,
-                          '_blank'
-                        );
-                      }}
-                      accessibilityLabel="Open sheet"
-                    />
-                  </Tooltip>
-                )}
-                <Tooltip content="Disconnect sheet">
-                  <Button
-                    icon={DeleteIcon}
-                    variant="plain"
-                    tone="critical"
-                    onClick={e => {
-                      e.stopPropagation();
-                      onDelete(sheet);
-                    }}
-                    accessibilityLabel="Disconnect"
-                  />
-                </Tooltip>
-              </InlineStack>
-            </IndexTable.Cell>
-          </IndexTable.Row>
-        ))}
-      </IndexTable>
-      {totalPages > 1 && (
-        <div style={{padding: '16px', borderTop: '1px solid #e1e3e5'}}>
-          <InlineStack align="center" blockAlign="center" gap="400">
-            <Text as="span" tone="subdued">
-              {start}-{end} of {total}
-            </Text>
-            <Pagination
-              hasPrevious={page > 1}
-              hasNext={page < totalPages}
-              onPrevious={() => onPageChange(page - 1)}
-              onNext={() => onPageChange(page + 1)}
-            />
-          </InlineStack>
-        </div>
-      )}
-    </>
-  );
-}
-
-SheetsContent.propTypes = {
-  sheets: PropTypes.array.isRequired,
-  pagination: PropTypes.object.isRequired,
-  loading: PropTypes.bool,
-  onDelete: PropTypes.func.isRequired,
-  onBulkDelete: PropTypes.func.isRequired,
-  onPageChange: PropTypes.func.isRequired,
-  authenticated: PropTypes.bool,
-  onAuth: PropTypes.func,
-  searchValue: PropTypes.string
-};
+import AccountsContent from './sheets/AccountsContent';
+import SheetsContent from './sheets/SheetsContent';
+import ConnectAccountCard from './sheets/ConnectAccountCard';
+import DeleteConfirmationModal from './sheets/DeleteConfirmationModal';
+import DisconnectConfirmationModal from './sheets/DisconnectConfirmationModal';
+import {PAGE_LIMIT, TAB_KEYS} from './sheets/constants';
 
 /**
  * Google Sheets Management Page
@@ -636,6 +315,12 @@ export default function Sheets() {
     }
   };
 
+  const handleDeleteModalClose = useCallback(() => {
+    setDeleteModalOpen(false);
+    setPendingDeleteTarget(null);
+    setPendingDeleteIds([]);
+  }, []);
+
   // --- Disconnect account handlers ---
   const handleDisconnectAccountClick = useCallback(email => {
     setPendingDisconnectEmail(email);
@@ -698,15 +383,19 @@ export default function Sheets() {
     }
   };
 
+  const handleDisconnectModalClose = useCallback(() => {
+    setDisconnectModalOpen(false);
+    setPendingDisconnectEmail(null);
+    setPendingDisconnectEmails([]);
+  }, []);
+
   const handleAddSheetFromAccount = useCallback(
     async email => {
       try {
         setAddingSheet(true);
         setError(null);
 
-        const res = await api(
-          `/api/google/account-token?googleEmail=${encodeURIComponent(email)}`
-        );
+        const res = await api(`/api/google/account-token?googleEmail=${encodeURIComponent(email)}`);
         const result = await res.json();
 
         if (!result.success) {
@@ -732,15 +421,6 @@ export default function Sheets() {
   );
 
   const displayError = error || authError || pickerError;
-
-  const deleteModalMessage = pendingDeleteTarget
-    ? `Are you sure you want to disconnect "${pendingDeleteTarget.name}"? This will remove the sheet connection but won't delete any data.`
-    : `Are you sure you want to disconnect ${pendingDeleteIds.length} sheet(s)? This will remove the sheet connections but won't delete any data.`;
-
-  const disconnectModalMessage =
-    pendingDisconnectEmails.length > 0
-      ? `Are you sure you want to disconnect ${pendingDisconnectEmails.length} account(s)? This will remove the accounts and all sheets connected through them.`
-      : `Are you sure you want to disconnect ${pendingDisconnectEmail}? This will remove the account and all sheets connected through it.`;
 
   if (authLoading) {
     return (
@@ -795,22 +475,7 @@ export default function Sheets() {
 
         {!authenticated && (
           <Layout.Section>
-            <Card>
-              <BlockStack gap="400">
-                <Text variant="headingMd" as="h2">
-                  Connect your Google Account
-                </Text>
-                <Text as="p" tone="subdued">
-                  Connect your Google account to browse and select spreadsheets directly from your
-                  Google Drive. This is a one-time setup.
-                </Text>
-                <InlineStack>
-                  <Button variant="primary" onClick={handleConnectAccount}>
-                    Connect Google Account
-                  </Button>
-                </InlineStack>
-              </BlockStack>
-            </Card>
+            <ConnectAccountCard onConnect={handleConnectAccount} />
           </Layout.Section>
         )}
 
@@ -867,67 +532,23 @@ export default function Sheets() {
         )}
       </Layout>
 
-      {/* Delete sheet confirmation modal */}
-      <Modal
+      <DeleteConfirmationModal
         open={deleteModalOpen}
-        onClose={() => {
-          setDeleteModalOpen(false);
-          setPendingDeleteTarget(null);
-          setPendingDeleteIds([]);
-        }}
-        title="Disconnect sheet(s)"
-        primaryAction={{
-          content: 'Disconnect',
-          destructive: true,
-          loading: deleting,
-          onAction: handleDeleteConfirm
-        }}
-        secondaryActions={[
-          {
-            content: 'Cancel',
-            onAction: () => {
-              setDeleteModalOpen(false);
-              setPendingDeleteTarget(null);
-              setPendingDeleteIds([]);
-            }
-          }
-        ]}
-      >
-        <Modal.Section>
-          <Text as="p">{deleteModalMessage}</Text>
-        </Modal.Section>
-      </Modal>
+        onClose={handleDeleteModalClose}
+        onConfirm={handleDeleteConfirm}
+        loading={deleting}
+        pendingDeleteTarget={pendingDeleteTarget}
+        pendingDeleteIds={pendingDeleteIds}
+      />
 
-      {/* Disconnect account confirmation modal */}
-      <Modal
+      <DisconnectConfirmationModal
         open={disconnectModalOpen}
-        onClose={() => {
-          setDisconnectModalOpen(false);
-          setPendingDisconnectEmail(null);
-          setPendingDisconnectEmails([]);
-        }}
-        title="Disconnect account(s)"
-        primaryAction={{
-          content: 'Disconnect',
-          destructive: true,
-          loading: disconnecting,
-          onAction: handleDisconnectAccountConfirm
-        }}
-        secondaryActions={[
-          {
-            content: 'Cancel',
-            onAction: () => {
-              setDisconnectModalOpen(false);
-              setPendingDisconnectEmail(null);
-              setPendingDisconnectEmails([]);
-            }
-          }
-        ]}
-      >
-        <Modal.Section>
-          <Text as="p">{disconnectModalMessage}</Text>
-        </Modal.Section>
-      </Modal>
+        onClose={handleDisconnectModalClose}
+        onConfirm={handleDisconnectAccountConfirm}
+        loading={disconnecting}
+        pendingDisconnectEmail={pendingDisconnectEmail}
+        pendingDisconnectEmails={pendingDisconnectEmails}
+      />
     </Page>
   );
 }

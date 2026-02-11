@@ -121,4 +121,40 @@ export class ImportHistoryRepository {
 
     return snapshot.docs.map(doc => doc.data());
   }
+
+  /**
+   * Update individual product status within an import job
+   */
+  async updateProductStatus(importId, productIndex, status, error = null) {
+    const doc = await this.collection.doc(importId).get();
+    if (!doc.exists) return;
+
+    const data = doc.data();
+    const products = data.products || [];
+
+    if (productIndex < products.length) {
+      products[productIndex].status = status;
+      if (error) products[productIndex].error = error;
+      products[productIndex].updatedAt = new Date().toISOString();
+
+      await this.collection.doc(importId).update({
+        products,
+        updatedAt: new Date().toISOString()
+      });
+    }
+  }
+
+  /**
+   * Get active/recent import jobs (processing or recently completed)
+   */
+  async getActiveImports(storeId, limit = 5) {
+    const snapshot = await this.collection
+      .where('storeId', '==', storeId)
+      .where('status', 'in', ['pending', 'processing'])
+      .orderBy('createdAt', 'desc')
+      .limit(limit)
+      .get();
+
+    return snapshot.docs.map(doc => doc.data());
+  }
 }

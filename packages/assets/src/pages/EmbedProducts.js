@@ -1,34 +1,13 @@
 import React, {useState, useEffect, useCallback} from 'react';
-import {
-  Page,
-  Card,
-  Button,
-  DataTable,
-  Banner,
-  Text,
-  DropZone,
-  InlineStack,
-  SkeletonBodyText,
-  EmptyState,
-  BlockStack,
-  Box,
-  Icon,
-  TextField,
-  Select,
-  InlineGrid,
-  Badge,
-  Divider,
-  Modal
-} from '@shopify/polaris';
-import {
-  CheckCircleIcon,
-  ClockIcon,
-  AlertCircleIcon,
-  SearchIcon,
-  ImportIcon,
-  DeleteIcon
-} from '@shopify/polaris-icons';
+import {Page, Banner, BlockStack, Tabs} from '@shopify/polaris';
+import {ImportIcon} from '@shopify/polaris-icons';
 import {api} from '../helpers/api';
+import useImportProgress from '../hooks/useImportProgress';
+import ImportProgressCard from './embed-products/ImportProgressCard';
+import ProductsTab from './embed-products/ProductsTab';
+import ImportHistoryTab from './embed-products/ImportHistoryTab';
+import ImportDetailModal from './embed-products/ImportDetailModal';
+import UploadCsvModal from './embed-products/UploadCsvModal';
 
 export default function EmbedProducts() {
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
@@ -38,17 +17,17 @@ export default function EmbedProducts() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
-  const [queueStats, setQueueStats] = useState(null);
-  const [processingQueue, setProcessingQueue] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(50);
   const [totalProducts, setTotalProducts] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
-  const pollIntervalRef = React.useRef(null);
+  const [storeId, setStoreId] = useState(null);
+  const [importProgress, setImportProgress] = useState(null);
+  const [selectedTab, setSelectedTab] = useState(0);
+  const [detailModal, setDetailModal] = useState(null);
 
-  // Wrap fetch functions in useCallback to prevent recreations
   const fetchProducts = useCallback(async () => {
     try {
       setLoading(true);
@@ -71,92 +50,82 @@ export default function EmbedProducts() {
     }
   }, [currentPage, itemsPerPage, debouncedSearch]);
 
-  // Smart polling: only poll when there are active queue items
-  const startPolling = useCallback(() => {
-    if (pollIntervalRef.current) return; // Already polling
-    pollIntervalRef.current = setInterval(() => {
-      fetchQueueStats();
-    }, 10000); // Poll every 10s when active
-  }, []);
+  // Real-time import progress
+  const {importHistory} = useImportProgress({
+    storeId,
+    onComplete: async importData => {
+      setTimeout(() => setImportProgress(null), 3000);
+      await fetchProducts();
 
-  const stopPolling = useCallback(() => {
-    if (pollIntervalRef.current) {
-      clearInterval(pollIntervalRef.current);
-      pollIntervalRef.current = null;
-    }
-  }, []);
-
-  const fetchQueueStats = useCallback(async () => {
-    try {
-      const response = await api('/api/embed/products/queue-stats');
-      const result = await response.json();
-      if (result.success) {
-        setQueueStats(result.data);
-
-        // Smart polling: check if we need to poll
-        const hasActiveItems = (result.data.pending || 0) > 0 || (result.data.processing || 0) > 0;
-
-        if (hasActiveItems) {
-          startPolling(); // Start if not already polling
-        } else {
-          stopPolling(); // Stop if no active items
-        }
+      const status = importData.status;
+      if (status === 'completed') {
+        setSuccessMessage(
+          `Import complete: ${importData.successCount || 0} products imported successfully.`
+        );
+      } else if (status === 'partial') {
+        setSuccessMessage(
+          `Import partially complete: ${importData.successCount ||
+            0} imported, ${importData.failedCount || 0} failed.`
+        );
+      } else {
+        setError(`Import failed: ${importData.failedCount || 0} products could not be imported.`);
       }
-    } catch (err) {
-      console.error('Error fetching queue stats:', err);
+    },
+    onProgress: importData => {
+      const total = importData.totalProducts || 0;
+      const processed = importData.processedProducts || 0;
+      const pct = total > 0 ? Math.round((processed / total) * 100) : 0;
+
+      setImportProgress({
+        jobId: importData.id,
+        status: importData.status,
+        fileName: importData.fileName,
+        storeName: importData.storeName,
+        totalProducts: total,
+        processedProducts: processed,
+        successCount: importData.successCount || 0,
+        failedCount: importData.failedCount || 0,
+        skippedCount: importData.skippedCount || 0,
+        completionPercentage: pct
+      });
     }
-  }, [startPolling, stopPolling]);
+  });
 
-  // Mount only - setup polling and cleanup
+  const tabs = [
+    {id: 'products', content: 'Products', panelID: 'products-panel'},
+    {
+      id: 'history',
+      content: `Import History${importHistory.length > 0 ? ` (${importHistory.length})` : ''}`,
+      panelID: 'history-panel'
+    }
+  ];
+
   useEffect(() => {
-    fetchQueueStats(); // Check queue stats once, then smart polling takes over
-    // Cleanup on unmount
-    return () => stopPolling();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    const fetchStoreInfo = async () => {
+      try {
+        const response = await api('/api/embed/store');
+        const result = await response.json();
+        if (result.success && result.data) setStoreId(result.data.id);
+      } catch (err) {
+        console.error('Error fetching store info:', err);
+      }
+    };
+    fetchStoreInfo();
+  }, []);
 
-  // Debounce search input
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(searchQuery), 1000);
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Reset to page 1 when search changes (before fetchProducts)
   useEffect(() => {
-    // Only reset if not already on page 1 to avoid unnecessary re-render
-    if (currentPage !== 1) {
-      setCurrentPage(1);
-    }
+    if (currentPage !== 1) setCurrentPage(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedSearch]); // Intentionally exclude currentPage to avoid loop
+  }, [debouncedSearch]);
 
-  // Fetch products when component mounts or when pagination/search changes
   useEffect(() => {
-    fetchProducts(); // Called once on mount, then when deps change
-  }, [fetchProducts]); // fetchProducts recreates only when currentPage/itemsPerPage/debouncedSearch change
-
-  const handleProcessQueue = async () => {
-    try {
-      setProcessingQueue(true);
-      setError(null);
-      const response = await api('/api/embed/products/process-queue', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'}
-      });
-      const result = await response.json();
-      if (result.success) {
-        setQueueStats(result.data);
-        await fetchProducts();
-        // Trigger smart polling check after processing
-        await fetchQueueStats();
-      } else {
-        setError(result.error || 'Failed to process queue');
-      }
-    } catch (err) {
-      setError('Failed to process queue');
-    } finally {
-      setProcessingQueue(false);
-    }
-  };
+    fetchProducts();
+  }, [fetchProducts]);
 
   const handleDropZoneDrop = useCallback((_dropFiles, acceptedFiles) => {
     setFiles(prev => [...prev, ...acceptedFiles]);
@@ -166,18 +135,16 @@ export default function EmbedProducts() {
     setFiles(prev => prev.filter((_, i) => i !== index));
   }, []);
 
-  const readFileAsText = file => {
-    return new Promise((resolve, reject) => {
+  const readFileAsText = file =>
+    new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = e => resolve(e.target.result);
       reader.onerror = () => reject(new Error(`Failed to read file: ${file.name}`));
       reader.readAsText(file);
     });
-  };
 
   const handleUpload = async () => {
     if (files.length === 0) return;
-
     try {
       setUploading(true);
       setError(null);
@@ -197,23 +164,15 @@ export default function EmbedProducts() {
 
       const result = await response.json();
       if (result.success) {
-        const {totalSuccess, totalFailed} = result.data;
+        const jobs = result.data.importResults || [];
         setFiles([]);
         setUploadModalOpen(false);
-        await fetchProducts();
-        await fetchQueueStats();
-        if (totalFailed > 0) {
-          setError(
-            `Import completed: ${totalSuccess} created, ${totalFailed} failed (queued for retry)`
-          );
-        } else {
-          setSuccessMessage(`Successfully imported ${totalSuccess} products!`);
-        }
+        if (jobs.length > 0 && jobs[0].storeId && !storeId) setStoreId(jobs[0].storeId);
+        setSuccessMessage('Import started! Progress will be shown below.');
       } else {
         let errorMsg = result.error || 'Import failed';
         if (result.fileErrors) {
-          errorMsg +=
-            '\n' + result.fileErrors.map(fe => `${fe.fileName}: ${fe.error}`).join('\n');
+          errorMsg += '\n' + result.fileErrors.map(fe => `${fe.fileName}: ${fe.error}`).join('\n');
         }
         setError(errorMsg);
       }
@@ -248,15 +207,6 @@ export default function EmbedProducts() {
     }
   };
 
-  const productRows = products.map(product => [
-    product.title,
-    product.sku || '-',
-    product.price ? `$${product.price}` : '-',
-    product.vendor || '-',
-    product.productType || '-',
-    new Date(product.createdAt).toLocaleString()
-  ]);
-
   return (
     <Page
       title="Products"
@@ -280,229 +230,43 @@ export default function EmbedProducts() {
           </Banner>
         )}
 
-        {/* Queue Status */}
-        {queueStats &&
-          (queueStats.pending > 0 || queueStats.completed > 0 || queueStats.failed > 0) && (
-            <BlockStack gap="300">
-              <InlineStack align="space-between" blockAlign="center">
-                <Text variant="headingMd" as="h2">
-                  Import Queue
-                </Text>
-                <Button
-                  onClick={handleProcessQueue}
-                  loading={processingQueue}
-                  disabled={queueStats.pending === 0}
-                  size="slim"
-                >
-                  Process Now
-                </Button>
-              </InlineStack>
+        <ImportProgressCard importProgress={importProgress} />
 
-              <InlineGrid columns={3} gap="400">
-                <Card>
-                  <InlineStack gap="300" blockAlign="center">
-                    <Box background="bg-surface-secondary" borderRadius="300" padding="200">
-                      <Icon source={ClockIcon} tone="base" />
-                    </Box>
-                    <BlockStack gap="050">
-                      <Text variant="headingLg" as="p" fontWeight="bold">
-                        {queueStats.pending}
-                      </Text>
-                      <Text variant="bodySm" tone="subdued">
-                        Pending
-                      </Text>
-                    </BlockStack>
-                  </InlineStack>
-                </Card>
-                <Card>
-                  <InlineStack gap="300" blockAlign="center">
-                    <Box background="bg-fill-success-secondary" borderRadius="300" padding="200">
-                      <Icon source={CheckCircleIcon} tone="success" />
-                    </Box>
-                    <BlockStack gap="050">
-                      <Text variant="headingLg" as="p" fontWeight="bold">
-                        {queueStats.completed}
-                      </Text>
-                      <Text variant="bodySm" tone="subdued">
-                        Completed
-                      </Text>
-                    </BlockStack>
-                  </InlineStack>
-                </Card>
-                <Card>
-                  <InlineStack gap="300" blockAlign="center">
-                    <Box background="bg-fill-critical-secondary" borderRadius="300" padding="200">
-                      <Icon source={AlertCircleIcon} tone="critical" />
-                    </Box>
-                    <BlockStack gap="050">
-                      <Text variant="headingLg" as="p" fontWeight="bold">
-                        {queueStats.failed}
-                      </Text>
-                      <Text variant="bodySm" tone="subdued">
-                        Failed
-                      </Text>
-                    </BlockStack>
-                  </InlineStack>
-                </Card>
-              </InlineGrid>
-            </BlockStack>
+        <Tabs tabs={tabs} selected={selectedTab} onSelect={setSelectedTab}>
+          {selectedTab === 0 && (
+            <ProductsTab
+              products={products}
+              loading={loading}
+              searchQuery={searchQuery}
+              onSearchChange={setSearchQuery}
+              totalProducts={totalProducts}
+              currentPage={currentPage}
+              totalPages={totalPages}
+              itemsPerPage={itemsPerPage}
+              onPageChange={setCurrentPage}
+              onItemsPerPageChange={setItemsPerPage}
+              onImportClick={() => setUploadModalOpen(true)}
+            />
           )}
 
-        {/* Products List */}
-        <Card>
-          <BlockStack gap="400">
-            <InlineStack align="space-between" blockAlign="center">
-              <Text variant="headingMd" as="h2">
-                Imported Products
-              </Text>
-              {totalProducts > 0 && <Badge>{totalProducts} total</Badge>}
-            </InlineStack>
-
-            <TextField
-              label="Search"
-              labelHidden
-              value={searchQuery}
-              onChange={setSearchQuery}
-              placeholder="Search by title, SKU, or vendor..."
-              prefix={<Icon source={SearchIcon} />}
-              clearButton
-              onClearButtonClick={() => setSearchQuery('')}
-            />
-
-            {loading ? (
-              <SkeletonBodyText lines={8} />
-            ) : products.length === 0 ? (
-              <EmptyState
-                heading={searchQuery ? 'No products found' : 'No products yet'}
-                image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
-                action={{
-                  content: 'Import CSV',
-                  onAction: () => setUploadModalOpen(true)
-                }}
-              >
-                <Text>
-                  {searchQuery
-                    ? 'Try adjusting your search query'
-                    : 'Import products from CSV to see them here.'}
-                </Text>
-              </EmptyState>
-            ) : (
-              <BlockStack gap="300">
-                <DataTable
-                  columnContentTypes={['text', 'text', 'numeric', 'text', 'text', 'text']}
-                  headings={['Title', 'SKU', 'Price', 'Vendor', 'Type', 'Imported At']}
-                  rows={productRows}
-                />
-                {totalProducts > 0 && (
-                  <InlineStack align="space-between" blockAlign="center" wrap={false}>
-                    <Text variant="bodySm" tone="subdued">
-                      Showing {(currentPage - 1) * itemsPerPage + 1}-
-                      {Math.min(currentPage * itemsPerPage, totalProducts)} of {totalProducts}
-                      {searchQuery && ' (filtered)'}
-                    </Text>
-                    <InlineStack gap="300" blockAlign="center">
-                      <Select
-                        label="Per page"
-                        labelInline
-                        options={[
-                          {label: '50', value: '50'},
-                          {label: '100', value: '100'},
-                          {label: '200', value: '200'}
-                        ]}
-                        value={String(itemsPerPage)}
-                        onChange={value => {
-                          setItemsPerPage(Number(value));
-                          setCurrentPage(1);
-                        }}
-                      />
-                      <Button
-                        size="slim"
-                        onClick={() => setCurrentPage(currentPage - 1)}
-                        disabled={currentPage === 1 || loading}
-                      >
-                        &larr;
-                      </Button>
-                      <Text variant="bodySm">
-                        {currentPage} / {totalPages}
-                      </Text>
-                      <Button
-                        size="slim"
-                        onClick={() => setCurrentPage(currentPage + 1)}
-                        disabled={currentPage === totalPages || loading}
-                      >
-                        &rarr;
-                      </Button>
-                    </InlineStack>
-                  </InlineStack>
-                )}
-              </BlockStack>
-            )}
-          </BlockStack>
-        </Card>
+          {selectedTab === 1 && (
+            <ImportHistoryTab importHistory={importHistory} onViewDetails={setDetailModal} />
+          )}
+        </Tabs>
       </BlockStack>
 
-      {/* Upload Modal */}
-      <Modal
+      <ImportDetailModal detail={detailModal} onClose={() => setDetailModal(null)} />
+
+      <UploadCsvModal
         open={uploadModalOpen}
         onClose={handleCloseModal}
-        title="Import Products from CSV"
-        primaryAction={{
-          content: files.length > 0
-            ? `Upload ${files.length} File${files.length !== 1 ? 's' : ''}`
-            : 'Upload',
-          onAction: handleUpload,
-          loading: uploading,
-          disabled: files.length === 0
-        }}
-        secondaryActions={[{content: 'Cancel', onAction: handleCloseModal, disabled: uploading}]}
-      >
-        <Modal.Section>
-          <BlockStack gap="400">
-            <DropZone
-              onDrop={handleDropZoneDrop}
-              accept=".csv,text/csv"
-              type="file"
-              allowMultiple
-              disabled={uploading}
-            >
-              <DropZone.FileUpload actionHint="Accepts .csv files" />
-            </DropZone>
-
-            {files.length > 0 && (
-              <BlockStack gap="200">
-                <Text variant="headingSm" as="h3">
-                  {files.length} file{files.length !== 1 ? 's' : ''} selected
-                </Text>
-                <Divider />
-                {files.map((f, index) => (
-                  <InlineStack
-                    key={`${f.name}-${index}`}
-                    align="space-between"
-                    blockAlign="center"
-                  >
-                    <InlineStack gap="200" blockAlign="center">
-                      <Badge size="small">{(f.size / 1024).toFixed(1)} KB</Badge>
-                      <Text variant="bodyMd">{f.name}</Text>
-                    </InlineStack>
-                    <Button
-                      onClick={() => handleFileRemove(index)}
-                      icon={DeleteIcon}
-                      size="slim"
-                      tone="critical"
-                      variant="plain"
-                      disabled={uploading}
-                    />
-                  </InlineStack>
-                ))}
-              </BlockStack>
-            )}
-
-            <Button onClick={handleDownloadTemplate} variant="plain" size="slim">
-              Download CSV template
-            </Button>
-          </BlockStack>
-        </Modal.Section>
-      </Modal>
+        files={files}
+        onDrop={handleDropZoneDrop}
+        onRemove={handleFileRemove}
+        onUpload={handleUpload}
+        onDownloadTemplate={handleDownloadTemplate}
+        uploading={uploading}
+      />
     </Page>
   );
 }

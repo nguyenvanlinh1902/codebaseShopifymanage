@@ -11,8 +11,10 @@ import {
   DeliveryIcon,
   ChartVerticalFilledIcon,
   ThemeIcon,
-  SettingsIcon
+  SettingsIcon,
+  ExitIcon
 } from '@shopify/polaris-icons';
+import {useAuth} from '../context/AuthContext';
 
 StandaloneLayout.propTypes = {
   children: PropTypes.node.isRequired
@@ -20,6 +22,7 @@ StandaloneLayout.propTypes = {
 
 export default function StandaloneLayout({children}) {
   const location = useLocation();
+  const {logout} = useAuth();
 
   const navigationMarkup = (
     <Navigation location={location.pathname}>
@@ -35,6 +38,10 @@ export default function StandaloneLayout({children}) {
           {label: 'Themes', icon: ThemeIcon, url: '/themes'},
           {label: 'Setup Store', icon: SettingsIcon, url: '/setup'}
         ]}
+      />
+      <Navigation.Section
+        separator
+        items={[{label: 'Logout', icon: ExitIcon, onClick: logout}]}
       />
     </Navigation>
   );

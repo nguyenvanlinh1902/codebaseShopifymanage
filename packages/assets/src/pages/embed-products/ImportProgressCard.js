@@ -1,0 +1,70 @@
+import React from 'react';
+import {Card, BlockStack, InlineStack, Text, Badge} from '@shopify/polaris';
+
+export default function ImportProgressCard({importProgress}) {
+  if (!importProgress) return null;
+
+  return (
+    <Card>
+      <BlockStack gap="300">
+        <InlineStack align="space-between" blockAlign="center">
+          <Text variant="headingMd" as="h2">
+            Importing: {importProgress.fileName}
+          </Text>
+          <Badge
+            tone={
+              importProgress.status === 'completed'
+                ? 'success'
+                : importProgress.status === 'failed'
+                ? 'critical'
+                : 'attention'
+            }
+          >
+            {importProgress.completionPercentage}%
+          </Badge>
+        </InlineStack>
+
+        <div
+          style={{
+            width: '100%',
+            height: '8px',
+            backgroundColor: '#e4e5e7',
+            borderRadius: '4px',
+            overflow: 'hidden'
+          }}
+        >
+          <div
+            style={{
+              width: `${importProgress.completionPercentage}%`,
+              height: '100%',
+              backgroundColor: importProgress.failedCount > 0 ? '#d82c0d' : '#008060',
+              borderRadius: '4px',
+              transition: 'width 0.3s ease'
+            }}
+          />
+        </div>
+
+        <InlineStack gap="400">
+          <Text variant="bodySm" tone="subdued">
+            {importProgress.processedProducts}/{importProgress.totalProducts} products
+          </Text>
+          {importProgress.successCount > 0 && (
+            <Text variant="bodySm" tone="success">
+              {importProgress.successCount} created
+            </Text>
+          )}
+          {importProgress.failedCount > 0 && (
+            <Text variant="bodySm" tone="critical">
+              {importProgress.failedCount} failed
+            </Text>
+          )}
+          {importProgress.skippedCount > 0 && (
+            <Text variant="bodySm" tone="subdued">
+              {importProgress.skippedCount} skipped
+            </Text>
+          )}
+        </InlineStack>
+      </BlockStack>
+    </Card>
+  );
+}

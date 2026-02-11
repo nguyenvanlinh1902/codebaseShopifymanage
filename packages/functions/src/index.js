@@ -63,6 +63,14 @@ app.post('/api/shop/webhook', webhookController.handleShopWebhook);
 // GDPR compliance webhooks (called directly by Shopify)
 app.use('/api/gdpr', gdprRoutes);
 
+// GDPR validation endpoint for embed path (Shopify validation)
+app.all('/embed/api/gdpr*', (_req, res) => {
+  res.status(401).json({
+    success: false,
+    error: 'Unauthorized - HMAC verification required'
+  });
+});
+
 // Google OAuth exchange
 app.post('/api/google/exchange', googleAuthController.exchangeGoogleCode);
 app.post('/api/google/exchange-temp', googleAuthController.exchangeGoogleCodeTemp);

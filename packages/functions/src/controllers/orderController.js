@@ -109,7 +109,7 @@ async function processOrderSync(jobId, store, sheet, sheetName, params) {
     const rows = sheetsService.formatOrdersForExport(ordersWithStoreId);
 
     // Write to Google Sheets
-    const range = `${sheetName}!A1:AC${rows.length}`;
+    const range = `${sheetName}!A1:AB${rows.length}`;
     await sheetsService.writeSheet(sheet.spreadsheetId, range, rows);
 
     const results = {

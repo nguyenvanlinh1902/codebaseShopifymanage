@@ -682,7 +682,7 @@ export async function handleOrderWebhook(req, res) {
  *
  * Columns: STT | Order Number | Email | Created at | Base cost | Size | Type |
  *   Quantity | Product name | Product SKU | Lineitem price | Shipping Country |
- *   Payment Method | Total | Tax | Base cost | Fee (PP/ST & Shopify) | Note |
+ *   Payment Method | Total | Tax | Fee (PP/ST & Shopify) | Note |
  *   Shipping Address | Shipping Name | Shipping Address 1 | Shipping Address 2 |
  *   Shipping City | Shipping Zip | Shipping State | Shipping Country Code |
  *   Shipping Phone | Custom name | Design
@@ -696,8 +696,6 @@ function formatOrderRowsForSheet(order) {
   const paymentMethod = order.payment_gateway_names?.[0] || '';
   const totalPrice = order.total_price || '';
   const totalTax = order.total_tax || '';
-  const baseCost = order.current_subtotal_price || '';
-  const fee = order.total_shipping_price_set?.shop_money?.amount || '';
   const note = order.note || '';
 
   const buildRow = (item, index) => {
@@ -724,8 +722,7 @@ function formatOrderRowsForSheet(order) {
       isFirst ? paymentMethod : '', // Payment Method
       isFirst ? totalPrice : '', // Total
       isFirst ? totalTax : '', // Tax
-      isFirst ? baseCost : '', // Base cost (order-level)
-      isFirst ? fee : '', // Fee (PP/ST & Shopify)
+      '', // Fee (PP/ST & Shopify) - manual
       isFirst ? note : '', // Note
       isFirst ? addr.address1 || '' : '', // Shipping Address
       addr.name || '', // Shipping Name

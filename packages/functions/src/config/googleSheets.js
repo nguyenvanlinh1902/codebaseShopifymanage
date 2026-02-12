@@ -61,7 +61,6 @@ export const GOOGLE_SHEETS_CONFIG = {
     paymentMethod: 'Payment Method',
     total: 'Total',
     tax: 'Tax',
-    baseCost: 'Base cost',
     fee: 'Fee (PP/ST & Shopify)',
     note: 'Note',
     shippingAddress: 'Shipping Address',

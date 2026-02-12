@@ -237,8 +237,7 @@ export class GoogleSheetsService {
           isFirst ? order.payment_gateway_names?.[0] || '' : '',
           isFirst ? order.total_price || '' : '',
           isFirst ? order.total_tax || '' : '',
-          isFirst ? order.current_subtotal_price || '' : '',
-          isFirst ? order.total_shipping_price_set?.shop_money?.amount || '' : '',
+          '', // Fee (PP/ST & Shopify) - manual
           isFirst ? order.note || '' : '',
           isFirst ? addr.address1 || '' : '',
           addr.name || '',
@@ -346,7 +345,6 @@ export class GoogleSheetsService {
       'Payment Method',
       'Total',
       'Tax',
-      'Base cost',
       'Fee (PP/ST & Shopify)',
       'Note',
       'Shipping Address',
@@ -368,7 +366,7 @@ export class GoogleSheetsService {
    */
   async ensureHeaders(spreadsheetId, sheetName) {
     try {
-      const data = await this.readSheet(spreadsheetId, `${sheetName}!A1:AC1`);
+      const data = await this.readSheet(spreadsheetId, `${sheetName}!A1:AB1`);
       if (!data || data.length === 0 || data[0][0] !== 'STT') {
         await this.writeSheet(spreadsheetId, `${sheetName}!A1`, [
           GoogleSheetsService.ORDER_HEADERS
@@ -450,7 +448,7 @@ export class GoogleSheetsService {
       const data = await this.readSheet(spreadsheetId, `${sheetName}!B:B`);
       const nextRow = (data?.length || 0) + 1;
       const endRow = nextRow + order.rows.length - 1;
-      await this.writeSheet(spreadsheetId, `${sheetName}!A${nextRow}:AC${endRow}`, order.rows);
+      await this.writeSheet(spreadsheetId, `${sheetName}!A${nextRow}:AB${endRow}`, order.rows);
 
       return {success: true};
     } catch (error) {
@@ -507,7 +505,7 @@ export class GoogleSheetsService {
       const startRow = matchingRows[0];
       const newRows = order.rows;
       const endRow = startRow + newRows.length - 1;
-      await this.writeSheet(spreadsheetId, `${sheetName}!A${startRow}:AC${endRow}`, newRows);
+      await this.writeSheet(spreadsheetId, `${sheetName}!A${startRow}:AB${endRow}`, newRows);
 
       return {success: true};
     } catch (error) {

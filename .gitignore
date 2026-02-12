@@ -91,5 +91,6 @@ shopify.**.toml
 # AI tools
 .claude/
 .opencode/
+plans/
 claudekit-engineer-main/**
 .playwright-mcp

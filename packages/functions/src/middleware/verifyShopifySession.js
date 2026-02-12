@@ -10,17 +10,21 @@ const storeRepo = new StoreRepository();
  */
 async function exchangeForOfflineToken(shopDomain, sessionToken) {
   const url = `https://${shopDomain}.myshopify.com/admin/oauth/access_token`;
+  const params = new URLSearchParams({
+    client_id: shopifyConfig.apiKey,
+    client_secret: shopifyConfig.apiSecret,
+    grant_type: 'urn:ietf:params:oauth:grant-type:token-exchange',
+    subject_token: sessionToken,
+    subject_token_type: 'urn:ietf:params:oauth:token-type:id_token',
+    requested_token_type: 'urn:shopify:params:oauth:token-type:offline-access-token'
+  });
   const response = await fetch(url, {
     method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({
-      client_id: shopifyConfig.apiKey,
-      client_secret: shopifyConfig.apiSecret,
-      grant_type: 'urn:ietf:params:oauth:grant-type:token-exchange',
-      subject_token: sessionToken,
-      subject_token_type: 'urn:ietf:params:oauth:token-type:id-token',
-      requested_token_type: 'urn:shopify:params:oauth:token-type:offline-access-token'
-    })
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Accept: 'application/json'
+    },
+    body: params.toString()
   });
 
   if (!response.ok) {

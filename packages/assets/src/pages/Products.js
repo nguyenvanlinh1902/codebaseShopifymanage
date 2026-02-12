@@ -46,6 +46,7 @@ export default function Products() {
   const [showReimportModal, setShowReimportModal] = useState(false);
   const [reimportStores, setReimportStores] = useState([]);
   const [reimporting, setReimporting] = useState(false);
+  const [overwriteByHandle, setOverwriteByHandle] = useState(false);
 
   // Real-time import progress (all stores or filtered by selected store)
   const {importHistory} = useImportProgressAllStores({
@@ -208,7 +209,7 @@ export default function Products() {
       const response = await api('/api/products/upload-csv', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({storeIds: selectedStores, csvFiles})
+        body: JSON.stringify({storeIds: selectedStores, csvFiles, overwriteByHandle})
       });
       const result = await response.json();
 
@@ -217,6 +218,7 @@ export default function Products() {
         const totalProducts = jobs.reduce((sum, j) => sum + (j.totalProducts || 0), 0);
         setFiles([]);
         setSelectedStores([]);
+        setOverwriteByHandle(false);
         setUploadModalOpen(false);
         await Promise.all([fetchProducts(), fetchStoreImportStatus()]);
 
@@ -337,6 +339,7 @@ export default function Products() {
       setUploadModalOpen(false);
       setFiles([]);
       setSelectedStores([]);
+      setOverwriteByHandle(false);
     }
   };
 
@@ -512,6 +515,8 @@ export default function Products() {
         stores={stores.filter(s => s.status === 'active')}
         selectedStores={selectedStores}
         onStoresChange={setSelectedStores}
+        overwriteByHandle={overwriteByHandle}
+        onOverwriteChange={setOverwriteByHandle}
       />
 
       <ReimportModal

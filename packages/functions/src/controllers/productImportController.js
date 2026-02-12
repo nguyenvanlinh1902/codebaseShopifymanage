@@ -39,7 +39,7 @@ const importHistoryRepo = new ImportHistoryRepository();
  */
 export async function uploadAndImport(req, res) {
   try {
-    const {userId, storeId, storeIds, csvData, fileName, csvFiles} = req.body;
+    const {userId, storeId, storeIds, csvData, fileName, csvFiles, overwriteByHandle} = req.body;
 
     const targetStoreIds = storeIds || (storeId ? [storeId] : []);
 
@@ -115,7 +115,8 @@ export async function uploadAndImport(req, res) {
           shopDomain: store.shopDomain,
           accessToken: store.accessToken,
           products: parsedFile.validProducts,
-          totalProducts: parsedFile.validProducts.length
+          totalProducts: parsedFile.validProducts.length,
+          overwriteByHandle: !!overwriteByHandle
         });
 
         // Update status to processing

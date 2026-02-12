@@ -24,7 +24,8 @@ export async function processProductImport(messageData) {
     shopDomain,
     accessToken,
     products,
-    totalProducts
+    totalProducts,
+    overwriteByHandle
   } = data;
 
   // Validate accessToken before starting
@@ -80,11 +81,47 @@ export async function processProductImport(messageData) {
       }
 
       // Check duplicate by handle
+      let action = 'created';
       if (product.handle) {
         const existingByHandle = await callWithRetry(() =>
           shopifyService.getProductByHandle(product.handle)
         );
         if (existingByHandle) {
+          if (overwriteByHandle) {
+            // Extract numeric ID from GraphQL GID (gid://shopify/Product/123)
+            const numericId = existingByHandle.id.replace(/^gid:\/\/shopify\/Product\//, '');
+            const result = await callWithRetry(() =>
+              shopifyService.updateProduct(numericId, product)
+            );
+
+            await productRepo.save({
+              importId,
+              storeId,
+              userId,
+              storeName,
+              shopDomain,
+              shopifyProductId: result.id || numericId,
+              action: 'updated',
+              importedAt: new Date().toISOString(),
+              ...product
+            });
+
+            action = 'updated';
+            successCount++;
+            await importHistoryRepo.updateProductStatus(importId, i, 'completed');
+            await importHistoryRepo.updateProgress(importId, {
+              processedProducts: i + 1,
+              successCount,
+              failedCount,
+              skippedCount
+            });
+
+            console.log(`[${i + 1}/${totalProducts}] Updated: ${product.title} (handle: ${product.handle})`);
+            await sleep(RATE_LIMIT_DELAY);
+            continue;
+          }
+
+          // No overwrite → fail as before
           failedCount++;
           const errMsg = `Duplicate handle: ${product.handle}`;
           failedProductDetails.push({title: product.title || 'Unknown', error: errMsg});
@@ -113,7 +150,7 @@ export async function processProductImport(messageData) {
         storeName,
         shopDomain,
         shopifyProductId: result.product?.id || result.id,
-        action: 'created',
+        action,
         importedAt: new Date().toISOString(),
         ...product
       });

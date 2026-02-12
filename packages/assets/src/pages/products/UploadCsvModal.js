@@ -9,7 +9,8 @@ import {
   DropZone,
   Divider,
   ChoiceList,
-  Banner
+  Banner,
+  Checkbox
 } from '@shopify/polaris';
 import {DeleteIcon} from '@shopify/polaris-icons';
 
@@ -24,7 +25,9 @@ export default function UploadCsvModal({
   uploading,
   stores,
   selectedStores,
-  onStoresChange
+  onStoresChange,
+  overwriteByHandle,
+  onOverwriteChange
 }) {
   const storeChoices = stores.map(store => ({
     label: `${store.name} (${store.shopDomain})`,
@@ -121,6 +124,21 @@ export default function UploadCsvModal({
               </Text>
             </Banner>
           )}
+        </BlockStack>
+      </Modal.Section>
+
+      <Modal.Section>
+        <BlockStack gap="400">
+          <Text variant="headingSm" as="h3">
+            Step 3: Import Options
+          </Text>
+          <Checkbox
+            label="Overwrite existing products (by handle)"
+            helpText="If a product with the same handle already exists in the store, it will be updated instead of skipped."
+            checked={overwriteByHandle}
+            onChange={onOverwriteChange}
+            disabled={uploading}
+          />
         </BlockStack>
       </Modal.Section>
     </Modal>

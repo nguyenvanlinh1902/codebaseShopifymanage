@@ -88,5 +88,8 @@ shopify.**.toml
 .yarn/
 .shopify/
 
+# AI tools
+.claude/
+.opencode/
 claudekit-engineer-main/**
 .playwright-mcp

@@ -51,14 +51,10 @@ app.use('/api/auth/shopify', shopifyInstallRoutes);
 app.use('/api/auth', authRoutes);
 
 // Shopify webhooks (called directly by Shopify)
-import * as shopifyInstallController from './controllers/shopifyInstallController.js';
-app.post('/api/auth/webhook/app/uninstalled', shopifyInstallController.handleUninstall);
+// Note: app/uninstalled webhook is handled via shopifyInstallRoutes at /api/auth/shopify/webhook/app/uninstalled
 app.post('/api/orders/webhook', orderSyncController.handleOrderWebhook);
-app.post('/api/products/webhook', webhookController.handleProductWebhook);
 app.post('/api/fulfillments/webhook', webhookController.handleFulfillmentWebhook);
 app.post('/api/customers/webhook', webhookController.handleCustomerWebhook);
-app.post('/api/inventory/webhook', webhookController.handleInventoryWebhook);
-app.post('/api/themes/webhook', webhookController.handleThemeWebhook);
 app.post('/api/shop/webhook', webhookController.handleShopWebhook);
 
 // GDPR compliance webhooks (called directly by Shopify)

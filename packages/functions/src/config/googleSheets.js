@@ -44,33 +44,37 @@ export const GOOGLE_SHEETS_CONFIG = {
     niche: 'Niche'
   },
 
-  // Column mappings for order export (matches n8n workflow)
+  // Column mappings for order export
   orderColumns: {
     stt: 'STT',
     orderNumber: 'Order Number',
     email: 'Email',
     createdAt: 'Created at',
+    itemBaseCost: 'Base cost',
+    size: 'Size',
+    type: 'Type',
+    quantity: 'Quantity',
     productName: 'Product name',
     productSku: 'Product SKU',
     lineitemPrice: 'Lineitem price',
     shippingCountry: 'Shipping Country',
     paymentMethod: 'Payment Method',
-    quantity: 'Quantity',
     total: 'Total',
     tax: 'Tax',
+    baseCost: 'Base cost',
+    fee: 'Fee (PP/ST & Shopify)',
+    note: 'Note',
+    shippingAddress: 'Shipping Address',
     shippingName: 'Shipping Name',
-    shippingAddress1: 'Shipping Address1',
-    shippingAddress2: 'Shipping Address2',
+    shippingAddress1: 'Shipping Address 1',
+    shippingAddress2: 'Shipping Address 2',
     shippingCity: 'Shipping City',
     shippingZip: 'Shipping Zip',
     shippingState: 'Shipping State',
     shippingCountryCode: 'Shipping Country Code',
     shippingPhone: 'Shipping Phone',
-    note: 'Note',
-    baseCost: 'Base Cost',
-    fee: 'Fee',
-    properties: 'Properties',
-    shippingFullAddress: 'Shipping Full Address'
+    customName: 'Custom name',
+    design: 'Design'
   },
 
   // Column mappings for tracking update

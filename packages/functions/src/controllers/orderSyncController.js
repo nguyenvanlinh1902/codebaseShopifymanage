@@ -680,73 +680,64 @@ export async function handleOrderWebhook(req, res) {
  * Format Shopify order data for Google Sheets rows (1 row per line item)
  * Returns { orderId, orderNumber, rows: [[...], [...]] }
  *
- * Columns: STT | Order Number | Customer Name | Email | Created at | Financial Status |
- *   Fulfillment Status | Quantity | Product name | Product SKU | Lineitem price |
- *   Shipping Country | Payment Method | Total | Tax Total | Discount | Note |
- *   Shipping Name | Shipping Address | Shipping City | Shipping Zip |
- *   Shipping State | Shipping Country Code | Shipping Phone | Custom name | Design
+ * Columns: STT | Order Number | Email | Created at | Base cost | Size | Type |
+ *   Quantity | Product name | Product SKU | Lineitem price | Shipping Country |
+ *   Payment Method | Total | Tax | Base cost | Fee (PP/ST & Shopify) | Note |
+ *   Shipping Address | Shipping Name | Shipping Address 1 | Shipping Address 2 |
+ *   Shipping City | Shipping Zip | Shipping State | Shipping Country Code |
+ *   Shipping Phone | Custom name | Design
  */
 function formatOrderRowsForSheet(order) {
-  const shippingAddress = order.shipping_address || {};
+  const addr = order.shipping_address || {};
   const lineItems = order.line_items || [];
-
   const orderNumber = order.name || '';
   const email = order.email || '';
   const createdAt = order.created_at ? order.created_at.split('T')[0] : '';
   const paymentMethod = order.payment_gateway_names?.[0] || '';
   const totalPrice = order.total_price || '';
   const totalTax = order.total_tax || '';
-  const note = order.note || '';
   const baseCost = order.current_subtotal_price || '';
   const fee = order.total_shipping_price_set?.shop_money?.amount || '';
-  const shippingName = shippingAddress.name || '';
-  const shippingAddress1 = shippingAddress.address1 || '';
-  const shippingAddress2 = shippingAddress.address2 || '';
-  const shippingCity = shippingAddress.city || '';
-  const shippingZip = shippingAddress.zip || '';
-  const shippingState = shippingAddress.province || '';
-  const shippingCountryCode = shippingAddress.country_code || '';
-  const shippingPhone = shippingAddress.phone || '';
+  const note = order.note || '';
 
   const buildRow = (item, index) => {
-    // Format properties as "name: value" lines
-    let propertiesFormatted = '';
-    if (item.properties && Array.isArray(item.properties)) {
-      propertiesFormatted = item.properties
-        .filter(p => p.name && !p.name.startsWith('_'))
-        .map(p => `${p.name}: ${p.value}`)
-        .join('\n');
-    }
-
-    // Shipping full address only on first row
-    const shippingFullAddress = index === 0 ? shippingAddress1 : '';
+    const props = (item.properties || []).filter(p => p.name && !p.name.startsWith('_'));
+    const sizeProp = props.find(p => /size/i.test(p.name));
+    const typeProp = props.find(p => /type/i.test(p.name));
+    const nameProp = props.find(p => /name/i.test(p.name));
+    const designProp = props.find(p => /design/i.test(p.name));
+    const isFirst = index === 0;
 
     return [
       '', // STT (auto-filled)
       orderNumber, // Order Number
       email, // Email
-      createdAt, // Created at (date only)
+      createdAt, // Created at
+      '', // Base cost (item-level, manual)
+      sizeProp ? sizeProp.value : '', // Size
+      typeProp ? typeProp.value : '', // Type
+      item.quantity || '', // Quantity
       item.name || '', // Product name
       item.sku || '', // Product SKU
       item.price || '', // Lineitem price
-      shippingCountryCode, // Shipping Country
-      index === 0 ? paymentMethod : '', // Payment Method (first row only)
-      item.quantity || '', // Quantity
-      index === 0 ? totalPrice : '', // Total (first row only)
-      index === 0 ? totalTax : '', // Tax (first row only)
-      shippingName, // Shipping Name
-      shippingAddress1, // Shipping Address1
-      shippingAddress2, // Shipping Address2
-      shippingCity, // Shipping City
-      shippingZip, // Shipping Zip
-      shippingState, // Shipping State
-      shippingCountryCode, // Shipping Country Code
-      shippingPhone, // Shipping Phone
-      index === 0 ? note : '', // Note (first row only)
-      index === 0 ? baseCost : '', // Base Cost (first row only)
-      index === 0 ? fee : '', // Fee (first row only)
-      propertiesFormatted, // Properties
-      shippingFullAddress // Shipping Full Address (first row only)
+      addr.country_code || '', // Shipping Country
+      isFirst ? paymentMethod : '', // Payment Method
+      isFirst ? totalPrice : '', // Total
+      isFirst ? totalTax : '', // Tax
+      isFirst ? baseCost : '', // Base cost (order-level)
+      isFirst ? fee : '', // Fee (PP/ST & Shopify)
+      isFirst ? note : '', // Note
+      isFirst ? addr.address1 || '' : '', // Shipping Address
+      addr.name || '', // Shipping Name
+      addr.address1 || '', // Shipping Address 1
+      addr.address2 || '', // Shipping Address 2
+      addr.city || '', // Shipping City
+      addr.zip || '', // Shipping Zip
+      addr.province || '', // Shipping State
+      addr.country_code || '', // Shipping Country Code
+      addr.phone || '', // Shipping Phone
+      nameProp ? `${nameProp.name}: ${nameProp.value}` : '', // Custom name
+      designProp ? `${designProp.name}: ${designProp.value}` : '' // Design
     ];
   };
 

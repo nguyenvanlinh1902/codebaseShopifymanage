@@ -212,30 +212,35 @@ export class GoogleSheetsService {
       const addr = order.shipping_address || {};
       const lineItems = order.line_items || [];
       const createdAt = order.created_at ? order.created_at.split('T')[0] : '';
-      const firstRowOnly = val => val || '';
 
       const buildRow = (item, index) => {
-        let propsFormatted = '';
-        if (item.properties && Array.isArray(item.properties)) {
-          propsFormatted = item.properties
-            .filter(p => p.name && !p.name.startsWith('_'))
-            .map(p => `${p.name}: ${p.value}`)
-            .join('\n');
-        }
+        const props = (item.properties || []).filter(p => p.name && !p.name.startsWith('_'));
+        const sizeProp = props.find(p => /size/i.test(p.name));
+        const typeProp = props.find(p => /type/i.test(p.name));
+        const nameProp = props.find(p => /name/i.test(p.name));
+        const designProp = props.find(p => /design/i.test(p.name));
         const isFirst = index === 0;
+
         return [
           isFirst ? stt : '',
           order.name || '',
           order.email || '',
           createdAt,
+          '', // Base cost (item-level, manual)
+          sizeProp ? sizeProp.value : '',
+          typeProp ? typeProp.value : '',
+          item.quantity || '',
           item.name || '',
           item.sku || '',
           item.price || '',
           addr.country_code || '',
-          isFirst ? firstRowOnly(order.payment_gateway_names?.[0]) : '',
-          item.quantity || '',
-          isFirst ? firstRowOnly(order.total_price) : '',
-          isFirst ? firstRowOnly(order.total_tax) : '',
+          isFirst ? order.payment_gateway_names?.[0] || '' : '',
+          isFirst ? order.total_price || '' : '',
+          isFirst ? order.total_tax || '' : '',
+          isFirst ? order.current_subtotal_price || '' : '',
+          isFirst ? order.total_shipping_price_set?.shop_money?.amount || '' : '',
+          isFirst ? order.note || '' : '',
+          isFirst ? addr.address1 || '' : '',
           addr.name || '',
           addr.address1 || '',
           addr.address2 || '',
@@ -244,11 +249,8 @@ export class GoogleSheetsService {
           addr.province || '',
           addr.country_code || '',
           addr.phone || '',
-          isFirst ? firstRowOnly(order.note) : '',
-          isFirst ? firstRowOnly(order.current_subtotal_price) : '',
-          isFirst ? firstRowOnly(order.total_shipping_price_set?.shop_money?.amount) : '',
-          propsFormatted,
-          isFirst ? addr.address1 || '' : ''
+          nameProp ? `${nameProp.name}: ${nameProp.value}` : '',
+          designProp ? `${designProp.name}: ${designProp.value}` : ''
         ];
       };
 
@@ -333,27 +335,31 @@ export class GoogleSheetsService {
       'Order Number',
       'Email',
       'Created at',
+      'Base cost',
+      'Size',
+      'Type',
+      'Quantity',
       'Product name',
       'Product SKU',
       'Lineitem price',
       'Shipping Country',
       'Payment Method',
-      'Quantity',
       'Total',
       'Tax',
+      'Base cost',
+      'Fee (PP/ST & Shopify)',
+      'Note',
+      'Shipping Address',
       'Shipping Name',
-      'Shipping Address1',
-      'Shipping Address2',
+      'Shipping Address 1',
+      'Shipping Address 2',
       'Shipping City',
       'Shipping Zip',
       'Shipping State',
       'Shipping Country Code',
       'Shipping Phone',
-      'Note',
-      'Base Cost',
-      'Fee',
-      'Properties',
-      'Shipping Full Address'
+      'Custom name',
+      'Design'
     ];
   }
 

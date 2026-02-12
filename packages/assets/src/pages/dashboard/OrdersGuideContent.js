@@ -45,30 +45,29 @@ export default function OrdersGuideContent({syncConfigs}) {
             Order Info
           </Text>
           <List type="bullet">
-            <List.Item>Order Number, ID, Date</List.Item>
-            <List.Item>Status, Fulfillment Status</List.Item>
-            <List.Item>Total Price, Currency</List.Item>
-            <List.Item>Payment Method</List.Item>
+            <List.Item>Order Number, Email, Date</List.Item>
+            <List.Item>Total, Tax, Base Cost, Fee</List.Item>
+            <List.Item>Payment Method, Note</List.Item>
           </List>
         </BlockStack>
         <BlockStack gap="100">
           <Text variant="bodySm" as="p" fontWeight="semibold">
-            Customer Info
+            Product Info
           </Text>
           <List type="bullet">
-            <List.Item>Customer ID, Email, Phone</List.Item>
-            <List.Item>First Name, Last Name</List.Item>
-            <List.Item>Shipping & Billing Address</List.Item>
+            <List.Item>Product Name, SKU, Price</List.Item>
+            <List.Item>Quantity, Size, Type</List.Item>
+            <List.Item>Custom Name, Design</List.Item>
           </List>
         </BlockStack>
         <BlockStack gap="100">
           <Text variant="bodySm" as="p" fontWeight="semibold">
-            Items & Tracking
+            Shipping Info
           </Text>
           <List type="bullet">
-            <List.Item>Line Items (name x qty)</List.Item>
-            <List.Item>Tracking Numbers & URLs</List.Item>
-            <List.Item>Notes, Tags</List.Item>
+            <List.Item>Shipping Name, Phone</List.Item>
+            <List.Item>Address 1, Address 2</List.Item>
+            <List.Item>City, State, Zip, Country</List.Item>
           </List>
         </BlockStack>
       </InlineStack>

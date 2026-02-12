@@ -4,7 +4,7 @@ const shopifyConfig = {
   appUrl: process.env.APP_URL,
   scopes:
     process.env.SHOPIFY_SCOPES ||
-    'read_products,write_products,read_orders,write_orders,read_fulfillments,write_fulfillments,read_assigned_fulfillment_orders,write_assigned_fulfillment_orders,read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders,read_third_party_fulfillment_orders,write_third_party_fulfillment_orders,read_inventory,write_inventory,read_themes,write_themes,read_metaobjects,write_metaobjects,read_metaobject_definitions,write_metaobject_definitions',
+    'read_products,write_products,read_orders,write_orders,read_fulfillments,write_fulfillments,read_assigned_fulfillment_orders,write_assigned_fulfillment_orders,read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders,read_third_party_fulfillment_orders,write_third_party_fulfillment_orders,read_inventory,write_inventory,read_themes,write_themes,read_metaobjects,write_metaobjects,read_metaobject_definitions,write_metaobject_definitions,read_customers',
   apiVersion: '2026-01'
 };
 

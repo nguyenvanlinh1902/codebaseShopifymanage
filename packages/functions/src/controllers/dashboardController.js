@@ -41,7 +41,6 @@ export async function getDashboardStats(req, res) {
         ]);
 
         const activeConfig = syncConfigs.find(c => c.status === 'active');
-        const webhooks = await orderSyncRepo.getWebhooksByStore(store.id).catch(() => []);
 
         return {
           id: store.id,
@@ -63,8 +62,7 @@ export async function getDashboardStats(req, res) {
             syncedToSheet: syncStats.syncedToSheet || 0,
             failedToSync: syncStats.failedToSync || 0
           },
-          webhookActive: webhooks.length > 0,
-          webhookCount: webhooks.length
+          webhookActive: !!activeConfig
         };
       })
     );

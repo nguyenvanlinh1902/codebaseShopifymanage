@@ -95,33 +95,6 @@ export class OrderSyncRepository {
   }
 
   /**
-   * Register webhook for store
-   */
-  async registerWebhook(webhookData) {
-    const docRef = this.webhookCollection.doc();
-    const data = {
-      id: docRef.id,
-      ...webhookData,
-      createdAt: new Date().toISOString()
-    };
-    await docRef.set(data);
-    return data;
-  }
-
-  /**
-   * Get webhook by Shopify webhook ID
-   */
-  async getWebhookByShopifyId(shopifyWebhookId) {
-    const snapshot = await this.webhookCollection
-      .where('shopifyWebhookId', '==', shopifyWebhookId)
-      .limit(1)
-      .get();
-
-    if (snapshot.empty) return null;
-    return snapshot.docs[0].data();
-  }
-
-  /**
    * Get webhooks for store
    */
   async getWebhooksByStore(storeId) {

@@ -54,8 +54,7 @@ export async function setupSync(req, res) {
     }
 
     // Create new sync configuration
-    // Webhooks are auto-registered on app install via webhook-registration-service
-    const baseUrl = process.env.FUNCTION_URL || process.env.APP_URL;
+    // Webhooks are managed declaratively via shopify.app.toml (auto-registered on install)
     const syncConfig = await orderSyncRepo.createSyncJob({
       userId,
       storeId,
@@ -67,7 +66,6 @@ export async function setupSync(req, res) {
       targetSheet: sheetName || 'Orders',
       targetSheetId: targetSheetId || null,
       status: 'active',
-      webhookUrl: `${baseUrl}/api/orders/webhook`,
       totalOrdersSynced: 0
     });
 
@@ -588,79 +586,42 @@ export async function handleOrderWebhook(req, res) {
     const topic = req.get('X-Shopify-Topic');
     const order = req.body;
 
-    console.log('[WEBHOOK] ===== Incoming Order Webhook =====');
-    console.log('[WEBHOOK] Shop:', shopDomain);
-    console.log('[WEBHOOK] Topic:', topic);
-    console.log('[WEBHOOK] Order ID:', order?.id, '| Order #:', order?.name);
-    console.log('[WEBHOOK] HMAC present:', !!hmac);
-    console.log(
-      '[WEBHOOK] RawBody present:',
-      !!req.rawBody,
-      '| Body keys:',
-      Object.keys(order || {}).length
-    );
+    console.log(`[WEBHOOK] ${topic} from ${shopDomain} | Order ${order?.name} (${order?.id})`);
+
+    // Only process orders/create webhook
+    if (topic !== 'orders/create') {
+      return res.status(200).json({message: 'Only orders/create is processed'});
+    }
 
     // Verify webhook authenticity
     const store = await storeRepo.getByShopDomain(shopDomain);
     if (!store) {
-      console.error('[WEBHOOK] Store not found for:', shopDomain);
+      console.error('[WEBHOOK] Store not found:', shopDomain);
       return res.status(404).json({error: 'Store not found'});
     }
-    console.log('[WEBHOOK] Store found:', store.id, '| hasAccessToken:', !!store.accessToken);
 
-    // Verify HMAC signature using app's API secret (Shopify signs with app secret, not store secret)
     const rawBody = req.rawBody || JSON.stringify(req.body);
-    const isValid = verifyWebhookHmac(rawBody, hmac, shopifyConfig.apiSecret);
-    if (!isValid) {
-      console.error('[WEBHOOK] HMAC verification FAILED');
-      console.error(
-        '[WEBHOOK] apiSecret present:',
-        !!shopifyConfig.apiSecret,
-        '| length:',
-        shopifyConfig.apiSecret?.length
-      );
+    if (!verifyWebhookHmac(rawBody, hmac, shopifyConfig.apiSecret)) {
+      console.error('[WEBHOOK] HMAC verification failed for:', shopDomain);
       return res.status(401).json({error: 'Invalid webhook signature'});
     }
-    console.log('[WEBHOOK] HMAC verified OK');
 
     // Get active sync configuration
     const syncConfig = await orderSyncRepo.getActiveSyncConfig(store.id);
     if (!syncConfig) {
-      console.log('[WEBHOOK] No active sync config for store:', store.id, '- skipping');
       return res.status(200).json({message: 'No sync config, skipping'});
-    }
-    console.log(
-      '[WEBHOOK] Sync config:',
-      syncConfig.id,
-      '| Sheet:',
-      syncConfig.sheetName,
-      '| Tab:',
-      syncConfig.targetSheet
-    );
-
-    // Only process orders/create webhook
-    if (topic !== 'orders/create') {
-      console.log('[WEBHOOK] Ignoring topic:', topic);
-      return res.status(200).json({message: 'Only orders/create is processed'});
     }
 
     // Check if order was already synced (prevent duplicates)
     const alreadySynced = await orderSyncRepo.isOrderSynced(store.id, order.id.toString());
     if (alreadySynced) {
-      console.log('[WEBHOOK] Order already synced:', order.id, '- skipping');
       return res.status(200).json({message: 'Already synced'});
     }
 
     // Format order for sheet (per-line-item rows)
     const formattedOrder = formatOrderRowsForSheet(order);
-    console.log(
-      '[WEBHOOK] Formatted order:',
-      formattedOrder.orderId,
-      '| rows:',
-      formattedOrder.rows?.length || 0
-    );
 
-    // STEP 1: Save to Firestore first (always succeed, our backup)
+    // Save to Firestore first (backup)
     try {
       await orderRepo.saveOrder({
         orderId: formattedOrder.orderId,
@@ -668,80 +629,45 @@ export async function handleOrderWebhook(req, res) {
         storeId: store.id,
         syncConfigId: syncConfig.id
       });
-      console.log('[WEBHOOK] Step 1: Saved to Firestore OK');
     } catch (error) {
-      console.error('[WEBHOOK] Step 1: Firestore save failed:', error.message);
-      // Continue anyway - will try to sync to sheet
+      console.error('[WEBHOOK] Firestore save failed:', error.message);
     }
 
-    // STEP 2: Try to sync to Google Sheets
-    let syncedToSheet = false;
+    // Sync to Google Sheets
     try {
       const sheet = await sheetRepo.getById(syncConfig.sheetId);
-      console.log(
-        '[WEBHOOK] Step 2: Sheet found:',
-        sheet?.id,
-        '| hasCredentials:',
-        !!sheet?.credentials,
-        '| hasRefreshToken:',
-        !!sheet?.refreshToken
-      );
-
       const sheetsService = sheet.credentials
         ? new GoogleSheetsService(sheet.credentials)
         : sheet.refreshToken
         ? await GoogleSheetsService.createFromRefreshToken(sheet.refreshToken)
         : await GoogleSheetsService.createForUser(sheet.userId);
 
-      // Append new order rows to Google Sheets
       await sheetsService.appendOrder(
         syncConfig.spreadsheetId,
         syncConfig.targetSheet,
         formattedOrder
       );
-      console.log('[WEBHOOK] Step 2: Appended to Google Sheets OK');
 
-      // Track synced order
       await orderSyncRepo.trackSyncedOrder({
         storeId: store.id,
         shopifyOrderId: order.id.toString(),
         orderNumber: order.name
       });
-
-      syncedToSheet = true;
-
-      // Mark as synced in Firestore
       await orderRepo.markSyncedToSheet(store.id, formattedOrder.orderId);
-
-      // Update sync stats
       await orderSyncRepo.updateSyncJob(syncConfig.id, {
         totalOrdersSynced: (syncConfig.totalOrdersSynced || 0) + 1,
         lastSyncAt: new Date().toISOString()
       });
-      console.log('[WEBHOOK] ===== Order Synced Successfully =====');
+
+      console.log(`[WEBHOOK] Synced ${order.name} to sheet (${formattedOrder.rows.length} rows)`);
+      return res.status(200).json({success: true, message: 'Order synced', syncedToSheet: true});
     } catch (error) {
-      console.error('[WEBHOOK] Step 2: Google Sheets sync FAILED:', error.message);
-
-      // Increment sync attempt counter
+      console.error(`[WEBHOOK] Sheet sync failed for ${order.name}:`, error.message);
       await orderRepo.incrementSyncAttempt(store.id, formattedOrder.orderId, error.message);
-
-      // Still return success since we saved to Firestore
-      return res.status(200).json({
-        success: true,
-        message: 'Order saved to Firestore, sheet sync failed',
-        savedToFirestore: true,
-        syncedToSheet: false
-      });
+      return res.status(200).json({success: true, message: 'Saved to Firestore, sheet sync failed', syncedToSheet: false});
     }
-
-    return res.status(200).json({
-      success: true,
-      message: 'Order synced',
-      savedToFirestore: true,
-      syncedToSheet
-    });
   } catch (error) {
-    console.error('[WEBHOOK] ===== FATAL ERROR =====', error);
+    console.error('[WEBHOOK] Fatal error:', error.message);
     return res.status(500).json({error: error.message});
   }
 }
@@ -749,29 +675,38 @@ export async function handleOrderWebhook(req, res) {
 /**
  * Format Shopify order data for Google Sheets rows (1 row per line item)
  * Returns { orderId, orderNumber, rows: [[...], [...]] }
+ *
+ * Columns: STT | Order Number | Customer Name | Email | Created at | Financial Status |
+ *   Fulfillment Status | Quantity | Product name | Product SKU | Lineitem price |
+ *   Shipping Country | Payment Method | Total | Tax Total | Discount | Note |
+ *   Shipping Name | Shipping Address | Shipping City | Shipping Zip |
+ *   Shipping State | Shipping Country Code | Shipping Phone | Custom name | Design
  */
 function formatOrderRowsForSheet(order) {
+  const customer = order.customer || {};
   const shippingAddress = order.shipping_address || {};
   const lineItems = order.line_items || [];
+
   const orderNumber = order.name || '';
-  const email = order.email || order.customer?.email || '';
+  const customerName = [customer.first_name, customer.last_name].filter(Boolean).join(' ') || shippingAddress.name || '';
+  const email = order.email || customer.email || '';
   const createdAt = order.created_at || '';
-  const shippingCountry = shippingAddress.country || '';
+  const financialStatus = order.financial_status || '';
+  const fulfillmentStatus = order.fulfillment_status || 'unfulfilled';
   const paymentMethod = order.payment_gateway_names?.join(', ') || '';
   const totalPrice = order.total_price || '0';
   const totalTax = order.total_tax || '0';
+  const discount = order.total_discounts || '0';
   const note = order.note || '';
   const shippingName = shippingAddress.name || '';
-  const shippingAddr1 = shippingAddress.address1 || '';
-  const shippingAddr2 = shippingAddress.address2 || '';
+  const shippingFullAddr = [shippingAddress.address1, shippingAddress.address2].filter(Boolean).join(', ');
   const shippingCity = shippingAddress.city || '';
   const shippingZip = shippingAddress.zip || '';
   const shippingState = shippingAddress.province || '';
   const shippingCountryCode = shippingAddress.country_code || '';
   const shippingPhone = shippingAddress.phone || '';
 
-  const rows = lineItems.map((item, index) => {
-    // Extract custom properties (non-hidden, i.e. not starting with _)
+  const buildRow = (item, index) => {
     const props = (item.properties || []).filter(p => p.name && !p.name.startsWith('_'));
     const nameProp = props.find(p => /name/i.test(p.name));
     const designProp = props.find(p => /design/i.test(p.name));
@@ -779,72 +714,38 @@ function formatOrderRowsForSheet(order) {
     const design = designProp ? `${designProp.name}: ${designProp.value}` : '';
 
     return [
-      '', // STT
-      orderNumber,
-      email,
-      createdAt,
-      '', // Base cost
-      '', // Size
-      '', // Type
-      item.quantity || 1,
-      item.name || item.title || '',
-      item.sku || '',
-      item.price || '0',
-      shippingCountry,
-      paymentMethod,
-      index === 0 ? totalPrice : '',
-      index === 0 ? totalTax : '',
-      '', // Base cost
-      '', // Fee
-      note,
-      '', // Shipping Address
-      shippingName,
-      shippingAddr1,
-      shippingAddr2,
-      shippingCity,
-      shippingZip,
-      shippingState,
-      shippingCountryCode,
-      shippingPhone,
-      customName,
-      design
+      '',                                     // STT (auto-filled)
+      orderNumber,                            // Order Number
+      index === 0 ? customerName : '',        // Customer Name
+      index === 0 ? email : '',               // Email
+      index === 0 ? createdAt : '',           // Created at
+      index === 0 ? financialStatus : '',     // Financial Status
+      index === 0 ? fulfillmentStatus : '',   // Fulfillment Status
+      item.quantity || 1,                     // Quantity
+      item.name || item.title || '',          // Product name
+      item.sku || '',                         // Product SKU
+      item.price || '0',                      // Lineitem price
+      index === 0 ? (shippingAddress.country || '') : '', // Shipping Country
+      index === 0 ? paymentMethod : '',       // Payment Method
+      index === 0 ? totalPrice : '',          // Total
+      index === 0 ? totalTax : '',            // Tax Total
+      index === 0 ? discount : '',            // Discount
+      index === 0 ? note : '',                // Note
+      index === 0 ? shippingName : '',        // Shipping Name
+      index === 0 ? shippingFullAddr : '',    // Shipping Address
+      index === 0 ? shippingCity : '',        // Shipping City
+      index === 0 ? shippingZip : '',         // Shipping Zip
+      index === 0 ? shippingState : '',       // Shipping State
+      index === 0 ? shippingCountryCode : '', // Shipping Country Code
+      index === 0 ? shippingPhone : '',       // Shipping Phone
+      customName,                             // Custom name
+      design                                  // Design
     ];
-  });
+  };
 
-  // If no line items, still create one row with order info
-  if (rows.length === 0) {
-    rows.push([
-      '',
-      orderNumber,
-      email,
-      createdAt,
-      '',
-      '',
-      '',
-      0,
-      '',
-      '',
-      '0',
-      shippingCountry,
-      paymentMethod,
-      totalPrice,
-      totalTax,
-      '',
-      '',
-      note,
-      '',
-      shippingName,
-      shippingAddr1,
-      shippingAddr2,
-      shippingCity,
-      shippingZip,
-      shippingState,
-      shippingCountryCode,
-      shippingPhone,
-      '',
-      ''
-    ]);
-  }
+  const rows = lineItems.length > 0
+    ? lineItems.map((item, index) => buildRow(item, index))
+    : [buildRow({quantity: 0, name: '', sku: '', price: '0', properties: []}, 0)];
 
   return {
     orderId: order.id?.toString() || '',

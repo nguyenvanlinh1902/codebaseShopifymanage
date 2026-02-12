@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import {StoreRepository} from '../repositories/storeRepository.js';
 import shopifyConfig from '../config/shopify.js';
-import {registerAppWebhooks, cleanupStoreOnUninstall} from '../services/webhook-registration-service.js';
+import {cleanupStoreOnUninstall} from '../services/webhook-registration-service.js';
 
 const storeRepo = new StoreRepository();
 
@@ -196,13 +196,10 @@ export async function handleCallback(req, res) {
       });
     }
 
-    const installedStoreId = existingStore ? existingStore.id : (await storeRepo.getByShopDomain(shopDomain))?.id;
     console.log(`Shopify app installed on: ${shopDomain}`);
 
-    // Register webhooks (non-blocking — don't fail install if webhooks fail)
-    registerAppWebhooks(installedStoreId, shopDomain, accessToken).catch(err => {
-      console.error('[handleCallback] Webhook registration error:', err.message);
-    });
+    // Webhooks are managed declaratively via shopify.app.toml
+    // Shopify auto-registers them on install (orders/create, fulfillments/*, customers/*)
 
     // Redirect to the embedded app in Shopify Admin
     const embeddedUrl = `https://${shopDomain}.myshopify.com/admin/apps/${shopifyConfig.apiKey}`;

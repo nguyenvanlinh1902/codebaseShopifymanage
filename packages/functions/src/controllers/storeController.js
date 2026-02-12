@@ -1,6 +1,5 @@
 import {StoreRepository} from '../repositories/storeRepository.js';
 import {OrderSyncRepository} from '../repositories/orderSyncRepository.js';
-import {ShopifyService} from '../services/shopifyService.js';
 
 const storeRepo = new StoreRepository();
 const orderSyncRepo = new OrderSyncRepository();
@@ -214,18 +213,9 @@ async function cleanupAndDeleteStore(storeId) {
   const store = await storeRepo.getById(storeId);
   if (!store) return {storeId, success: false, error: 'Store not found'};
 
-  // Cleanup webhooks from Shopify and Firestore
+  // Cleanup Firestore webhook records (Shopify manages webhook lifecycle via shopify.app.toml)
   const webhooks = await orderSyncRepo.getWebhooksByStore(storeId);
   for (const webhook of webhooks) {
-    try {
-      const shopifyService = new ShopifyService({
-        shopDomain: store.shopDomain,
-        accessToken: store.accessToken
-      });
-      await shopifyService.deleteWebhook(webhook.shopifyWebhookId);
-    } catch (err) {
-      console.warn('Failed to delete Shopify webhook:', webhook.shopifyWebhookId, err.message);
-    }
     await orderSyncRepo.deleteWebhook(webhook.id);
   }
 

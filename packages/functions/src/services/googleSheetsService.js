@@ -1,6 +1,6 @@
-import {google} from 'googleapis';
-import {GOOGLE_SHEETS_CONFIG, GOOGLE_OAUTH_CONFIG} from '../config/googleSheets.js';
-import {GoogleAuthRepository} from '../repositories/googleAuthRepository.js';
+import { google } from 'googleapis';
+import { GOOGLE_SHEETS_CONFIG, GOOGLE_OAUTH_CONFIG } from '../config/googleSheets.js';
+import { GoogleAuthRepository } from '../repositories/googleAuthRepository.js';
 
 /**
  * Google Sheets Service
@@ -70,7 +70,7 @@ export class GoogleSheetsService {
       });
     }
 
-    this.sheets = google.sheets({version: 'v4', auth: this.auth});
+    this.sheets = google.sheets({ version: 'v4', auth: this.auth });
   }
 
   /**
@@ -88,7 +88,7 @@ export class GoogleSheetsService {
    * Exchange authorization code for tokens
    */
   async getTokens(code) {
-    const {tokens} = await this.auth.getToken(code);
+    const { tokens } = await this.auth.getToken(code);
     this.auth.setCredentials(tokens);
     return tokens;
   }
@@ -300,11 +300,11 @@ export class GoogleSheetsService {
     return [
       'STT',
       'Order Number',
+      'Customer Name',
       'Email',
       'Created at',
-      'Base cost',
-      'Size',
-      'Type',
+      'Financial Status',
+      'Fulfillment Status',
       'Quantity',
       'Product name',
       'Product SKU',
@@ -313,13 +313,10 @@ export class GoogleSheetsService {
       'Payment Method',
       'Total',
       'Tax Total',
-      'Base cost',
-      'Fee (PP/ST & Shopify)',
+      'Discount',
       'Note',
-      'Shipping Address',
       'Shipping Name',
-      'Shipping Address 1',
-      'Shipping Address 2',
+      'Shipping Address',
       'Shipping City',
       'Shipping Zip',
       'Shipping State',
@@ -394,7 +391,7 @@ export class GoogleSheetsService {
       const allRows = [GoogleSheetsService.ORDER_HEADERS, ...rows];
       await this.writeSheet(spreadsheetId, `${sheetName}!A1`, allRows);
 
-      return {success: true, rowsWritten: rows.length};
+      return { success: true, rowsWritten: rows.length };
     } catch (error) {
       console.error('Error writing orders:', error);
       throw new Error(`Failed to write orders: ${error.message}`);
@@ -425,7 +422,7 @@ export class GoogleSheetsService {
         order.rows
       );
 
-      return {success: true};
+      return { success: true };
     } catch (error) {
       console.error('Error appending order:', error);
       throw new Error(`Failed to append order: ${error.message}`);
@@ -447,7 +444,7 @@ export class GoogleSheetsService {
 
       const rows = orders.flatMap(order => order.rows);
       await this.appendSheet(spreadsheetId, `${sheetName}!A1`, rows);
-      return {success: true, rowsAppended: rows.length};
+      return { success: true, rowsAppended: rows.length };
     } catch (error) {
       console.error('Error appending orders:', error);
       throw new Error(`Failed to append orders: ${error.message}`);
@@ -482,7 +479,7 @@ export class GoogleSheetsService {
       const endRow = startRow + newRows.length - 1;
       await this.writeSheet(spreadsheetId, `${sheetName}!A${startRow}:AC${endRow}`, newRows);
 
-      return {success: true};
+      return { success: true };
     } catch (error) {
       throw new Error(`Failed to update order: ${error.message}`);
     }

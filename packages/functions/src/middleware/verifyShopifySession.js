@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import shopifyConfig from '../config/shopify.js';
 import {StoreRepository} from '../repositories/storeRepository.js';
+import {registerAppWebhooks} from '../services/webhook-registration-service.js';
 
 const storeRepo = new StoreRepository();
 
@@ -165,6 +166,13 @@ export async function verifyShopifySession(req, res, next) {
         updateData.status = 'active';
         store.status = 'active';
         console.log('[verifyShopifySession] Store reactivated after reinstall:', shopDomain);
+
+        // Re-register webhooks (Shopify deletes all webhooks on uninstall)
+        if (offlineToken) {
+          registerAppWebhooks(store.id, shopDomain, offlineToken).catch(err => {
+            console.error('[verifyShopifySession] Webhook re-registration error:', err.message);
+          });
+        }
       }
 
       if (offlineToken && offlineToken !== store.accessToken) {
@@ -212,6 +220,11 @@ export async function verifyShopifySession(req, res, next) {
       });
 
       console.log('[verifyShopifySession] Store provisioned:', store.id, shopDomain);
+
+      // Register webhooks for new store (non-blocking)
+      registerAppWebhooks(store.id, shopDomain, tokenData.access_token).catch(err => {
+        console.error('[verifyShopifySession] Webhook registration error:', err.message);
+      });
     }
 
     req.store = store;

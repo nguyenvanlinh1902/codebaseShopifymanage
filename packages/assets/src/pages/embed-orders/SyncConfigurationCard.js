@@ -31,9 +31,7 @@ export default function SyncConfigurationCard({
   onTabChange,
   loadingTabs,
   settingUpSync,
-  onSetupSync,
-  checkingWebhooks,
-  onCheckWebhooks
+  onSetupSync
 }) {
   return (
     <Card>
@@ -97,22 +95,14 @@ export default function SyncConfigurationCard({
               disabled={loadingTabs || sheetTabs.length === 0}
             />
 
-            <InlineStack gap="200" wrap>
-              <Button
-                variant="primary"
-                onClick={onSetupSync}
-                loading={settingUpSync}
-                disabled={!selectedSheet || !selectedTab}
-              >
-                {activeConfig ? 'Update Config' : 'Setup Sync'}
-              </Button>
-
-              {activeConfig && (
-                <Button onClick={onCheckWebhooks} loading={checkingWebhooks}>
-                  Check Webhooks
-                </Button>
-              )}
-            </InlineStack>
+            <Button
+              variant="primary"
+              onClick={onSetupSync}
+              loading={settingUpSync}
+              disabled={!selectedSheet || !selectedTab}
+            >
+              {activeConfig ? 'Update Config' : 'Setup Sync'}
+            </Button>
           </BlockStack>
         )}
       </BlockStack>

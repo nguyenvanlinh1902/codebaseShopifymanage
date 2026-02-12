@@ -9,17 +9,12 @@ router.post('/sync', orderController.syncOrders);
 router.post('/schedule', orderController.scheduleOrderSync);
 router.get('/', orderController.getOrders);
 
-// Order sync configuration
+// Order sync configuration (webhooks auto-registered on install)
 router.post('/setup-sync', orderSyncController.setupSync);
-router.post('/manual-sync', orderSyncController.manualSync);
 router.get('/sync-configs', orderSyncController.getSyncConfigs);
-router.post('/register-webhook', orderSyncController.registerWebhook);
-router.get('/webhook-instructions', orderSyncController.getWebhookInstructions);
-router.get('/webhook-list', orderSyncController.getWebhookList);
 router.get('/sync-stats', orderSyncController.getSyncStats);
 router.post('/resync-failed', orderSyncController.resyncFailedOrders);
 router.get('/queue-stats', orderSyncController.getOrderSyncQueueStats);
-router.post('/process-queue', orderSyncController.processOrderSyncQueueManual);
 
 // Webhook endpoint moved to index.js (must bypass auth middleware)
 

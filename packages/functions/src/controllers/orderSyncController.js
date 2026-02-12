@@ -9,8 +9,6 @@ import {GoogleSheetsService} from '../services/googleSheetsService.js';
 import crypto from 'crypto';
 import shopifyConfig from '../config/shopify.js';
 
-const ORDER_SYNC_PAGE_SIZE = 5;
-
 const orderSyncRepo = new OrderSyncRepository();
 const orderRepo = new OrderRepository();
 const orderSyncQueueRepo = new OrderSyncQueueRepository();
@@ -55,11 +53,9 @@ export async function setupSync(req, res) {
       }
     }
 
-    // Build webhook URL
-    const baseUrl = process.env.FUNCTION_URL || process.env.APP_URL;
-    const orderWebhookUrl = `${baseUrl}/api/orders/webhook`;
-
     // Create new sync configuration
+    // Webhooks are auto-registered on app install via webhook-registration-service
+    const baseUrl = process.env.FUNCTION_URL || process.env.APP_URL;
     const syncConfig = await orderSyncRepo.createSyncJob({
       userId,
       storeId,
@@ -71,226 +67,17 @@ export async function setupSync(req, res) {
       targetSheet: sheetName || 'Orders',
       targetSheetId: targetSheetId || null,
       status: 'active',
-      webhookUrl: orderWebhookUrl,
+      webhookUrl: `${baseUrl}/api/orders/webhook`,
       totalOrdersSynced: 0
     });
 
-    // Auto-register orders/create webhook with Shopify
-    let webhookResult = null;
-    try {
-      const existingWebhooks = await orderSyncRepo.getWebhooksByStore(storeId);
-      const hasOrderWebhook = existingWebhooks.some(wh => wh.topic === 'orders/create');
-
-      if (!hasOrderWebhook) {
-        const shopifyService = new ShopifyService({
-          shopDomain: store.shopDomain,
-          accessToken: store.accessToken
-        });
-
-        // Check if webhook already exists on Shopify
-        const shopifyWebhooks = await shopifyService.listWebhooks();
-        const existingOnShopify = shopifyWebhooks.find(
-          wh => wh.topic === 'orders/create' && wh.address === orderWebhookUrl
-        );
-
-        let webhook;
-        if (existingOnShopify) {
-          console.log('[setupSync] Reusing existing Shopify webhook:', existingOnShopify.id);
-          webhook = existingOnShopify;
-        } else {
-          console.log('[setupSync] Registering new orders/create webhook');
-          webhook = await shopifyService.createWebhook({
-            topic: 'orders/create',
-            address: orderWebhookUrl,
-            format: 'json'
-          });
-        }
-
-        // Save webhook registration to local DB
-        await orderSyncRepo.registerWebhook({
-          storeId,
-          shopDomain: store.shopDomain,
-          shopifyWebhookId: webhook.id,
-          topic: 'orders/create',
-          address: orderWebhookUrl
-        });
-
-        webhookResult = {registered: true, webhookId: webhook.id};
-        console.log('[setupSync] Webhook registered successfully:', webhook.id);
-      } else {
-        webhookResult = {registered: true, alreadyExists: true};
-        console.log('[setupSync] Webhook already registered for store:', storeId);
-      }
-    } catch (webhookError) {
-      console.error('[setupSync] Failed to auto-register webhook:', webhookError.message);
-      webhookResult = {registered: false, error: webhookError.message};
-    }
-
     return res.json({
       success: true,
-      message: webhookResult?.registered
-        ? 'Order sync configured and webhook registered successfully'
-        : 'Order sync configured (webhook registration failed - use Check Webhooks to debug)',
-      data: {...syncConfig, webhook: webhookResult}
+      message: 'Order sync configured successfully',
+      data: syncConfig
     });
   } catch (error) {
     console.error('Setup sync error:', error);
-    return res.status(500).json({
-      success: false,
-      error: error.message
-    });
-  }
-}
-
-/**
- * Manual sync orders from Shopify to Google Sheets
- * Fetches only 1 page (max ORDER_SYNC_PAGE_SIZE orders) using since_id cursor
- * Queue processor will fetch next pages automatically
- */
-export async function manualSync(req, res) {
-  try {
-    const {storeId} = req.body;
-
-    if (!storeId) {
-      return res.status(400).json({success: false, error: 'storeId is required'});
-    }
-
-    // Check if there's already an active sync job
-    const activeJob = await orderSyncJobRepo.getActiveJob(storeId);
-    if (activeJob) {
-      return res.status(409).json({
-        success: false,
-        error: 'A sync job is already in progress for this store',
-        data: {jobId: activeJob.id}
-      });
-    }
-
-    // Get sync configuration
-    const syncConfig = await orderSyncRepo.getActiveSyncConfig(storeId);
-    if (!syncConfig) {
-      return res.status(404).json({
-        success: false,
-        error: 'No active sync configuration found for this store'
-      });
-    }
-
-    // Get store info
-    const store = await storeRepo.getById(storeId);
-
-    const shopifyService = new ShopifyService({
-      shopDomain: store.shopDomain,
-      accessToken: store.accessToken
-    });
-
-    // Fetch orders using since_id cursor + page_info pagination
-    // since_id makes Shopify return orders sorted by ID ascending (oldest first)
-    const fetchParams = {status: 'any', limit: ORDER_SYNC_PAGE_SIZE};
-    if (syncConfig.lastSyncedOrderId) {
-      fetchParams.since_id = syncConfig.lastSyncedOrderId;
-    } else {
-      // Initial sync: since_id=0 forces ascending order (oldest first)
-      fetchParams.since_id = 0;
-    }
-
-    const orders = await shopifyService.getOrders(fetchParams);
-    // shopify-api-node attaches nextPageParameters to the array for cursor pagination
-    const hasNextPage = !!orders.nextPageParameters;
-    const nextPageParams = orders.nextPageParameters || null;
-    // Track max order ID across all pages for saving lastSyncedOrderId
-    const maxOrderId =
-      orders.length > 0 ? Math.max(...orders.map(o => Number(o.id))).toString() : null;
-
-    console.log(
-      `[OrderSync] Fetched ${orders.length} orders (page 1) from Shopify for store ${storeId} (hasNextPage: ${hasNextPage})`
-    );
-
-    // Format and filter duplicates
-    const formattedOrders = orders.map(formatOrderRowsForSheet);
-    const newOrders = [];
-    const alreadySyncedCount = {count: 0};
-    for (const order of formattedOrders) {
-      const alreadySynced = await orderSyncRepo.isOrderSynced(storeId, order.orderId);
-      if (!alreadySynced) {
-        newOrders.push(order);
-      } else {
-        alreadySyncedCount.count++;
-      }
-    }
-
-    if (newOrders.length === 0 && !hasNextPage) {
-      return res.json({
-        success: true,
-        message: `No new orders to sync (${alreadySyncedCount.count} already synced)`,
-        data: {totalFromShopify: orders.length, newOrders: 0, jobId: null}
-      });
-    }
-
-    // Create sync job with pagination info
-    const syncJob = await orderSyncJobRepo.create({
-      userId: syncConfig.userId,
-      storeId,
-      sheetId: syncConfig.sheetId,
-      spreadsheetId: syncConfig.spreadsheetId,
-      targetSheet: syncConfig.targetSheet,
-      totalOrders: newOrders.length,
-      nextPageParams,
-      lastOrderId: maxOrderId,
-      hasNextPage,
-      currentPage: 1
-    });
-
-    // If page 1 has no new orders but more pages exist, start scanning immediately
-    if (newOrders.length === 0 && hasNextPage) {
-      await fetchNextPage(syncJob.id);
-      return res.json({
-        success: true,
-        message: 'Page 1 already synced, scanning next pages...',
-        data: {
-          jobId: syncJob.id,
-          totalFromShopify: orders.length,
-          newOrders: 0,
-          alreadySynced: alreadySyncedCount.count,
-          hasNextPage: true,
-          currentPage: 1
-        }
-      });
-    }
-
-    // Enqueue new orders from page 1
-    // Note: orderData is JSON-stringified because Firestore doesn't support nested arrays (rows: [[...]])
-    for (const order of newOrders) {
-      await orderSyncQueueRepo.enqueue({
-        syncJobId: syncJob.id,
-        storeId,
-        orderId: order.orderId,
-        orderNumber: order.orderNumber,
-        orderData: JSON.stringify(order),
-        sheetId: syncConfig.sheetId,
-        spreadsheetId: syncConfig.spreadsheetId,
-        targetSheet: syncConfig.targetSheet
-      });
-    }
-
-    console.log(
-      `[OrderSync] Enqueued ${newOrders.length} orders for job ${syncJob.id} (page 1, hasNextPage: ${hasNextPage})`
-    );
-
-    return res.json({
-      success: true,
-      message: `Queued ${newOrders.length} orders from page 1${
-        hasNextPage ? ' (more pages available)' : ''
-      }`,
-      data: {
-        jobId: syncJob.id,
-        totalFromShopify: orders.length,
-        newOrders: newOrders.length,
-        alreadySynced: alreadySyncedCount.count,
-        hasNextPage,
-        currentPage: 1
-      }
-    });
-  } catch (error) {
-    console.error('Manual sync error:', error);
     return res.status(500).json({
       success: false,
       error: error.message
@@ -653,20 +440,6 @@ export async function getOrderSyncQueueStats(req, res) {
 }
 
 /**
- * Manually trigger queue processing
- */
-export async function processOrderSyncQueueManual(req, res) {
-  try {
-    await processOrderSyncQueue();
-    const stats = await orderSyncQueueRepo.getQueueStats();
-    return res.json({success: true, data: stats});
-  } catch (error) {
-    console.error('Error processing queue manually:', error);
-    return res.status(500).json({success: false, error: error.message});
-  }
-}
-
-/**
  * Re-sync failed orders from Firestore to Google Sheets
  */
 export async function resyncFailedOrders(req, res) {
@@ -798,92 +571,6 @@ export async function getSyncConfigs(req, res) {
     });
   } catch (error) {
     console.error('Get sync configs error:', error);
-    return res.status(500).json({
-      success: false,
-      error: error.message
-    });
-  }
-}
-
-/**
- * Register webhook with Shopify
- * Only registers orders/create webhook (single webhook for order sync)
- */
-export async function registerWebhook(req, res) {
-  try {
-    const {storeId, webhookUrl} = req.body;
-
-    if (!storeId || !webhookUrl) {
-      return res.status(400).json({
-        success: false,
-        error: 'storeId and webhookUrl are required'
-      });
-    }
-
-    const store = await storeRepo.getById(storeId);
-    if (!store) {
-      return res.status(404).json({success: false, error: 'Store not found'});
-    }
-
-    const shopifyService = new ShopifyService({
-      shopDomain: store.shopDomain,
-      accessToken: store.accessToken
-    });
-
-    // Check if webhook already exists in local DB
-    const existingWebhooks = await orderSyncRepo.getWebhooksByStore(storeId);
-    const hasOrderUpdateWebhook = existingWebhooks.some(wh => wh.topic === 'orders/create');
-
-    if (hasOrderUpdateWebhook) {
-      return res.json({
-        success: true,
-        message: 'Webhook already registered',
-        data: {
-          webhook: existingWebhooks.find(wh => wh.topic === 'orders/create')
-        }
-      });
-    }
-
-    // Check if webhook already exists on Shopify
-    const shopifyWebhooks = await shopifyService.listWebhooks();
-    const existingOnShopify = shopifyWebhooks.find(
-      wh => wh.topic === 'orders/create' && wh.address === webhookUrl
-    );
-
-    let webhook;
-    if (existingOnShopify) {
-      console.log(
-        '[registerWebhook] Found existing webhook on Shopify, reusing:',
-        existingOnShopify.id
-      );
-      webhook = existingOnShopify;
-    } else {
-      // Register orders/create webhook (single webhook for all orders)
-      webhook = await shopifyService.createWebhook({
-        topic: 'orders/create',
-        address: webhookUrl,
-        format: 'json'
-      });
-    }
-
-    // Save webhook registration
-    await orderSyncRepo.registerWebhook({
-      storeId,
-      shopDomain: store.shopDomain,
-      shopifyWebhookId: webhook.id,
-      topic: 'orders/create',
-      address: webhookUrl
-    });
-
-    return res.json({
-      success: true,
-      message: 'Webhook registered successfully',
-      data: {
-        webhook
-      }
-    });
-  } catch (error) {
-    console.error('Register webhook error:', error);
     return res.status(500).json({
       success: false,
       error: error.message
@@ -1056,129 +743,6 @@ export async function handleOrderWebhook(req, res) {
   } catch (error) {
     console.error('[WEBHOOK] ===== FATAL ERROR =====', error);
     return res.status(500).json({error: error.message});
-  }
-}
-
-/**
- * Get webhook list from Shopify
- * Lists all webhooks registered on the Shopify store
- */
-export async function getWebhookList(req, res) {
-  try {
-    const {storeId} = req.query;
-
-    if (!storeId) {
-      return res.status(400).json({success: false, error: 'storeId is required'});
-    }
-
-    const store = await storeRepo.getById(storeId);
-    if (!store) {
-      return res.status(404).json({success: false, error: 'Store not found'});
-    }
-
-    // Get webhooks from Shopify API
-    const shopifyService = new ShopifyService({
-      shopDomain: store.shopDomain,
-      accessToken: store.accessToken
-    });
-
-    const webhooks = await shopifyService.listWebhooks();
-
-    // Get locally registered webhooks for comparison
-    const localWebhooks = await orderSyncRepo.getWebhooksByStore(storeId);
-
-    return res.json({
-      success: true,
-      data: {
-        shopify: webhooks,
-        local: localWebhooks,
-        storeName: store.name,
-        shopDomain: store.shopDomain
-      }
-    });
-  } catch (error) {
-    console.error('Get webhook list error:', error);
-    return res.status(500).json({
-      success: false,
-      error: error.message
-    });
-  }
-}
-
-/**
- * Get webhook setup instructions
- */
-export async function getWebhookInstructions(req, res) {
-  try {
-    const {storeId} = req.query;
-
-    if (!storeId) {
-      return res.status(400).json({success: false, error: 'storeId is required'});
-    }
-
-    const store = await storeRepo.getById(storeId);
-    if (!store) {
-      return res.status(404).json({success: false, error: 'Store not found'});
-    }
-
-    // Get registered webhooks
-    const webhooks = await orderSyncRepo.getWebhooksByStore(storeId);
-
-    const instructions = {
-      webhookUrl: `${process.env.FUNCTION_URL || 'https://your-function-url'}/api/orders/webhook`,
-      shopDomain: store.shopDomain,
-      registeredWebhooks: webhooks,
-      steps: [
-        {
-          step: 1,
-          title: 'Go to Shopify Admin',
-          description: `Navigate to ${store.shopDomain}.myshopify.com/admin/settings/notifications`
-        },
-        {
-          step: 2,
-          title: 'Create Webhook',
-          description: 'Click "Create webhook" button'
-        },
-        {
-          step: 3,
-          title: 'Configure Webhook',
-          details: {
-            Topic: 'orders/create',
-            Format: 'JSON',
-            URL: `${process.env.FUNCTION_URL || 'https://your-function-url'}/api/orders/webhook`,
-            'API version': 'Latest'
-          }
-        },
-        {
-          step: 4,
-          title: 'Save Webhook',
-          description: 'Click "Save webhook" to activate the sync'
-        },
-        {
-          step: 5,
-          title: 'Verify',
-          description: 'Create a test order in your Shopify store to verify the sync is working'
-        }
-      ],
-      notes: [
-        'Only ONE webhook needed for order sync (orders/create)',
-        'All stores send to the same webhook URL',
-        'System automatically identifies store by shop domain',
-        'HMAC signature verified for security',
-        'Orders synced to Google Sheets in real-time'
-      ]
-    };
-
-    return res.json({
-      success: true,
-      data: instructions
-    });
-  } catch (error) {
-    console.error('Get webhook instructions error:', error);
-    return res.status(500).json({
-      success: false,
-      error: error.message
-    });
   }
 }
 

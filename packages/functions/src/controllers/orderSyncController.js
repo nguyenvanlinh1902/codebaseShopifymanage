@@ -664,7 +664,11 @@ export async function handleOrderWebhook(req, res) {
     } catch (error) {
       console.error(`[WEBHOOK] Sheet sync failed for ${order.name}:`, error.message);
       await orderRepo.incrementSyncAttempt(store.id, formattedOrder.orderId, error.message);
-      return res.status(200).json({success: true, message: 'Saved to Firestore, sheet sync failed', syncedToSheet: false});
+      return res.status(200).json({
+        success: true,
+        message: 'Saved to Firestore, sheet sync failed',
+        syncedToSheet: false
+      });
     }
   } catch (error) {
     console.error('[WEBHOOK] Fatal error:', error.message);
@@ -683,23 +687,21 @@ export async function handleOrderWebhook(req, res) {
  *   Shipping State | Shipping Country Code | Shipping Phone | Custom name | Design
  */
 function formatOrderRowsForSheet(order) {
-  const customer = order.customer || {};
   const shippingAddress = order.shipping_address || {};
   const lineItems = order.line_items || [];
 
   const orderNumber = order.name || '';
-  const customerName = [customer.first_name, customer.last_name].filter(Boolean).join(' ') || shippingAddress.name || '';
-  const email = order.email || customer.email || '';
-  const createdAt = order.created_at || '';
-  const financialStatus = order.financial_status || '';
-  const fulfillmentStatus = order.fulfillment_status || 'unfulfilled';
-  const paymentMethod = order.payment_gateway_names?.join(', ') || '';
-  const totalPrice = order.total_price || '0';
-  const totalTax = order.total_tax || '0';
-  const discount = order.total_discounts || '0';
+  const email = order.email || '';
+  const createdAt = order.created_at ? order.created_at.split('T')[0] : '';
+  const paymentMethod = order.payment_gateway_names?.[0] || '';
+  const totalPrice = order.total_price || '';
+  const totalTax = order.total_tax || '';
   const note = order.note || '';
+  const baseCost = order.current_subtotal_price || '';
+  const fee = order.total_shipping_price_set?.shop_money?.amount || '';
   const shippingName = shippingAddress.name || '';
-  const shippingFullAddr = [shippingAddress.address1, shippingAddress.address2].filter(Boolean).join(', ');
+  const shippingAddress1 = shippingAddress.address1 || '';
+  const shippingAddress2 = shippingAddress.address2 || '';
   const shippingCity = shippingAddress.city || '';
   const shippingZip = shippingAddress.zip || '';
   const shippingState = shippingAddress.province || '';
@@ -707,45 +709,51 @@ function formatOrderRowsForSheet(order) {
   const shippingPhone = shippingAddress.phone || '';
 
   const buildRow = (item, index) => {
-    const props = (item.properties || []).filter(p => p.name && !p.name.startsWith('_'));
-    const nameProp = props.find(p => /name/i.test(p.name));
-    const designProp = props.find(p => /design/i.test(p.name));
-    const customName = nameProp ? `${nameProp.name}: ${nameProp.value}` : '';
-    const design = designProp ? `${designProp.name}: ${designProp.value}` : '';
+    // Format properties as "name: value" lines
+    let propertiesFormatted = '';
+    if (item.properties && Array.isArray(item.properties)) {
+      propertiesFormatted = item.properties
+        .filter(p => p.name && !p.name.startsWith('_'))
+        .map(p => `${p.name}: ${p.value}`)
+        .join('\n');
+    }
+
+    // Shipping full address only on first row
+    const shippingFullAddress = index === 0 ? shippingAddress1 : '';
 
     return [
-      '',                                     // STT (auto-filled)
-      orderNumber,                            // Order Number
-      index === 0 ? customerName : '',        // Customer Name
-      index === 0 ? email : '',               // Email
-      index === 0 ? createdAt : '',           // Created at
-      index === 0 ? financialStatus : '',     // Financial Status
-      index === 0 ? fulfillmentStatus : '',   // Fulfillment Status
-      item.quantity || 1,                     // Quantity
-      item.name || item.title || '',          // Product name
-      item.sku || '',                         // Product SKU
-      item.price || '0',                      // Lineitem price
-      index === 0 ? (shippingAddress.country || '') : '', // Shipping Country
-      index === 0 ? paymentMethod : '',       // Payment Method
-      index === 0 ? totalPrice : '',          // Total
-      index === 0 ? totalTax : '',            // Tax Total
-      index === 0 ? discount : '',            // Discount
-      index === 0 ? note : '',                // Note
-      index === 0 ? shippingName : '',        // Shipping Name
-      index === 0 ? shippingFullAddr : '',    // Shipping Address
-      index === 0 ? shippingCity : '',        // Shipping City
-      index === 0 ? shippingZip : '',         // Shipping Zip
-      index === 0 ? shippingState : '',       // Shipping State
-      index === 0 ? shippingCountryCode : '', // Shipping Country Code
-      index === 0 ? shippingPhone : '',       // Shipping Phone
-      customName,                             // Custom name
-      design                                  // Design
+      '', // STT (auto-filled)
+      orderNumber, // Order Number
+      email, // Email
+      createdAt, // Created at (date only)
+      item.name || '', // Product name
+      item.sku || '', // Product SKU
+      item.price || '', // Lineitem price
+      shippingCountryCode, // Shipping Country
+      index === 0 ? paymentMethod : '', // Payment Method (first row only)
+      item.quantity || '', // Quantity
+      index === 0 ? totalPrice : '', // Total (first row only)
+      index === 0 ? totalTax : '', // Tax (first row only)
+      shippingName, // Shipping Name
+      shippingAddress1, // Shipping Address1
+      shippingAddress2, // Shipping Address2
+      shippingCity, // Shipping City
+      shippingZip, // Shipping Zip
+      shippingState, // Shipping State
+      shippingCountryCode, // Shipping Country Code
+      shippingPhone, // Shipping Phone
+      index === 0 ? note : '', // Note (first row only)
+      index === 0 ? baseCost : '', // Base Cost (first row only)
+      index === 0 ? fee : '', // Fee (first row only)
+      propertiesFormatted, // Properties
+      shippingFullAddress // Shipping Full Address (first row only)
     ];
   };
 
-  const rows = lineItems.length > 0
-    ? lineItems.map((item, index) => buildRow(item, index))
-    : [buildRow({quantity: 0, name: '', sku: '', price: '0', properties: []}, 0)];
+  const rows =
+    lineItems.length > 0
+      ? lineItems.map((item, index) => buildRow(item, index))
+      : [buildRow({quantity: 0, name: '', sku: '', price: '', properties: []}, 0)];
 
   return {
     orderId: order.id?.toString() || '',

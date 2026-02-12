@@ -91,18 +91,18 @@ export async function getImportStatus(req, res) {
     }
 
     const totalProducts = importJob.totalProducts || 0;
+    const totalVariants = importJob.totalVariants || 0;
     const processedProducts = importJob.processedProducts || 0;
-    const completionPercentage =
-      totalProducts > 0 ? Math.round((processedProducts / totalProducts) * 100) : 0;
+    const processedVariants = importJob.processedVariants || 0;
 
-    // Separate handle conflicts from other failures
+    // Use variant-based percentage for finer progress (fallback to product-based)
+    const completionPercentage = totalVariants > 0
+      ? Math.round((processedVariants / totalVariants) * 100)
+      : totalProducts > 0
+        ? Math.round((processedProducts / totalProducts) * 100)
+        : 0;
+
     const failedProducts = importJob.failedProductDetails || [];
-    const handleConflicts = failedProducts.filter(
-      p => p.error && p.error.startsWith('Duplicate handle:')
-    );
-    const importFailures = failedProducts.filter(
-      p => !p.error || !p.error.startsWith('Duplicate handle:')
-    );
 
     return res.json({
       success: true,
@@ -112,13 +112,13 @@ export async function getImportStatus(req, res) {
         fileName: importJob.fileName,
         storeName: importJob.storeName,
         totalProducts,
+        totalVariants,
         processedProducts,
+        processedVariants,
         successCount: importJob.successCount || 0,
         failedCount: importJob.failedCount || 0,
-        skippedCount: importJob.skippedCount || 0,
         completionPercentage,
-        handleConflicts,
-        importFailures,
+        failedProductDetails: failedProducts,
         products: importJob.products || [],
         createdAt: importJob.createdAt,
         completedAt: importJob.completedAt || null

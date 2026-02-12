@@ -34,13 +34,17 @@ export async function getQueueStats(req, res) {
         fileName: imp.fileName,
         status: imp.status,
         totalProducts: imp.totalProducts,
+        totalVariants: imp.totalVariants || 0,
         processedProducts: imp.processedProducts || 0,
+        processedVariants: imp.processedVariants || 0,
         successCount: imp.successCount || 0,
         failedCount: imp.failedCount || 0,
         completionPercentage:
-          imp.totalProducts > 0
-            ? Math.round(((imp.processedProducts || 0) / imp.totalProducts) * 100)
-            : 0
+          imp.totalVariants > 0
+            ? Math.round(((imp.processedVariants || 0) / imp.totalVariants) * 100)
+            : imp.totalProducts > 0
+              ? Math.round(((imp.processedProducts || 0) / imp.totalProducts) * 100)
+              : 0
       }));
     } else {
       // Global stats (standalone app)
@@ -54,14 +58,17 @@ export async function getQueueStats(req, res) {
         storeName: imp.storeName || 'Unknown',
         status: imp.status,
         totalProducts: imp.totalProducts,
+        totalVariants: imp.totalVariants || 0,
         processedProducts: imp.processedProducts || 0,
+        processedVariants: imp.processedVariants || 0,
         successCount: imp.successCount || 0,
         failedCount: imp.failedCount || 0,
-        skippedCount: imp.skippedCount || 0,
         completionPercentage:
-          imp.totalProducts > 0
-            ? Math.round(((imp.processedProducts || 0) / imp.totalProducts) * 100)
-            : 0
+          imp.totalVariants > 0
+            ? Math.round(((imp.processedVariants || 0) / imp.totalVariants) * 100)
+            : imp.totalProducts > 0
+              ? Math.round(((imp.processedProducts || 0) / imp.totalProducts) * 100)
+              : 0
       }));
     }
 

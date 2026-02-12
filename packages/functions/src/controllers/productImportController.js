@@ -39,7 +39,7 @@ const importHistoryRepo = new ImportHistoryRepository();
  */
 export async function uploadAndImport(req, res) {
   try {
-    const {userId, storeId, storeIds, csvData, fileName, csvFiles, overwriteByHandle} = req.body;
+    const {userId, storeId, storeIds, csvData, fileName, csvFiles} = req.body;
 
     const targetStoreIds = storeIds || (storeId ? [storeId] : []);
 
@@ -78,6 +78,11 @@ export async function uploadAndImport(req, res) {
 
     for (const store of stores) {
       for (const parsedFile of parsedFiles) {
+        // Calculate total variants across all products
+        const totalVariants = parsedFile.validProducts.reduce(
+          (sum, p) => sum + (p.variants ? p.variants.length : 1), 0
+        );
+
         // Create import job record (status: pending)
         const importJob = await importHistoryRepo.create({
           userId,
@@ -86,7 +91,9 @@ export async function uploadAndImport(req, res) {
           shopDomain: store.shopDomain,
           fileName: parsedFile.fileName,
           totalProducts: parsedFile.validProducts.length,
+          totalVariants,
           processedProducts: 0,
+          processedVariants: 0,
           successCount: 0,
           failedCount: 0,
           skippedCount: 0,
@@ -99,13 +106,16 @@ export async function uploadAndImport(req, res) {
             index: i,
             title: p.title || 'Unknown',
             handle: p.handle || '',
-            sku: p.sku || '',
+            variantCount: p.variants ? p.variants.length : 1,
             status: 'pending',
             error: null
           }))
         });
 
-        // Publish ONE message per import job (sequential processing avoids 429 rate limits)
+        // Store products in Firestore subcollection (avoids PubSub size limits for large CSV files)
+        await importHistoryRepo.saveImportProducts(importJob.id, parsedFile.validProducts);
+
+        // PubSub only carries lightweight metadata - worker reads products from Firestore
         await getOrCreateTopic(PRODUCT_IMPORT_TOPIC);
         await publishMessage(PRODUCT_IMPORT_TOPIC, {
           importId: importJob.id,
@@ -114,9 +124,7 @@ export async function uploadAndImport(req, res) {
           storeName: store.name,
           shopDomain: store.shopDomain,
           accessToken: store.accessToken,
-          products: parsedFile.validProducts,
-          totalProducts: parsedFile.validProducts.length,
-          overwriteByHandle: !!overwriteByHandle
+          totalProducts: parsedFile.validProducts.length
         });
 
         // Update status to processing

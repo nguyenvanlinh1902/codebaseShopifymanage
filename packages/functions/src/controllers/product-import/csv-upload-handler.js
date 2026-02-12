@@ -6,7 +6,9 @@ import {
   parseCsv,
   validateProductData,
   mapToShopifyProduct,
-  generateCsvTemplate
+  generateCsvTemplate,
+  groupCsvRowsByHandle,
+  validateGroupedProduct
 } from '../../helpers/csvParser.js';
 import {StoreRepository} from '../../repositories/storeRepository.js';
 
@@ -34,19 +36,23 @@ export async function parseAndValidateCsvFiles(filesToProcess) {
       continue;
     }
 
+    // Map all rows to Shopify format, then group by handle (Shopify CSV standard)
+    const mappedRows = products.map(row => mapToShopifyProduct(row));
+    const groupedProducts = groupCsvRowsByHandle(mappedRows);
+
     const validProducts = [];
     const invalidProducts = [];
 
-    products.forEach((product, index) => {
-      const errors = validateProductData(product);
+    groupedProducts.forEach((product, index) => {
+      const errors = validateGroupedProduct(product);
       if (errors.length > 0) {
         invalidProducts.push({
-          row: index + 2,
-          title: product['Title'] || product['title'] || `Row ${index + 2}`,
+          row: index + 1,
+          title: product.title || `Product ${index + 1}`,
           errors
         });
       } else {
-        validProducts.push(mapToShopifyProduct(product));
+        validProducts.push(product);
       }
     });
 
@@ -63,7 +69,8 @@ export async function parseAndValidateCsvFiles(filesToProcess) {
       fileName: file.fileName,
       validProducts,
       invalidProducts,
-      totalRows: products.length
+      totalRows: products.length,
+      totalProducts: groupedProducts.length
     });
   }
 

@@ -1,6 +1,6 @@
 /**
  * Background handler: Process entire import job from PubSub
- * Processes all products SEQUENTIALLY with rate limiting to avoid 429
+ * Always upserts: creates new products or merges variants into existing ones
  */
 
 import {ImportHistoryRepository} from '../../repositories/importHistoryRepository.js';
@@ -16,17 +16,7 @@ const productRepo = new ProductRepository();
  */
 export async function processProductImport(messageData) {
   const data = messageData.message.json;
-  const {
-    importId,
-    storeId,
-    userId,
-    storeName,
-    shopDomain,
-    accessToken,
-    products,
-    totalProducts,
-    overwriteByHandle
-  } = data;
+  const {importId, storeId, userId, storeName, shopDomain, accessToken, totalProducts} = data;
 
   // Validate accessToken before starting
   if (!accessToken || !accessToken.startsWith('shpat_')) {
@@ -48,152 +38,95 @@ export async function processProductImport(messageData) {
     return;
   }
 
+  // Read products from Firestore subcollection (stored during upload, not sent via PubSub)
+  const products = await importHistoryRepo.getImportProducts(importId);
+  if (!products || products.length === 0) {
+    const errMsg = 'No products found in import job';
+    console.error(`Import ${importId} aborted: ${errMsg}`);
+    await importHistoryRepo.markFailed(importId, errMsg);
+    return;
+  }
+
   let successCount = 0;
   let failedCount = 0;
-  let skippedCount = 0;
+  let processedVariants = 0;
   const failedProductDetails = [];
 
-  console.log(`Starting import ${importId}: ${totalProducts} products for ${storeName}`);
+  console.log(`Starting import ${importId}: ${products.length} products for ${storeName}`);
 
   for (let i = 0; i < products.length; i++) {
     const product = products[i];
+    const variantCount = product.variants ? product.variants.length : 1;
 
     try {
-      // Update per-product status
       await importHistoryRepo.updateProductStatus(importId, i, 'processing');
 
-      // Check duplicate by SKU
-      if (product.sku) {
-        const existing = await callWithRetry(() => shopifyService.getProductBySku(product.sku));
-        if (existing) {
-          skippedCount++;
-          await importHistoryRepo.updateProductStatus(importId, i, 'skipped', 'SKU exists');
-          await importHistoryRepo.updateProgress(importId, {
-            processedProducts: i + 1,
-            successCount,
-            failedCount,
-            skippedCount
-          });
-          console.log(`[${i + 1}/${totalProducts}] Skipped: ${product.title} (SKU exists)`);
-          await sleep(RATE_LIMIT_DELAY);
-          continue;
-        }
-      }
+      // Always upsert: create if new, merge variants if exists
+      const {result, action, variantStats} = await callWithRetry(() =>
+        shopifyService.upsertProduct(product)
+      );
 
-      // Check duplicate by handle
-      let action = 'created';
-      if (product.handle) {
-        const existingByHandle = await callWithRetry(() =>
-          shopifyService.getProductByHandle(product.handle)
-        );
-        if (existingByHandle) {
-          if (overwriteByHandle) {
-            // Extract numeric ID from GraphQL GID (gid://shopify/Product/123)
-            const numericId = existingByHandle.id.replace(/^gid:\/\/shopify\/Product\//, '');
-            const result = await callWithRetry(() =>
-              shopifyService.updateProduct(numericId, product)
-            );
-
-            await productRepo.save({
-              importId,
-              storeId,
-              userId,
-              storeName,
-              shopDomain,
-              shopifyProductId: result.id || numericId,
-              action: 'updated',
-              importedAt: new Date().toISOString(),
-              ...product
-            });
-
-            action = 'updated';
-            successCount++;
-            await importHistoryRepo.updateProductStatus(importId, i, 'completed');
-            await importHistoryRepo.updateProgress(importId, {
-              processedProducts: i + 1,
-              successCount,
-              failedCount,
-              skippedCount
-            });
-
-            console.log(`[${i + 1}/${totalProducts}] Updated: ${product.title} (handle: ${product.handle})`);
-            await sleep(RATE_LIMIT_DELAY);
-            continue;
-          }
-
-          // No overwrite → fail as before
-          failedCount++;
-          const errMsg = `Duplicate handle: ${product.handle}`;
-          failedProductDetails.push({title: product.title || 'Unknown', error: errMsg});
-          await importHistoryRepo.updateProductStatus(importId, i, 'failed', errMsg);
-          await importHistoryRepo.updateProgress(importId, {
-            processedProducts: i + 1,
-            successCount,
-            failedCount,
-            skippedCount,
-            failedProductDetails: failedProductDetails.slice(0, 100)
-          });
-          console.log(`[${i + 1}/${totalProducts}] Failed: ${product.title} (${errMsg})`);
-          await sleep(RATE_LIMIT_DELAY);
-          continue;
-        }
-      }
-
-      // Create product in Shopify (with 429 retry)
-      const result = await callWithRetry(() => shopifyService.createProduct(product));
-
-      // Save to Firestore
+      // Save tracking record to Firestore
       await productRepo.save({
         importId,
         storeId,
         userId,
         storeName,
         shopDomain,
-        shopifyProductId: result.product?.id || result.id,
+        shopifyProductId: result.id,
         action,
         importedAt: new Date().toISOString(),
-        ...product
+        title: product.title,
+        handle: product.handle,
+        vendor: product.vendor,
+        productType: product.productType,
+        tags: product.tags,
+        sku: product.variants?.[0]?.sku || '',
+        price: product.variants?.[0]?.price || '0.00',
+        variantCount
       });
 
       successCount++;
+      processedVariants += variantCount;
       await importHistoryRepo.updateProductStatus(importId, i, 'completed');
       await importHistoryRepo.updateProgress(importId, {
         processedProducts: i + 1,
+        processedVariants,
         successCount,
-        failedCount,
-        skippedCount
+        failedCount
       });
 
-      console.log(`[${i + 1}/${totalProducts}] Created: ${product.title}`);
+      const statsMsg = action === 'updated'
+        ? `+${variantStats.added} new, ${variantStats.updated} updated`
+        : `${variantCount} variants`;
+      console.log(`[${i + 1}/${products.length}] ${action}: ${product.title} (${statsMsg})`);
     } catch (error) {
       failedCount++;
+      processedVariants += variantCount;
       const errMsg = error.message || 'Unknown error';
       failedProductDetails.push({title: product.title || 'Unknown', error: errMsg});
 
       await importHistoryRepo.updateProductStatus(importId, i, 'failed', errMsg);
       await importHistoryRepo.updateProgress(importId, {
         processedProducts: i + 1,
+        processedVariants,
         successCount,
         failedCount,
-        skippedCount,
         failedProductDetails: failedProductDetails.slice(0, 100)
       });
 
-      console.error(`[${i + 1}/${totalProducts}] Failed: ${product.title}: ${errMsg}`);
+      console.error(`[${i + 1}/${products.length}] Failed: ${product.title}: ${errMsg}`);
     }
 
-    // Rate limiting delay between each Shopify API call
     await sleep(RATE_LIMIT_DELAY);
   }
 
-  // Mark import job as completed/partial/failed
-  if (failedCount >= totalProducts) {
+  // Mark import job as completed/failed
+  if (failedCount >= products.length) {
     await importHistoryRepo.markFailed(importId, 'All products failed to import');
   } else {
-    await importHistoryRepo.markCompleted(importId, {successCount, failedCount, skippedCount});
+    await importHistoryRepo.markCompleted(importId, {successCount, failedCount});
   }
 
-  console.log(
-    `Import ${importId} done: ${successCount} success, ${failedCount} failed, ${skippedCount} skipped`
-  );
+  console.log(`Import ${importId} done: ${successCount} success, ${failedCount} failed`);
 }

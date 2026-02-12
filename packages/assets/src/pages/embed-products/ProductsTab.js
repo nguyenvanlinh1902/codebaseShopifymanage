@@ -32,8 +32,8 @@ export default function ProductsTab({
     product.title,
     product.sku || '-',
     product.price ? `$${product.price}` : '-',
+    product.variantCount > 1 ? `${product.variantCount}` : '1',
     product.vendor || '-',
-    product.productType || '-',
     new Date(product.createdAt).toLocaleString()
   ]);
 
@@ -75,8 +75,8 @@ export default function ProductsTab({
         ) : (
           <BlockStack gap="300">
             <DataTable
-              columnContentTypes={['text', 'text', 'numeric', 'text', 'text', 'text']}
-              headings={['Title', 'SKU', 'Price', 'Vendor', 'Type', 'Imported At']}
+              columnContentTypes={['text', 'text', 'numeric', 'numeric', 'text', 'text']}
+              headings={['Title', 'SKU', 'Price', 'Variants', 'Vendor', 'Imported At']}
               rows={productRows}
             />
             {totalProducts > 0 && (

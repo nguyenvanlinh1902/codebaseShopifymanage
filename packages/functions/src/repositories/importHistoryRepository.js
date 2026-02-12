@@ -194,4 +194,46 @@ export class ImportHistoryRepository {
 
     return snapshot.docs.map(doc => doc.data());
   }
+
+  /**
+   * Save grouped products to Firestore subcollection (avoids PubSub size limits).
+   * Each product is stored as a separate doc: product_imports/{importId}/import_products/{index}
+   */
+  async saveImportProducts(importId, products) {
+    const batch = this.db.batch();
+    const subCol = this.collection.doc(importId).collection('import_products');
+
+    for (let i = 0; i < products.length; i++) {
+      const docRef = subCol.doc(String(i));
+      batch.set(docRef, {index: i, ...products[i]});
+    }
+
+    await batch.commit();
+  }
+
+  /**
+   * Get a single import product by index from subcollection
+   */
+  async getImportProduct(importId, index) {
+    const doc = await this.collection
+      .doc(importId)
+      .collection('import_products')
+      .doc(String(index))
+      .get();
+
+    return doc.exists ? doc.data() : null;
+  }
+
+  /**
+   * Get all import products for a job (ordered by index)
+   */
+  async getImportProducts(importId) {
+    const snapshot = await this.collection
+      .doc(importId)
+      .collection('import_products')
+      .orderBy('index')
+      .get();
+
+    return snapshot.docs.map(doc => doc.data());
+  }
 }

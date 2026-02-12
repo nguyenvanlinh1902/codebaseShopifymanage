@@ -4,6 +4,12 @@ import {Card, BlockStack, InlineStack, Text, Badge} from '@shopify/polaris';
 export default function ImportProgressCard({importProgress}) {
   if (!importProgress) return null;
 
+  // Use variant-based percentage for smoother progress (fallback to product-based)
+  const hasVariants = importProgress.totalVariants > 0;
+  const percentage = hasVariants
+    ? Math.round(((importProgress.processedVariants || 0) / importProgress.totalVariants) * 100)
+    : importProgress.completionPercentage;
+
   return (
     <Card>
       <BlockStack gap="300">
@@ -20,7 +26,7 @@ export default function ImportProgressCard({importProgress}) {
                 : 'attention'
             }
           >
-            {importProgress.completionPercentage}%
+            {percentage}%
           </Badge>
         </InlineStack>
 
@@ -35,7 +41,7 @@ export default function ImportProgressCard({importProgress}) {
         >
           <div
             style={{
-              width: `${importProgress.completionPercentage}%`,
+              width: `${percentage}%`,
               height: '100%',
               backgroundColor: importProgress.failedCount > 0 ? '#d82c0d' : '#008060',
               borderRadius: '4px',
@@ -48,19 +54,19 @@ export default function ImportProgressCard({importProgress}) {
           <Text variant="bodySm" tone="subdued">
             {importProgress.processedProducts}/{importProgress.totalProducts} products
           </Text>
+          {hasVariants && (
+            <Text variant="bodySm" tone="subdued">
+              {importProgress.processedVariants || 0}/{importProgress.totalVariants} variants
+            </Text>
+          )}
           {importProgress.successCount > 0 && (
             <Text variant="bodySm" tone="success">
-              {importProgress.successCount} created
+              {importProgress.successCount} success
             </Text>
           )}
           {importProgress.failedCount > 0 && (
             <Text variant="bodySm" tone="critical">
               {importProgress.failedCount} failed
-            </Text>
-          )}
-          {importProgress.skippedCount > 0 && (
-            <Text variant="bodySm" tone="subdued">
-              {importProgress.skippedCount} skipped
             </Text>
           )}
         </InlineStack>

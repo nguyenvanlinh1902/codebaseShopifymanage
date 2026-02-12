@@ -374,7 +374,7 @@ export function mapToShopifyProduct(csvProduct) {
       'imageUrl',
       'image_url'
     ),
-    imagePosition: getField(csvProduct, 'Image Position', 'image_position'),
+    imagePosition: getField(csvProduct, 'Image Position', 'Image position', 'image_position'),
     imageAlt: getField(csvProduct, 'Image Alt Text', 'Image alt text', 'image_alt', 'imageAlt'),
     variantImage: getField(csvProduct, 'Variant Image', 'Variant image URL', 'variant_image'),
 
@@ -487,6 +487,129 @@ export function mapToShopifyProduct(csvProduct) {
   };
 
   return product;
+}
+
+/**
+ * Group flat CSV rows by Handle into products with multiple variants.
+ * Follows Shopify CSV import format:
+ * - First row with a Handle = product-level data + first variant
+ * - Subsequent rows with same Handle = additional variants (only variant-level fields)
+ * - Rows without Handle inherit the Handle from the previous row
+ *
+ * Returns array of grouped products, each with product-level fields and a `variants` array.
+ */
+export function groupCsvRowsByHandle(flatProducts) {
+  const grouped = new Map(); // handle → { product data, variants[] }
+  let lastHandle = null;
+
+  for (const row of flatProducts) {
+    // Determine handle: use row's handle or inherit from previous row
+    const handle = row.handle || lastHandle;
+    if (!handle) continue; // skip rows with no handle at all
+    lastHandle = handle;
+
+    if (!grouped.has(handle)) {
+      // First row for this handle → product-level data + first variant
+      grouped.set(handle, {
+        // Product-level fields (from first row only)
+        handle,
+        title: row.title,
+        description: row.description,
+        vendor: row.vendor,
+        productCategory: row.productCategory,
+        productType: row.productType,
+        tags: row.tags,
+        status: row.status,
+        giftCard: row.giftCard,
+        seoTitle: row.seoTitle,
+        seoDescription: row.seoDescription,
+        dynamicMetafields: row.dynamicMetafields || [],
+        // Option names (from first row)
+        option1Name: row.option1Name,
+        option2Name: row.option2Name,
+        option3Name: row.option3Name,
+        // Images collected from all rows
+        images: [],
+        // Variants collected from all rows
+        variants: []
+      });
+    }
+
+    const product = grouped.get(handle);
+
+    // Detect image-only rows: have Image Src but NO variant data (no options, no SKU).
+    // In Shopify CSV, these rows exist solely to add extra product images.
+    // The first row for a product always creates a variant (even simple single-variant products).
+    const isFirstVariantRow = product.variants.length === 0;
+    const isImageOnlyRow = !isFirstVariantRow && row.imageUrl &&
+      !row.option1Value && !row.option2Value && !row.option3Value && !row.sku;
+
+    // Only create a variant for rows that have variant data
+    if (!isImageOnlyRow) {
+      const variant = {
+        option1Value: row.option1Value,
+        option2Value: row.option2Value,
+        option3Value: row.option3Value,
+        sku: row.sku,
+        price: row.price || '0.00',
+        compareAtPrice: row.compareAtPrice,
+        barcode: row.barcode,
+        inventoryQuantity: row.inventoryQuantity,
+        inventoryTracker: row.inventoryTracker,
+        inventoryPolicy: row.inventoryPolicy,
+        fulfillmentService: row.fulfillmentService,
+        weight: row.weight,
+        weightUnit: row.weightUnit,
+        requiresShipping: row.requiresShipping,
+        taxable: row.taxable,
+        taxCode: row.taxCode,
+        cost: row.cost,
+        variantImage: row.variantImage
+      };
+      product.variants.push(variant);
+    }
+
+    // Collect product images (deduplicate by src)
+    if (row.imageUrl) {
+      const alreadyAdded = product.images.some(img => img.src === row.imageUrl);
+      if (!alreadyAdded) {
+        product.images.push({
+          src: row.imageUrl,
+          position: row.imagePosition ? parseInt(row.imagePosition) : undefined,
+          alt: row.imageAlt || undefined
+        });
+      }
+    }
+
+    // Collect variant images into product images too (Shopify needs them uploaded first)
+    if (row.variantImage) {
+      const alreadyAdded = product.images.some(img => img.src === row.variantImage);
+      if (!alreadyAdded) {
+        product.images.push({src: row.variantImage});
+      }
+    }
+  }
+
+  return Array.from(grouped.values());
+}
+
+/**
+ * Validate a grouped product (product + variants).
+ * Only checks product-level required fields.
+ */
+export function validateGroupedProduct(product) {
+  const errors = [];
+  if (!product.title || !product.title.trim()) {
+    errors.push('Title is required');
+  }
+  // Validate each variant's price
+  for (let i = 0; i < product.variants.length; i++) {
+    const v = product.variants[i];
+    if (v.price && isNaN(parseFloat(v.price))) {
+      errors.push(`Variant ${i + 1}: Price must be a valid number`);
+    }
+  }
+  return errors;
 }
 
 /**

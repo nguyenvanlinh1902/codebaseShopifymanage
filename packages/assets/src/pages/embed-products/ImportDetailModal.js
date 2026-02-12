@@ -61,12 +61,14 @@ export default function ImportDetailModal({detail, onClose}) {
                   {detail.failedCount || 0}
                 </Text>
               </BlockStack>
-              <BlockStack gap="100">
-                <Text variant="bodySm" tone="subdued">
-                  Skipped
-                </Text>
-                <Text variant="headingMd">{detail.skippedCount || 0}</Text>
-              </BlockStack>
+              {(detail.totalVariants || 0) > 0 && (
+                <BlockStack gap="100">
+                  <Text variant="bodySm" tone="subdued">
+                    Variants
+                  </Text>
+                  <Text variant="headingMd">{detail.totalVariants}</Text>
+                </BlockStack>
+              )}
             </InlineStack>
 
             {detail.storeName && (
@@ -126,7 +128,9 @@ export default function ImportDetailModal({detail, onClose}) {
                       >
                         {p.status}
                       </Badge>
-                      <Text variant="bodySm">{p.title}</Text>
+                      <Text variant="bodySm">
+                        {p.title}{p.variantCount > 1 ? ` (${p.variantCount} variants)` : ''}
+                      </Text>
                       {p.error && (
                         <Text variant="bodySm" tone="critical">
                           - {p.error}

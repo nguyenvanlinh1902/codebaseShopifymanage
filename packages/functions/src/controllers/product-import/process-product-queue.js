@@ -93,23 +93,9 @@ async function processQueueItem(queueItem) {
       accessToken
     });
 
-    // Import product to Shopify
-    let result;
-    let action = 'created';
-
+    // Always upsert: create if new, merge variants if exists
     try {
-      // Check if product with SKU already exists
-      if (product.sku) {
-        const existing = await shopifyService.getProductBySku(product.sku);
-        if (existing) {
-          await handleSkippedProduct(queueId, importId, totalProducts, product, storeName);
-          return;
-        }
-      }
-
-      // Product does not exist - Create new product
-      result = await shopifyService.createProduct(product);
-      action = 'created';
+      const {result, action} = await shopifyService.upsertProduct(product);
 
       await handleSuccessfulImport(
         queueId,
@@ -133,34 +119,6 @@ async function processQueueItem(queueItem) {
 }
 
 /**
- * Handle skipped product (already exists)
- */
-async function handleSkippedProduct(queueId, importId, totalProducts, product, storeName) {
-  console.log(`Product with SKU ${product.sku} already exists in store ${storeName}, skipping...`);
-
-  // Mark queue item as completed (skipped)
-  await productQueueRepo.updateStatus(queueId, 'completed');
-
-  // Update import progress (skipped counts as success but not imported)
-  const importJob = await importHistoryRepo.getById(importId);
-  await importHistoryRepo.updateProgress(importId, {
-    processedProducts: (importJob.processedProducts || 0) + 1,
-    successCount: (importJob.successCount || 0) + 1,
-    status: 'processing'
-  });
-
-  // Check if this is the last product
-  if ((importJob.processedProducts || 0) + 1 >= totalProducts) {
-    await importHistoryRepo.markCompleted(importId, {
-      successCount: (importJob.successCount || 0) + 1,
-      failedCount: importJob.failedCount || 0
-    });
-  }
-
-  console.log(`Skipped product: ${product.title} (already exists)`);
-}
-
-/**
  * Handle successful product import
  */
 async function handleSuccessfulImport(
@@ -175,9 +133,10 @@ async function handleSuccessfulImport(
   result,
   action
 ) {
-  // Save product to Firestore with ALL fields from CSV
+  const variantCount = product.variants ? product.variants.length : 1;
+
+  // Save product tracking data to Firestore (lightweight, no heavy variant/image arrays)
   await productRepo.save({
-    // Tracking fields
     importId,
     storeId,
     userId,
@@ -186,11 +145,14 @@ async function handleSuccessfulImport(
     shopifyProductId: result.product?.id || result.id,
     action,
     importedAt: new Date().toISOString(),
-
-    // All product fields from mapToShopifyProduct()
-    // Includes: handle, title, description, options, variants, inventory,
-    // images, Google Shopping metadata, SEO fields, pricing, shipping, tax, etc.
-    ...product
+    title: product.title,
+    handle: product.handle,
+    vendor: product.vendor,
+    productType: product.productType,
+    tags: product.tags,
+    sku: product.variants?.[0]?.sku || product.sku || '',
+    price: product.variants?.[0]?.price || product.price || '0.00',
+    variantCount
   });
 
   // Mark queue item as completed
@@ -200,6 +162,7 @@ async function handleSuccessfulImport(
   const importJob = await importHistoryRepo.getById(importId);
   await importHistoryRepo.updateProgress(importId, {
     processedProducts: (importJob.processedProducts || 0) + 1,
+    processedVariants: (importJob.processedVariants || 0) + variantCount,
     successCount: (importJob.successCount || 0) + 1,
     status: 'processing'
   });
@@ -230,9 +193,11 @@ async function handleFailedImport(queueId, importId, totalProducts, product, err
     await productQueueRepo.markFailed(queueId, error.message);
 
     // Update import progress (failure)
+    const variantCount = product.variants ? product.variants.length : 1;
     const importJob = await importHistoryRepo.getById(importId);
     await importHistoryRepo.updateProgress(importId, {
       processedProducts: (importJob.processedProducts || 0) + 1,
+      processedVariants: (importJob.processedVariants || 0) + variantCount,
       failedCount: (importJob.failedCount || 0) + 1
     });
 

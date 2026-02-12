@@ -50,8 +50,8 @@ export default function ProductsTableSection({
       <IndexTable.Cell>{product.title}</IndexTable.Cell>
       <IndexTable.Cell>{product.sku || '-'}</IndexTable.Cell>
       <IndexTable.Cell>{product.price ? `$${product.price}` : '-'}</IndexTable.Cell>
+      <IndexTable.Cell>{product.variantCount > 1 ? product.variantCount : '1'}</IndexTable.Cell>
       <IndexTable.Cell>{product.vendor || '-'}</IndexTable.Cell>
-      <IndexTable.Cell>{product.productType || '-'}</IndexTable.Cell>
       <IndexTable.Cell>
         {stores.find(s => s.id === product.storeId)?.name || product.storeName || '-'}
       </IndexTable.Cell>
@@ -125,8 +125,8 @@ export default function ProductsTableSection({
               { title: 'Title' },
               { title: 'SKU' },
               { title: 'Price' },
+              { title: 'Variants' },
               { title: 'Vendor' },
-              { title: 'Type' },
               { title: 'Store' },
               { title: 'Imported At' }
             ]}

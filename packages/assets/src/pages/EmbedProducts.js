@@ -72,10 +72,11 @@ export default function EmbedProducts() {
         fileName: latest.fileName,
         storeName: latest.storeName,
         totalProducts: total,
+        totalVariants: latest.totalVariants || 0,
         processedProducts: processed,
+        processedVariants: latest.processedVariants || 0,
         successCount: latest.successCount || 0,
         failedCount: latest.failedCount || 0,
-        skippedCount: latest.skippedCount || 0,
         completionPercentage: pct
       });
     }

@@ -75,9 +75,9 @@ export default function QueueStatusSection({queueStats, processingQueue, onProce
                   {imp.failedCount} failed
                 </Text>
               )}
-              {imp.skippedCount > 0 && (
+              {(imp.totalVariants || 0) > 0 && (
                 <Text variant="bodySm" tone="subdued">
-                  {imp.skippedCount} skipped
+                  {imp.processedVariants || 0}/{imp.totalVariants} variants
                 </Text>
               )}
             </InlineStack>

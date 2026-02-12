@@ -32,34 +32,53 @@ export class ShopifyService {
   }
 
   /**
-   * Create or update a product in Shopify
+   * Build a Shopify variant object from variant data
+   */
+  static buildVariant(variantData) {
+    const variant = {
+      price: variantData.price || '0.00',
+      compare_at_price: variantData.compareAtPrice || null,
+      sku: variantData.sku || '',
+      barcode: variantData.barcode || '',
+      inventory_quantity: parseInt(variantData.inventoryQuantity || 0),
+      inventory_management: variantData.inventoryTracker || 'shopify',
+      inventory_policy: variantData.inventoryPolicy || 'deny',
+      fulfillment_service: variantData.fulfillmentService || 'manual',
+      weight: variantData.weight || 0,
+      weight_unit: variantData.weightUnit || 'lb',
+      requires_shipping:
+        variantData.requiresShipping !== undefined ? variantData.requiresShipping : true,
+      taxable: variantData.taxable !== undefined ? variantData.taxable : true
+    };
+
+    if (variantData.cost) variant.cost = variantData.cost;
+    if (variantData.taxCode) variant.tax_code = variantData.taxCode;
+    if (variantData.option1Value) variant.option1 = variantData.option1Value;
+    if (variantData.option2Value) variant.option2 = variantData.option2Value;
+    if (variantData.option3Value) variant.option3 = variantData.option3Value;
+
+    return variant;
+  }
+
+  /**
+   * Create a product in Shopify.
+   * Supports grouped products with multiple variants (Shopify CSV format).
    */
   async createProduct(productData) {
     try {
-      // Build variant with ALL CSV fields
-      const variant = {
-        price: productData.price || '0.00',
-        compare_at_price: productData.compareAtPrice || null,
-        sku: productData.sku || '',
-        barcode: productData.barcode || '',
-        inventory_quantity: parseInt(productData.inventoryQuantity || 0),
-        inventory_management: productData.inventoryTracker || 'shopify',
-        inventory_policy: productData.inventoryPolicy || 'deny',
-        fulfillment_service: productData.fulfillmentService || 'manual',
-        weight: productData.weight || 0,
-        weight_unit: productData.weightUnit || 'lb',
-        requires_shipping:
-          productData.requiresShipping !== undefined ? productData.requiresShipping : true,
-        taxable: productData.taxable !== undefined ? productData.taxable : true
-      };
+      // Build variants array - supports both grouped (variants[]) and legacy (single variant) format
+      let allVariants;
+      if (productData.variants && productData.variants.length > 0) {
+        allVariants = productData.variants.map(v => ShopifyService.buildVariant(v));
+      } else {
+        allVariants = [ShopifyService.buildVariant(productData)];
+      }
 
-      if (productData.cost) variant.cost = productData.cost;
-      if (productData.taxCode) variant.tax_code = productData.taxCode;
-
-      // Add option values to variant
-      if (productData.option1Value) variant.option1 = productData.option1Value;
-      if (productData.option2Value) variant.option2 = productData.option2Value;
-      if (productData.option3Value) variant.option3 = productData.option3Value;
+      // Shopify REST API limits product.create to ~100 variants.
+      // Create product with first batch, then add remaining variants individually.
+      const VARIANT_BATCH_LIMIT = 100;
+      const initialVariants = allVariants.slice(0, VARIANT_BATCH_LIMIT);
+      const remainingVariants = allVariants.slice(VARIANT_BATCH_LIMIT);
 
       const shopifyProduct = {
         title: productData.title,
@@ -69,7 +88,7 @@ export class ShopifyService {
         tags: productData.tags || '',
         status: productData.status || 'draft',
         handle: productData.handle || undefined,
-        variants: [variant]
+        variants: initialVariants
       };
 
       // Add product options
@@ -94,8 +113,10 @@ export class ShopifyService {
         shopifyProduct.metafields = metafields;
       }
 
-      // Add image if provided
-      if (productData.imageUrl) {
+      // Add images - supports grouped (images[]) and legacy (single imageUrl) format
+      if (productData.images && productData.images.length > 0) {
+        shopifyProduct.images = productData.images;
+      } else if (productData.imageUrl) {
         shopifyProduct.images = [
           {
             src: productData.imageUrl,
@@ -106,11 +127,197 @@ export class ShopifyService {
       }
 
       const result = await this.shopify.product.create(shopifyProduct);
+      const productId = result.id;
+
+      // Track all created variants (initial batch from result)
+      const allCreatedVariants = [...(result.variants || [])];
+
+      // Add remaining variants individually (for products with > 100 variants)
+      if (remainingVariants.length > 0) {
+        console.log(`Adding ${remainingVariants.length} remaining variants to product ${productId}`);
+        for (const variant of remainingVariants) {
+          try {
+            const created = await this.shopify.productVariant.create(productId, variant);
+            allCreatedVariants.push(created);
+          } catch (err) {
+            console.warn(`Failed to add variant: ${err.message}`);
+          }
+        }
+      }
+
+      // Link variant images: Shopify requires image_id on variant after images are uploaded
+      await this._linkVariantImages(productData, allCreatedVariants, result.images || []);
+
       return result;
     } catch (error) {
       console.error('Error creating product:', error);
       throw new Error(`Failed to create product: ${error.message}`);
     }
+  }
+
+  /**
+   * Link variant images to created variants.
+   * Shopify flow: images uploaded on product → match variant's variantImage URL → set image_id.
+   * Matches by filename since Shopify CDN changes the full URL.
+   */
+  async _linkVariantImages(productData, createdVariants, createdImages) {
+    const csvVariants = productData.variants && productData.variants.length > 0
+      ? productData.variants
+      : [productData];
+
+    // Check if any variant has a variantImage
+    const hasVariantImages = csvVariants.some(v => v.variantImage);
+    if (!hasVariantImages || createdImages.length === 0) return;
+
+    // Build filename → image ID map from Shopify CDN URLs
+    const fileNameToImageId = {};
+    for (const img of createdImages) {
+      const fileName = img.src.split('/').pop().split('?')[0].toLowerCase();
+      fileNameToImageId[fileName] = img.id;
+    }
+
+    for (const csvVariant of csvVariants) {
+      if (!csvVariant.variantImage) continue;
+
+      // Extract filename from original URL
+      const fileName = csvVariant.variantImage.split('/').pop().split('?')[0].toLowerCase();
+      const imageId = fileNameToImageId[fileName];
+      if (!imageId) continue;
+
+      // Find matching created variant by option values
+      const optionKey = [
+        csvVariant.option1Value || '',
+        csvVariant.option2Value || '',
+        csvVariant.option3Value || ''
+      ].join('|');
+
+      const match = createdVariants.find(v => {
+        const vKey = [v.option1 || '', v.option2 || '', v.option3 || ''].join('|');
+        return vKey === optionKey;
+      });
+
+      if (match) {
+        try {
+          await this.shopify.productVariant.update(match.id, {image_id: imageId});
+        } catch (err) {
+          console.warn(`Failed to link image to variant ${optionKey}: ${err.message}`);
+        }
+      }
+    }
+  }
+
+  /**
+   * Upsert a product: create if not exists, merge variants if exists.
+   * - Finds existing product by handle
+   * - If not found: create new product with all variants
+   * - If found: update product-level fields + merge variants (add new, update existing)
+   * Returns { result, action: 'created' | 'updated', variantStats }
+   */
+  async upsertProduct(productData) {
+    // Try to find existing product by handle
+    let existing = null;
+    if (productData.handle) {
+      existing = await this.getProductByHandle(productData.handle);
+    }
+
+    if (!existing) {
+      // Product doesn't exist → create new
+      const result = await this.createProduct(productData);
+      const variantCount = result.variants?.length || 0;
+      return {result, action: 'created', variantStats: {added: variantCount, updated: 0}};
+    }
+
+    // Product exists → update product fields + merge variants
+    const numericId = existing.id.replace(/^gid:\/\/shopify\/Product\//, '');
+    const existingProduct = await this.shopify.product.get(numericId);
+
+    // Update product-level fields
+    const updateData = {id: numericId};
+    if (productData.title) updateData.title = productData.title;
+    if (productData.description !== undefined) updateData.body_html = productData.description;
+    if (productData.vendor) updateData.vendor = productData.vendor;
+    if (productData.productType) updateData.product_type = productData.productType;
+    if (productData.tags) updateData.tags = productData.tags;
+    if (productData.status) updateData.status = productData.status;
+    if (productData.seoTitle) updateData.metafields_global_title_tag = productData.seoTitle;
+    if (productData.seoDescription) {
+      updateData.metafields_global_description_tag = productData.seoDescription;
+    }
+
+    await this.shopify.product.update(numericId, updateData);
+
+    // Merge variants: match by option values (option1+option2+option3)
+    const csvVariants = productData.variants && productData.variants.length > 0
+      ? productData.variants
+      : [productData];
+
+    const existingVariants = existingProduct.variants || [];
+    let addedCount = 0;
+    let updatedCount = 0;
+
+    for (const csvVariant of csvVariants) {
+      const optionKey = [
+        csvVariant.option1Value || '',
+        csvVariant.option2Value || '',
+        csvVariant.option3Value || ''
+      ].join('|');
+
+      // Find matching existing variant by option values
+      const match = existingVariants.find(ev => {
+        const evKey = [ev.option1 || '', ev.option2 || '', ev.option3 || ''].join('|');
+        return evKey === optionKey;
+      });
+
+      const variantData = ShopifyService.buildVariant(csvVariant);
+
+      if (match) {
+        // Update existing variant
+        await this.shopify.productVariant.update(match.id, variantData);
+        updatedCount++;
+      } else {
+        // Add new variant to product
+        try {
+          await this.shopify.productVariant.create(numericId, variantData);
+          addedCount++;
+        } catch (err) {
+          console.warn(`Failed to add variant ${optionKey}: ${err.message}`);
+        }
+      }
+    }
+
+    // Add new images (skip duplicates by filename)
+    const images = productData.images || [];
+    if (images.length > 0) {
+      const existingFileNames = new Set(
+        (existingProduct.images || []).map(img =>
+          img.src.split('/').pop().split('?')[0].toLowerCase()
+        )
+      );
+      for (const img of images) {
+        const fileName = img.src.split('/').pop().split('?')[0].toLowerCase();
+        if (!existingFileNames.has(fileName)) {
+          try {
+            await this.shopify.productImage.create(numericId, img);
+          } catch (err) {
+            console.warn(`Failed to add image: ${err.message}`);
+          }
+        }
+      }
+    }
+
+    // Re-fetch product to get all images + variants (including newly added ones)
+    const updatedProduct = await this.shopify.product.get(numericId);
+    const allVariantsNow = updatedProduct.variants || [];
+    const allImagesNow = updatedProduct.images || [];
+
+    // Link variant images
+    await this._linkVariantImages(productData, allVariantsNow, allImagesNow);
+
+    return {
+      result: {id: numericId},
+      action: 'updated',
+      variantStats: {added: addedCount, updated: updatedCount}
+    };
   }
 
   /**
@@ -468,15 +675,11 @@ export class ShopifyService {
   }
 
   /**
-   * Verify shop credentials
+   * Verify shop credentials - throws on failure so callers can catch
    */
   async verifyCredentials() {
-    try {
-      await this.getShopInfo();
-      return true;
-    } catch (error) {
-      return false;
-    }
+    await this.getShopInfo();
+    return true;
   }
 
   /**

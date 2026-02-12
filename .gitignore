@@ -71,6 +71,9 @@ lib/
 static/
 stats.json
 
+# OS
+.DS_Store
+
 # IDE
 .idea/
 /.run/

@@ -376,7 +376,13 @@ export function mapToShopifyProduct(csvProduct) {
     ),
     imagePosition: getField(csvProduct, 'Image Position', 'Image position', 'image_position'),
     imageAlt: getField(csvProduct, 'Image Alt Text', 'Image alt text', 'image_alt', 'imageAlt'),
-    variantImage: getField(csvProduct, 'Variant Image', 'Variant image URL', 'variant_image'),
+    variantImage: getField(
+      csvProduct,
+      'Variant Image',
+      'Variant image',
+      'Variant image URL',
+      'variant_image'
+    ),
 
     // Gift Card
     giftCard: parseBoolean(getField(csvProduct, 'Gift Card', 'gift_card'), false),
@@ -546,6 +552,10 @@ export function groupCsvRowsByHandle(flatProducts) {
 
     // Only create a variant for rows that have variant data
     if (!isImageOnlyRow) {
+      // Shopify CSV: each variant row's Image Src is that variant's image.
+      // "Variant Image" column overrides this. If neither exists, variant has no image.
+      const effectiveVariantImage = row.variantImage || row.imageUrl || '';
+
       const variant = {
         option1Value: row.option1Value,
         option2Value: row.option2Value,
@@ -564,7 +574,7 @@ export function groupCsvRowsByHandle(flatProducts) {
         taxable: row.taxable,
         taxCode: row.taxCode,
         cost: row.cost,
-        variantImage: row.variantImage
+        variantImage: effectiveVariantImage
       };
       product.variants.push(variant);
     }
@@ -582,7 +592,8 @@ export function groupCsvRowsByHandle(flatProducts) {
     }
 
     // Collect variant images into product images too (Shopify needs them uploaded first)
-    if (row.variantImage) {
+    // Uses variantImage column, which is already covered by imageUrl collection above
+    if (row.variantImage && row.variantImage !== row.imageUrl) {
       const alreadyAdded = product.images.some(img => img.src === row.variantImage);
       if (!alreadyAdded) {
         product.images.push({src: row.variantImage});

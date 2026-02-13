@@ -12,7 +12,8 @@ export class ShopifyService {
         shopName: shopConfig.shopDomain,
         accessToken: shopConfig.accessToken,
         apiVersion: shopConfig.apiVersion || shopifyConfig.apiVersion || '2026-01',
-        autoLimit: {calls: 2, interval: 1000, bucketSize: 35}
+        autoLimit: {calls: 2, interval: 1000, bucketSize: 35},
+        timeout: 180000 // 3 min - products with many variants/images need more time
       });
       this.shopDomain = shopConfig.shopDomain;
     }
@@ -113,11 +114,13 @@ export class ShopifyService {
         shopifyProduct.metafields = metafields;
       }
 
-      // Add images - supports grouped (images[]) and legacy (single imageUrl) format
+      // Collect images but DON'T send in product.create (avoids timeout for many images).
+      // Images are uploaded individually after product creation.
+      let imagesToUpload = [];
       if (productData.images && productData.images.length > 0) {
-        shopifyProduct.images = productData.images;
+        imagesToUpload = productData.images;
       } else if (productData.imageUrl) {
-        shopifyProduct.images = [
+        imagesToUpload = [
           {
             src: productData.imageUrl,
             alt: productData.imageAlt || undefined,
@@ -132,21 +135,47 @@ export class ShopifyService {
       // Track all created variants (initial batch from result)
       const allCreatedVariants = [...(result.variants || [])];
 
-      // Add remaining variants individually (for products with > 100 variants)
+      // Add remaining variants individually (product.create limited to 100 per call,
+      // but Shopify supports up to 2000 variants per product)
       if (remainingVariants.length > 0) {
-        console.log(`Adding ${remainingVariants.length} remaining variants to product ${productId}`);
+        console.log(`Product ${productId}: adding ${remainingVariants.length} remaining variants individually`);
+        let variantFailCount = 0;
         for (const variant of remainingVariants) {
           try {
             const created = await this.shopify.productVariant.create(productId, variant);
             allCreatedVariants.push(created);
           } catch (err) {
-            console.warn(`Failed to add variant: ${err.message}`);
+            variantFailCount++;
+            const detail = err.response?.body?.errors || err.message;
+            if (variantFailCount <= 5) {
+              console.warn(`Failed to add variant (${variant.option1}/${variant.option2}/${variant.option3}): ${JSON.stringify(detail)}`);
+            }
+          }
+        }
+        if (variantFailCount > 0) {
+          console.warn(`Product ${productId}: ${variantFailCount}/${remainingVariants.length} variants failed to create`);
+        }
+      }
+
+      // Upload images one by one, tracking originalSrc → imageId for variant linking.
+      // Shopify CDN renames files, so filename matching is unreliable.
+      const allCreatedImages = [];
+      const srcToImageId = {};
+      if (imagesToUpload.length > 0) {
+        console.log(`Uploading ${imagesToUpload.length} images for product ${productId}`);
+        for (const img of imagesToUpload) {
+          try {
+            const created = await this.shopify.productImage.create(productId, img);
+            allCreatedImages.push(created);
+            srcToImageId[img.src] = created.id;
+          } catch (err) {
+            console.warn(`Failed to upload image ${img.src}: ${err.message}`);
           }
         }
       }
 
-      // Link variant images: Shopify requires image_id on variant after images are uploaded
-      await this._linkVariantImages(productData, allCreatedVariants, result.images || []);
+      // Link variant images using the upload map (originalSrc → imageId)
+      await this._linkVariantImages(productData, allCreatedVariants, allCreatedImages, srcToImageId);
 
       return result;
     } catch (error) {
@@ -156,54 +185,81 @@ export class ShopifyService {
   }
 
   /**
-   * Link variant images to created variants.
-   * Shopify flow: images uploaded on product → match variant's variantImage URL → set image_id.
-   * Matches by filename since Shopify CDN changes the full URL.
+   * Build normalized option key for variant matching.
+   * Shopify auto-assigns "Default Title" to single-variant products with no options,
+   * so we normalize it to empty string for consistent matching with CSV data.
    */
-  async _linkVariantImages(productData, createdVariants, createdImages) {
+  static buildOptionKey(option1, option2, option3) {
+    const normalize = v => (!v || v === 'Default Title') ? '' : v;
+    return [normalize(option1), normalize(option2), normalize(option3)].join('|');
+  }
+
+  /**
+   * Link variant images to created variants.
+   * Uses srcToImageId map (original URL → Shopify image ID) from upload tracking.
+   * Matches variants by: (1) SKU, (2) option key, (3) position index.
+   */
+  async _linkVariantImages(productData, createdVariants, allImages, srcToImageId = {}) {
     const csvVariants = productData.variants && productData.variants.length > 0
       ? productData.variants
       : [productData];
 
-    // Check if any variant has a variantImage
-    const hasVariantImages = csvVariants.some(v => v.variantImage);
-    if (!hasVariantImages || createdImages.length === 0) return;
-
-    // Build filename → image ID map from Shopify CDN URLs
-    const fileNameToImageId = {};
-    for (const img of createdImages) {
-      const fileName = img.src.split('/').pop().split('?')[0].toLowerCase();
-      fileNameToImageId[fileName] = img.id;
+    const variantsWithImages = csvVariants.filter(v => v.variantImage);
+    if (variantsWithImages.length === 0) return;
+    if (Object.keys(srcToImageId).length === 0 && allImages.length === 0) {
+      console.log(`_linkVariantImages: skip - ${variantsWithImages.length} need images but 0 available`);
+      return;
     }
 
-    for (const csvVariant of csvVariants) {
-      if (!csvVariant.variantImage) continue;
+    // Filename → image ID fallback (for existing Shopify images)
+    const fileNameToImageId = {};
+    for (const img of allImages) {
+      const fn = img.src.split('/').pop().split('?')[0].toLowerCase();
+      fileNameToImageId[fn] = img.id;
+    }
 
-      // Extract filename from original URL
-      const fileName = csvVariant.variantImage.split('/').pop().split('?')[0].toLowerCase();
-      const imageId = fileNameToImageId[fileName];
-      if (!imageId) continue;
+    // Build SKU → Shopify variant map (most reliable matching)
+    const skuToVariant = {};
+    const optionKeyToVariant = {};
+    for (const v of createdVariants) {
+      if (v.sku) skuToVariant[v.sku] = v;
+      const key = ShopifyService.buildOptionKey(v.option1, v.option2, v.option3);
+      optionKeyToVariant[key] = v;
+    }
 
-      // Find matching created variant by option values
-      const optionKey = [
-        csvVariant.option1Value || '',
-        csvVariant.option2Value || '',
-        csvVariant.option3Value || ''
-      ].join('|');
+    console.log(`_linkVariantImages: ${Object.keys(srcToImageId).length} mapped, ${allImages.length} imgs, ${createdVariants.length} variants on Shopify`);
 
-      const match = createdVariants.find(v => {
-        const vKey = [v.option1 || '', v.option2 || '', v.option3 || ''].join('|');
-        return vKey === optionKey;
-      });
+    let linkedCount = 0;
+    let noImage = 0;
+    let noVariant = 0;
+    for (const csvVariant of variantsWithImages) {
+      // Find image: srcToImageId (direct URL) → filename fallback
+      let imageId = srcToImageId[csvVariant.variantImage];
+      if (!imageId) {
+        const fn = csvVariant.variantImage.split('/').pop().split('?')[0].toLowerCase();
+        imageId = fileNameToImageId[fn];
+      }
+      if (!imageId) { noImage++; continue; }
 
-      if (match) {
-        try {
-          await this.shopify.productVariant.update(match.id, {image_id: imageId});
-        } catch (err) {
-          console.warn(`Failed to link image to variant ${optionKey}: ${err.message}`);
-        }
+      // Find variant: SKU match → option key match
+      let match = csvVariant.sku ? skuToVariant[csvVariant.sku] : null;
+      if (!match) {
+        const csvKey = ShopifyService.buildOptionKey(
+          csvVariant.option1Value, csvVariant.option2Value, csvVariant.option3Value
+        );
+        match = optionKeyToVariant[csvKey];
+      }
+      if (!match) { noVariant++; continue; }
+
+      try {
+        await this.shopify.productVariant.update(match.id, {image_id: imageId});
+        linkedCount++;
+      } catch (err) {
+        console.warn(`_linkVariantImages: update failed variant ${match.id}: ${err.message}`);
       }
     }
+
+    console.log(`_linkVariantImages: linked ${linkedCount}/${variantsWithImages.length} (${noImage} no-image, ${noVariant} no-variant)`);
   }
 
   /**
@@ -254,19 +310,17 @@ export class ShopifyService {
     const existingVariants = existingProduct.variants || [];
     let addedCount = 0;
     let updatedCount = 0;
+    let skippedCount = 0;
 
     for (const csvVariant of csvVariants) {
-      const optionKey = [
-        csvVariant.option1Value || '',
-        csvVariant.option2Value || '',
-        csvVariant.option3Value || ''
-      ].join('|');
+      const optionKey = ShopifyService.buildOptionKey(
+        csvVariant.option1Value, csvVariant.option2Value, csvVariant.option3Value
+      );
 
       // Find matching existing variant by option values
-      const match = existingVariants.find(ev => {
-        const evKey = [ev.option1 || '', ev.option2 || '', ev.option3 || ''].join('|');
-        return evKey === optionKey;
-      });
+      const match = existingVariants.find(ev =>
+        ShopifyService.buildOptionKey(ev.option1, ev.option2, ev.option3) === optionKey
+      );
 
       const variantData = ShopifyService.buildVariant(csvVariant);
 
@@ -280,26 +334,35 @@ export class ShopifyService {
           await this.shopify.productVariant.create(numericId, variantData);
           addedCount++;
         } catch (err) {
-          console.warn(`Failed to add variant ${optionKey}: ${err.message}`);
+          skippedCount++;
+          const detail = err.response?.body?.errors || err.message;
+          if (skippedCount <= 5) {
+            console.warn(`Failed to add variant ${optionKey}: ${JSON.stringify(detail)}`);
+          }
         }
       }
     }
+    if (skippedCount > 0) {
+      console.warn(`Product ${numericId}: ${skippedCount} variants failed to create`);
+    }
 
-    // Add new images (skip duplicates by filename)
+    // Add new images, track originalSrc → imageId for variant linking
     const images = productData.images || [];
+    const srcToImageId = {};
     if (images.length > 0) {
-      const existingFileNames = new Set(
+      const existingImageSrcs = new Set(
         (existingProduct.images || []).map(img =>
           img.src.split('/').pop().split('?')[0].toLowerCase()
         )
       );
       for (const img of images) {
         const fileName = img.src.split('/').pop().split('?')[0].toLowerCase();
-        if (!existingFileNames.has(fileName)) {
+        if (!existingImageSrcs.has(fileName)) {
           try {
-            await this.shopify.productImage.create(numericId, img);
+            const created = await this.shopify.productImage.create(numericId, img);
+            srcToImageId[img.src] = created.id;
           } catch (err) {
-            console.warn(`Failed to add image: ${err.message}`);
+            console.warn(`Failed to add image ${img.src}: ${err.message}`);
           }
         }
       }
@@ -310,8 +373,8 @@ export class ShopifyService {
     const allVariantsNow = updatedProduct.variants || [];
     const allImagesNow = updatedProduct.images || [];
 
-    // Link variant images
-    await this._linkVariantImages(productData, allVariantsNow, allImagesNow);
+    // Link variant images (srcToImageId for new uploads + allImagesNow for filename fallback)
+    await this._linkVariantImages(productData, allVariantsNow, allImagesNow, srcToImageId);
 
     return {
       result: {id: numericId},

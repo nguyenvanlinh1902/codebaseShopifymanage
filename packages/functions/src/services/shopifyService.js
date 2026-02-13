@@ -19,6 +19,14 @@ export class ShopifyService {
     }
   }
 
+  static toGid(type, id) {
+    return String(id).startsWith('gid://') ? id : `gid://shopify/${type}/${id}`;
+  }
+
+  static fromGid(gid) {
+    return parseInt(gid.replace(/^gid:\/\/shopify\/\w+\//, ''));
+  }
+
   /**
    * Build metafields array from product data.
    * Maps CSV-parsed fields to Shopify metafield format.
@@ -62,103 +70,122 @@ export class ShopifyService {
   }
 
   /**
-   * Create a product in Shopify.
-   * Supports grouped products with multiple variants (Shopify CSV format).
+   * Create a product in Shopify via GraphQL productSet mutation.
+   * Single API call handles product + ALL variants + images + variant-image links.
    */
   async createProduct(productData) {
     try {
-      // Build variants array - supports both grouped (variants[]) and legacy (single variant) format
-      let allVariants;
-      if (productData.variants && productData.variants.length > 0) {
-        allVariants = productData.variants.map(v => ShopifyService.buildVariant(v));
-      } else {
-        allVariants = [ShopifyService.buildVariant(productData)];
+      const csvVariants = productData.variants?.length > 0 ? productData.variants : [productData];
+      const optionNames = [productData.option1Name, productData.option2Name, productData.option3Name].filter(Boolean);
+
+      // Build ProductSetInput
+      const input = {title: productData.title};
+      if (productData.description) input.descriptionHtml = productData.description;
+      if (productData.vendor) input.vendor = productData.vendor;
+      if (productData.productType) input.productType = productData.productType;
+      if (productData.handle) input.handle = productData.handle;
+      if (productData.giftCard) input.giftCard = true;
+      input.status = (productData.status || 'draft').toUpperCase();
+
+      if (productData.tags) {
+        input.tags = productData.tags.split(',').map(t => t.trim()).filter(Boolean);
       }
-
-      // Create product via REST with first variant (Shopify requires ≥1 variant to set up options).
-      // Remaining variants added via GraphQL (REST cannot handle 100+ variants).
-      const firstVariant = allVariants[0];
-      const remainingVariants = allVariants.slice(1);
-
-      const shopifyProduct = {
-        title: productData.title,
-        body_html: productData.description || '',
-        vendor: productData.vendor || '',
-        product_type: productData.productType || '',
-        tags: productData.tags || '',
-        status: productData.status || 'draft',
-        handle: productData.handle || undefined,
-        variants: [firstVariant]
-      };
-
-      // Add product options
-      const options = [];
-      if (productData.option1Name) options.push({name: productData.option1Name});
-      if (productData.option2Name) options.push({name: productData.option2Name});
-      if (productData.option3Name) options.push({name: productData.option3Name});
-      if (options.length > 0) shopifyProduct.options = options;
-
-      // Gift card
-      if (productData.giftCard) shopifyProduct.gift_card = true;
-
-      // Add SEO fields if provided
       if (productData.seoTitle || productData.seoDescription) {
-        shopifyProduct.metafields_global_title_tag = productData.seoTitle || undefined;
-        shopifyProduct.metafields_global_description_tag = productData.seoDescription || undefined;
+        input.seo = {};
+        if (productData.seoTitle) input.seo.title = productData.seoTitle;
+        if (productData.seoDescription) input.seo.description = productData.seoDescription;
       }
 
-      // Add metafields from product data (e.g., seo.hidden from CSV)
       const metafields = ShopifyService.buildMetafieldsFromProduct(productData);
-      if (metafields.length > 0) {
-        shopifyProduct.metafields = metafields;
+      if (metafields.length > 0) input.metafields = metafields;
+
+      // Build product options with unique values from variants
+      if (optionNames.length > 0) {
+        const valueSets = optionNames.map(() => new Set());
+        for (const v of csvVariants) {
+          if (v.option1Value && optionNames[0]) valueSets[0].add(v.option1Value);
+          if (v.option2Value && optionNames[1]) valueSets[1].add(v.option2Value);
+          if (v.option3Value && optionNames[2]) valueSets[2].add(v.option3Value);
+        }
+        input.productOptions = optionNames.map((name, i) => ({
+          name,
+          values: [...valueSets[i]].map(v => ({name: v}))
+        }));
       }
 
-      // Collect images but DON'T send in product.create (avoids timeout for many images).
-      // Images are uploaded individually after product creation.
-      let imagesToUpload = [];
-      if (productData.images && productData.images.length > 0) {
-        imagesToUpload = productData.images;
-      } else if (productData.imageUrl) {
-        imagesToUpload = [
-          {
-            src: productData.imageUrl,
-            alt: productData.imageAlt || undefined,
-            position: productData.imagePosition ? parseInt(productData.imagePosition) : undefined
-          }
-        ];
-      }
-
-      const result = await this.shopify.product.create(shopifyProduct);
-      const productId = result.id;
-
-      // Track first variant from REST response
-      const allCreatedVariants = [...(result.variants || [])];
-
-      // Create remaining variants via GraphQL
-      if (remainingVariants.length > 0) {
-        const optionNames = [productData.option1Name, productData.option2Name, productData.option3Name].filter(Boolean);
-        const gqlVariants = await this._bulkCreateVariantsGraphQL(productId, remainingVariants, optionNames);
-        allCreatedVariants.push(...gqlVariants);
-      }
-
-      // Upload images one by one, tracking originalSrc → imageId for variant linking.
-      const srcToImageId = {};
-      if (imagesToUpload.length > 0) {
-        console.log(`Uploading ${imagesToUpload.length} images for product ${productId}`);
-        for (const img of imagesToUpload) {
-          try {
-            const created = await this.shopify.productImage.create(productId, img);
-            srcToImageId[img.src] = created.id;
-          } catch (err) {
-            console.warn(`Failed to upload image ${img.src}: ${err.message}`);
+      // Collect all unique image URLs (product images + variant images)
+      const allImageUrls = new Set();
+      const imagesToUpload = [];
+      if (productData.images?.length > 0) {
+        for (const img of productData.images) {
+          if (img.src && !allImageUrls.has(img.src)) {
+            allImageUrls.add(img.src);
+            imagesToUpload.push(img);
           }
         }
+      } else if (productData.imageUrl) {
+        allImageUrls.add(productData.imageUrl);
+        imagesToUpload.push({src: productData.imageUrl, alt: productData.imageAlt});
+      }
+      for (const v of csvVariants) {
+        if (v.variantImage && !allImageUrls.has(v.variantImage)) {
+          allImageUrls.add(v.variantImage);
+          imagesToUpload.push({src: v.variantImage});
+        }
+      }
+      if (imagesToUpload.length > 0) {
+        input.files = imagesToUpload.map(img => ({
+          originalSource: img.src,
+          alt: img.alt || undefined,
+          contentType: 'IMAGE'
+        }));
       }
 
-      // Link variant images via GraphQL bulk update
-      await this._linkVariantImages(productId, productData, allCreatedVariants, srcToImageId);
+      // Build variants with option values and image links
+      input.variants = csvVariants.map(v => {
+        const optVals = [];
+        if (v.option1Value && optionNames[0]) optVals.push({optionName: optionNames[0], name: v.option1Value});
+        if (v.option2Value && optionNames[1]) optVals.push({optionName: optionNames[1], name: v.option2Value});
+        if (v.option3Value && optionNames[2]) optVals.push({optionName: optionNames[2], name: v.option3Value});
+        if (optVals.length === 0) optVals.push({optionName: 'Title', name: 'Default Title'});
 
-      return result;
+        const variant = {
+          optionValues: optVals,
+          price: v.price || '0.00',
+          sku: v.sku || '',
+          inventoryPolicy: (v.inventoryPolicy || 'deny').toUpperCase() === 'CONTINUE' ? 'CONTINUE' : 'DENY',
+          inventoryItem: {sku: v.sku || '', tracked: (v.inventoryTracker || 'shopify') === 'shopify'},
+          taxable: v.taxable !== undefined ? v.taxable : true
+        };
+        if (v.compareAtPrice) variant.compareAtPrice = v.compareAtPrice;
+        if (v.barcode) variant.barcode = v.barcode;
+        if (v.taxCode) variant.taxCode = v.taxCode;
+        if (v.cost) variant.inventoryItem.cost = v.cost;
+        if (v.variantImage) variant.file = {originalSource: v.variantImage};
+
+        return variant;
+      });
+
+      const mutation = `mutation productSet($input: ProductSetInput!) {
+        productSet(input: $input, synchronous: true) {
+          product { id variants(first: 10) { edges { node { id } } } }
+          userErrors { field message code }
+        }
+      }`;
+
+      const gqlResult = await this.shopify.graphql(mutation, {input});
+      const payload = gqlResult.productSet;
+
+      if (payload.userErrors?.length > 0) {
+        const errs = payload.userErrors.slice(0, 5).map(e => e.message).join('; ');
+        console.error('productSet errors:', JSON.stringify(payload.userErrors.slice(0, 10)));
+        throw new Error(errs);
+      }
+
+      const numericId = ShopifyService.fromGid(payload.product.id);
+      console.log(`createProduct (productSet): ${numericId} with ${csvVariants.length} variants, ${imagesToUpload.length} images`);
+
+      return {id: numericId, variants: csvVariants.map(() => ({}))};
     } catch (error) {
       console.error('Error creating product:', error);
       throw new Error(`Failed to create product: ${error.message}`);
@@ -259,24 +286,17 @@ export class ShopifyService {
 
   /**
    * Link variant images using GraphQL bulk update.
-   * Queries product media to get mediaGid, then uses productVariantsBulkUpdate
-   * to set images in batches of 250 (vs 480+ individual REST calls).
+   * Queries product media, matches by filename, then bulk updates in batches of 250.
+   * Used only for upsert-update path (createProduct uses productSet with file).
    */
-  async _linkVariantImages(productId, productData, createdVariants, srcToImageId = {}) {
-    const csvVariants = productData.variants && productData.variants.length > 0
-      ? productData.variants
-      : [productData];
-
+  async _linkVariantImages(productId, productData, createdVariants) {
+    const csvVariants = productData.variants?.length > 0 ? productData.variants : [productData];
     const variantsWithImages = csvVariants.filter(v => v.variantImage);
     if (variantsWithImages.length === 0) return;
-    if (Object.keys(srcToImageId).length === 0) {
-      console.log(`_linkVariantImages: skip - no images uploaded`);
-      return;
-    }
 
-    const gid = String(productId).startsWith('gid://') ? productId : `gid://shopify/Product/${productId}`;
+    const gid = ShopifyService.toGid('Product', productId);
 
-    // Step 1: Query product media to get mediaGid for each image
+    // Query product media to build filename → mediaGid map
     const mediaQuery = `query productMedia($id: ID!) {
       product(id: $id) {
         media(first: 250) {
@@ -293,75 +313,44 @@ export class ShopifyService {
       console.error(`_linkVariantImages: failed to query media: ${err.message}`);
       return;
     }
+    if (mediaEdges.length === 0) return;
 
-    if (mediaEdges.length === 0) {
-      console.log(`_linkVariantImages: no media found on product`);
-      return;
-    }
-
-    // Step 2: Build filename → mediaGid map from product media
     const filenameToMediaGid = {};
     for (const edge of mediaEdges) {
       const imageUrl = edge.node?.image?.url;
       if (imageUrl) {
-        const fn = imageUrl.split('/').pop().split('?')[0].toLowerCase();
-        filenameToMediaGid[fn] = edge.node.id;
+        filenameToMediaGid[imageUrl.split('/').pop().split('?')[0].toLowerCase()] = edge.node.id;
       }
     }
 
-    // Step 3: Build originalUrl → mediaGid by filename matching
-    const originalUrlToMediaGid = {};
-    for (const originalUrl of Object.keys(srcToImageId)) {
-      const fn = originalUrl.split('/').pop().split('?')[0].toLowerCase();
-      if (filenameToMediaGid[fn]) {
-        originalUrlToMediaGid[originalUrl] = filenameToMediaGid[fn];
-      }
-    }
-
-    console.log(`_linkVariantImages: ${mediaEdges.length} media, ${Object.keys(originalUrlToMediaGid).length}/${Object.keys(srcToImageId).length} matched, ${variantsWithImages.length} variants need images`);
-
-    // Step 4: Build variant lookup maps (option key primary, SKU fallback)
+    // Build variant lookup maps (option key primary, SKU fallback)
     const optionKeyToVariantId = {};
     const skuToVariantId = {};
     for (const v of createdVariants) {
-      const key = ShopifyService.buildOptionKey(v.option1, v.option2, v.option3);
-      optionKeyToVariantId[key] = v.id;
+      optionKeyToVariantId[ShopifyService.buildOptionKey(v.option1, v.option2, v.option3)] = v.id;
       if (v.sku) skuToVariantId[v.sku] = v.id;
     }
 
-    // Step 5: Collect bulk update entries
+    // Match variants to media by filename
     const updates = [];
-    let noImage = 0;
-    let noVariant = 0;
-
     for (const csvVariant of variantsWithImages) {
-      let mediaGid = originalUrlToMediaGid[csvVariant.variantImage];
-      if (!mediaGid) {
-        const fn = csvVariant.variantImage.split('/').pop().split('?')[0].toLowerCase();
-        mediaGid = filenameToMediaGid[fn];
-      }
-      if (!mediaGid) { noImage++; continue; }
+      const fn = csvVariant.variantImage.split('/').pop().split('?')[0].toLowerCase();
+      const mediaGid = filenameToMediaGid[fn];
+      if (!mediaGid) continue;
 
       const csvKey = ShopifyService.buildOptionKey(
         csvVariant.option1Value, csvVariant.option2Value, csvVariant.option3Value
       );
       let variantId = optionKeyToVariantId[csvKey];
       if (!variantId && csvVariant.sku) variantId = skuToVariantId[csvVariant.sku];
-      if (!variantId) { noVariant++; continue; }
+      if (!variantId) continue;
 
-      updates.push({
-        id: `gid://shopify/ProductVariant/${variantId}`,
-        mediaId: mediaGid
-      });
+      updates.push({id: ShopifyService.toGid('ProductVariant', variantId), mediaId: mediaGid});
     }
 
-    if (updates.length === 0) {
-      console.log(`_linkVariantImages: 0 updates (${noImage} no-image, ${noVariant} no-variant)`);
-      return;
-    }
+    if (updates.length === 0) return;
 
-    // Step 6: Batch update via GraphQL (250 per call vs 480 individual REST calls)
-    const GQL_BATCH = 250;
+    // Batch update via GraphQL
     const mutation = `mutation productVariantsBulkUpdate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
       productVariantsBulkUpdate(productId: $productId, variants: $variants) {
         productVariants { id }
@@ -370,133 +359,199 @@ export class ShopifyService {
     }`;
 
     let linkedCount = 0;
-    for (let i = 0; i < updates.length; i += GQL_BATCH) {
-      const batch = updates.slice(i, i + GQL_BATCH);
+    for (let i = 0; i < updates.length; i += 250) {
       try {
-        const result = await this.shopify.graphql(mutation, {productId: gid, variants: batch});
-        const payload = result.productVariantsBulkUpdate;
-        if (payload.userErrors && payload.userErrors.length > 0) {
-          console.warn(`_linkVariantImages errors (batch ${Math.floor(i / GQL_BATCH) + 1}): ${JSON.stringify(payload.userErrors.slice(0, 5))}`);
-        }
-        linkedCount += payload.productVariants?.length || 0;
+        const result = await this.shopify.graphql(mutation, {productId: gid, variants: updates.slice(i, i + 250)});
+        linkedCount += result.productVariantsBulkUpdate.productVariants?.length || 0;
       } catch (err) {
-        console.error(`_linkVariantImages batch ${Math.floor(i / GQL_BATCH) + 1} failed: ${err.message}`);
+        console.error(`_linkVariantImages batch failed: ${err.message}`);
       }
     }
 
-    console.log(`_linkVariantImages: linked ${linkedCount}/${variantsWithImages.length} (${noImage} no-image, ${noVariant} no-variant)`);
+    console.log(`_linkVariantImages: linked ${linkedCount}/${variantsWithImages.length}`);
+  }
+
+  /**
+   * Fetch product with all variants via GraphQL (paginated).
+   * Returns {id, variants: [{id, sku, option1, option2, option3}], images: [{url}]}
+   */
+  async _getProductGraphQL(productId) {
+    const gid = ShopifyService.toGid('Product', productId);
+    const query = `query getProduct($id: ID!, $after: String) {
+      product(id: $id) {
+        id
+        variants(first: 250, after: $after) {
+          edges { node { id sku selectedOptions { name value } } }
+          pageInfo { hasNextPage endCursor }
+        }
+        media(first: 250) {
+          edges { node { id ... on MediaImage { image { url } } } }
+        }
+      }
+    }`;
+
+    const result = await this.shopify.graphql(query, {id: gid});
+    if (!result.product) return null;
+
+    const variants = result.product.variants.edges.map(e => ShopifyService._gqlVariantToRest(e.node));
+    let pageInfo = result.product.variants.pageInfo;
+
+    while (pageInfo.hasNextPage) {
+      const next = await this.shopify.graphql(query, {id: gid, after: pageInfo.endCursor});
+      variants.push(...next.product.variants.edges.map(e => ShopifyService._gqlVariantToRest(e.node)));
+      pageInfo = next.product.variants.pageInfo;
+    }
+
+    const images = result.product.media.edges
+      .filter(e => e.node?.image?.url)
+      .map(e => ({url: e.node.image.url, src: e.node.image.url}));
+
+    return {id: ShopifyService.fromGid(result.product.id), variants, images};
+  }
+
+  static _gqlVariantToRest(node) {
+    const opts = node.selectedOptions || [];
+    return {
+      id: ShopifyService.fromGid(node.id),
+      sku: node.sku || '',
+      option1: opts[0]?.value || null,
+      option2: opts[1]?.value || null,
+      option3: opts[2]?.value || null
+    };
   }
 
   /**
    * Upsert a product: create if not exists, merge variants if exists.
-   * - Finds existing product by handle
-   * - If not found: create new product with all variants
-   * - If found: update product-level fields + merge variants (add new, update existing)
+   * Create uses productSet (single call). Update uses productUpdate + variant bulk ops.
    * Returns { result, action: 'created' | 'updated', variantStats }
    */
   async upsertProduct(productData) {
-    // Try to find existing product by handle
     let existing = null;
     if (productData.handle) {
       existing = await this.getProductByHandle(productData.handle);
     }
 
     if (!existing) {
-      // Product doesn't exist → create new
       const result = await this.createProduct(productData);
-      const variantCount = result.variants?.length || 0;
+      const variantCount = productData.variants?.length || 1;
       return {result, action: 'created', variantStats: {added: variantCount, updated: 0}};
     }
 
-    // Product exists → update product fields + merge variants
-    const numericId = existing.id.replace(/^gid:\/\/shopify\/Product\//, '');
-    const existingProduct = await this.shopify.product.get(numericId);
+    // Product exists → update via GraphQL
+    const numericId = ShopifyService.fromGid(existing.id);
+    const gid = ShopifyService.toGid('Product', numericId);
+    const existingProduct = await this._getProductGraphQL(numericId);
 
-    // Update product-level fields
-    const updateData = {id: numericId};
-    if (productData.title) updateData.title = productData.title;
-    if (productData.description !== undefined) updateData.body_html = productData.description;
-    if (productData.vendor) updateData.vendor = productData.vendor;
-    if (productData.productType) updateData.product_type = productData.productType;
-    if (productData.tags) updateData.tags = productData.tags;
-    if (productData.status) updateData.status = productData.status;
-    if (productData.seoTitle) updateData.metafields_global_title_tag = productData.seoTitle;
-    if (productData.seoDescription) {
-      updateData.metafields_global_description_tag = productData.seoDescription;
+    // Update product-level fields via productUpdate
+    const updateInput = {id: gid};
+    if (productData.title) updateInput.title = productData.title;
+    if (productData.description !== undefined) updateInput.descriptionHtml = productData.description;
+    if (productData.vendor) updateInput.vendor = productData.vendor;
+    if (productData.productType) updateInput.productType = productData.productType;
+    if (productData.tags) updateInput.tags = productData.tags.split(',').map(t => t.trim()).filter(Boolean);
+    if (productData.status) updateInput.status = productData.status.toUpperCase();
+    if (productData.seoTitle || productData.seoDescription) {
+      updateInput.seo = {};
+      if (productData.seoTitle) updateInput.seo.title = productData.seoTitle;
+      if (productData.seoDescription) updateInput.seo.description = productData.seoDescription;
     }
 
-    await this.shopify.product.update(numericId, updateData);
+    // Collect new images for media param
+    const images = productData.images || [];
+    const newMedia = [];
+    if (images.length > 0) {
+      const existingFns = new Set(
+        existingProduct.images.map(img => img.url.split('/').pop().split('?')[0].toLowerCase())
+      );
+      for (const img of images) {
+        const fn = img.src.split('/').pop().split('?')[0].toLowerCase();
+        if (!existingFns.has(fn)) {
+          newMedia.push({originalSource: img.src, alt: img.alt || undefined, mediaContentType: 'IMAGE'});
+        }
+      }
+    }
+    // Also add variant images that don't exist yet
+    const csvVariants = productData.variants?.length > 0 ? productData.variants : [productData];
+    const existingFns = new Set(
+      existingProduct.images.map(img => img.url.split('/').pop().split('?')[0].toLowerCase())
+    );
+    for (const v of csvVariants) {
+      if (v.variantImage) {
+        const fn = v.variantImage.split('/').pop().split('?')[0].toLowerCase();
+        if (!existingFns.has(fn) && !newMedia.find(m => m.originalSource === v.variantImage)) {
+          newMedia.push({originalSource: v.variantImage, mediaContentType: 'IMAGE'});
+        }
+      }
+    }
 
-    // Merge variants: match by option values (option1+option2+option3)
-    const csvVariants = productData.variants && productData.variants.length > 0
-      ? productData.variants
-      : [productData];
+    const updateMutation = `mutation productUpdate($product: ProductUpdateInput!, $media: [CreateMediaInput!]) {
+      productUpdate(product: $product, media: $media) {
+        product { id }
+        userErrors { field message }
+      }
+    }`;
+    const updateVars = {product: updateInput};
+    if (newMedia.length > 0) updateVars.media = newMedia;
+    await this.shopify.graphql(updateMutation, updateVars);
 
+    // Merge variants: match by option key, bulk update existing, bulk create new
     const existingVariants = existingProduct.variants || [];
-    let addedCount = 0;
     let updatedCount = 0;
-    let skippedCount = 0;
-
+    const variantUpdates = [];
     const newVariantsToCreate = [];
 
     for (const csvVariant of csvVariants) {
       const optionKey = ShopifyService.buildOptionKey(
         csvVariant.option1Value, csvVariant.option2Value, csvVariant.option3Value
       );
-
-      // Find matching existing variant by option values
       const match = existingVariants.find(ev =>
         ShopifyService.buildOptionKey(ev.option1, ev.option2, ev.option3) === optionKey
       );
 
-      const variantData = ShopifyService.buildVariant(csvVariant);
-
       if (match) {
-        // Update existing variant
-        await this.shopify.productVariant.update(match.id, variantData);
+        const upd = {id: ShopifyService.toGid('ProductVariant', match.id)};
+        if (csvVariant.price) upd.price = csvVariant.price;
+        if (csvVariant.compareAtPrice) upd.compareAtPrice = csvVariant.compareAtPrice;
+        if (csvVariant.sku || csvVariant.cost) {
+          upd.inventoryItem = {};
+          if (csvVariant.sku) upd.inventoryItem.sku = csvVariant.sku;
+          if (csvVariant.cost) upd.inventoryItem.cost = csvVariant.cost;
+        }
+        if (csvVariant.barcode) upd.barcode = csvVariant.barcode;
+        if (csvVariant.taxable !== undefined) upd.taxable = csvVariant.taxable;
+        if (csvVariant.taxCode) upd.taxCode = csvVariant.taxCode;
+        variantUpdates.push(upd);
         updatedCount++;
       } else {
-        // Collect new variants for bulk GraphQL creation
-        newVariantsToCreate.push(variantData);
+        newVariantsToCreate.push(ShopifyService.buildVariant(csvVariant));
       }
     }
 
-    // Bulk create new variants via GraphQL (REST fails when product has 100+ variants)
+    // Bulk update existing variants
+    if (variantUpdates.length > 0) {
+      const bulkUpdateMut = `mutation productVariantsBulkUpdate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+        productVariantsBulkUpdate(productId: $productId, variants: $variants) {
+          productVariants { id }
+          userErrors { field message }
+        }
+      }`;
+      for (let i = 0; i < variantUpdates.length; i += 250) {
+        const batch = variantUpdates.slice(i, i + 250);
+        await this.shopify.graphql(bulkUpdateMut, {productId: gid, variants: batch});
+      }
+    }
+
+    // Bulk create new variants
+    let addedCount = 0;
     if (newVariantsToCreate.length > 0) {
       const optionNames = [productData.option1Name, productData.option2Name, productData.option3Name].filter(Boolean);
       const created = await this._bulkCreateVariantsGraphQL(numericId, newVariantsToCreate, optionNames);
       addedCount = created.length;
-      skippedCount = newVariantsToCreate.length - created.length;
     }
 
-    // Add new images, track originalSrc → imageId for variant linking
-    const images = productData.images || [];
-    const srcToImageId = {};
-    if (images.length > 0) {
-      const existingImageSrcs = new Set(
-        (existingProduct.images || []).map(img =>
-          img.src.split('/').pop().split('?')[0].toLowerCase()
-        )
-      );
-      for (const img of images) {
-        const fileName = img.src.split('/').pop().split('?')[0].toLowerCase();
-        if (!existingImageSrcs.has(fileName)) {
-          try {
-            const created = await this.shopify.productImage.create(numericId, img);
-            srcToImageId[img.src] = created.id;
-          } catch (err) {
-            console.warn(`Failed to add image ${img.src}: ${err.message}`);
-          }
-        }
-      }
-    }
-
-    // Re-fetch product to get all variants (including newly added ones)
-    const updatedProduct = await this.shopify.product.get(numericId);
-    const allVariantsNow = updatedProduct.variants || [];
-
-    // Link variant images via GraphQL bulk update
-    await this._linkVariantImages(numericId, productData, allVariantsNow, srcToImageId);
+    // Re-fetch to get all variants, then link variant images
+    const updatedProduct = await this._getProductGraphQL(numericId);
+    await this._linkVariantImages(numericId, productData, updatedProduct.variants);
 
     return {
       result: {id: numericId},
@@ -506,84 +561,107 @@ export class ShopifyService {
   }
 
   /**
-   * Update an existing product in Shopify
+   * Update an existing product in Shopify via GraphQL.
+   * Uses productUpdate for product fields + productVariantsBulkUpdate for variant.
    */
   async updateProduct(productId, productData) {
     try {
-      const updateData = {
-        id: productId
-      };
+      const gid = ShopifyService.toGid('Product', productId);
+      const updateInput = {id: gid};
 
-      if (productData.title) updateData.title = productData.title;
-      if (productData.description !== undefined) updateData.body_html = productData.description;
-      if (productData.vendor) updateData.vendor = productData.vendor;
-      if (productData.productType) updateData.product_type = productData.productType;
-      if (productData.tags) updateData.tags = productData.tags;
-      if (productData.status) updateData.status = productData.status;
-      if (productData.handle) updateData.handle = productData.handle;
-
-      // Update SEO fields
-      if (productData.seoTitle) {
-        updateData.metafields_global_title_tag = productData.seoTitle;
-      }
-      if (productData.seoDescription) {
-        updateData.metafields_global_description_tag = productData.seoDescription;
+      if (productData.title) updateInput.title = productData.title;
+      if (productData.description !== undefined) updateInput.descriptionHtml = productData.description;
+      if (productData.vendor) updateInput.vendor = productData.vendor;
+      if (productData.productType) updateInput.productType = productData.productType;
+      if (productData.tags) updateInput.tags = productData.tags.split(',').map(t => t.trim()).filter(Boolean);
+      if (productData.status) updateInput.status = productData.status.toUpperCase();
+      if (productData.handle) updateInput.handle = productData.handle;
+      if (productData.seoTitle || productData.seoDescription) {
+        updateInput.seo = {};
+        if (productData.seoTitle) updateInput.seo.title = productData.seoTitle;
+        if (productData.seoDescription) updateInput.seo.description = productData.seoDescription;
       }
 
-      // Update variant if needed
+      // Check if variant needs updating
       const needsVariantUpdate =
-        productData.price ||
-        productData.compareAtPrice ||
-        productData.sku ||
-        productData.barcode ||
-        productData.inventoryQuantity ||
-        productData.weight ||
-        productData.weightUnit ||
-        productData.requiresShipping !== undefined ||
-        productData.taxable !== undefined ||
-        productData.cost;
+        productData.price || productData.compareAtPrice || productData.sku ||
+        productData.barcode || productData.taxable !== undefined || productData.cost;
 
-      if (needsVariantUpdate) {
-        const product = await this.shopify.product.get(productId);
-        if (product.variants && product.variants.length > 0) {
-          const variantId = product.variants[0].id;
-          const variantUpdate = {id: variantId};
-
-          if (productData.price) variantUpdate.price = productData.price;
-          if (productData.compareAtPrice)
-            variantUpdate.compare_at_price = productData.compareAtPrice;
-          if (productData.sku) variantUpdate.sku = productData.sku;
-          if (productData.barcode) variantUpdate.barcode = productData.barcode;
-          if (productData.inventoryQuantity !== undefined) {
-            variantUpdate.inventory_quantity = parseInt(productData.inventoryQuantity);
-          }
-          if (productData.weight !== undefined) variantUpdate.weight = productData.weight;
-          if (productData.weightUnit) variantUpdate.weight_unit = productData.weightUnit;
-          if (productData.requiresShipping !== undefined) {
-            variantUpdate.requires_shipping = productData.requiresShipping;
-          }
-          if (productData.taxable !== undefined) variantUpdate.taxable = productData.taxable;
-          if (productData.cost) variantUpdate.cost = productData.cost;
-
-          await this.shopify.productVariant.update(variantId, variantUpdate);
-        }
-      }
-
-      // Update image if provided
+      // Check if image needs adding
+      let newMedia = null;
       if (productData.imageUrl) {
-        const product = await this.shopify.product.get(productId);
-        // Check if image already exists
-        const existingImage = product.images?.find(img => img.src === productData.imageUrl);
-        if (!existingImage) {
-          await this.shopify.productImage.create(productId, {
-            src: productData.imageUrl,
-            alt: productData.imageAlt || undefined
-          });
+        const existing = await this._getProductGraphQL(productId);
+        const existingFns = new Set(
+          (existing?.images || []).map(img => img.url.split('/').pop().split('?')[0].toLowerCase())
+        );
+        const fn = productData.imageUrl.split('/').pop().split('?')[0].toLowerCase();
+        if (!existingFns.has(fn)) {
+          newMedia = [{originalSource: productData.imageUrl, alt: productData.imageAlt || undefined, mediaContentType: 'IMAGE'}];
+        }
+
+        // Update first variant if needed
+        if (needsVariantUpdate && existing?.variants?.length > 0) {
+          const variantGid = ShopifyService.toGid('ProductVariant', existing.variants[0].id);
+          const vUpd = {id: variantGid};
+          if (productData.price) vUpd.price = productData.price;
+          if (productData.compareAtPrice) vUpd.compareAtPrice = productData.compareAtPrice;
+          if (productData.sku || productData.cost) {
+            vUpd.inventoryItem = {};
+            if (productData.sku) vUpd.inventoryItem.sku = productData.sku;
+            if (productData.cost) vUpd.inventoryItem.cost = productData.cost;
+          }
+          if (productData.barcode) vUpd.barcode = productData.barcode;
+          if (productData.taxable !== undefined) vUpd.taxable = productData.taxable;
+
+          const varMut = `mutation productVariantsBulkUpdate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+            productVariantsBulkUpdate(productId: $productId, variants: $variants) {
+              productVariants { id }
+              userErrors { field message }
+            }
+          }`;
+          await this.shopify.graphql(varMut, {productId: gid, variants: [vUpd]});
+        }
+      } else if (needsVariantUpdate) {
+        const existing = await this._getProductGraphQL(productId);
+        if (existing?.variants?.length > 0) {
+          const variantGid = ShopifyService.toGid('ProductVariant', existing.variants[0].id);
+          const vUpd = {id: variantGid};
+          if (productData.price) vUpd.price = productData.price;
+          if (productData.compareAtPrice) vUpd.compareAtPrice = productData.compareAtPrice;
+          if (productData.sku || productData.cost) {
+            vUpd.inventoryItem = {};
+            if (productData.sku) vUpd.inventoryItem.sku = productData.sku;
+            if (productData.cost) vUpd.inventoryItem.cost = productData.cost;
+          }
+          if (productData.barcode) vUpd.barcode = productData.barcode;
+          if (productData.taxable !== undefined) vUpd.taxable = productData.taxable;
+
+          const varMut = `mutation productVariantsBulkUpdate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+            productVariantsBulkUpdate(productId: $productId, variants: $variants) {
+              productVariants { id }
+              userErrors { field message }
+            }
+          }`;
+          await this.shopify.graphql(varMut, {productId: gid, variants: [vUpd]});
         }
       }
 
-      const result = await this.shopify.product.update(productId, updateData);
-      return result;
+      // Update product fields (+ new media if any)
+      const updateMut = `mutation productUpdate($product: ProductUpdateInput!, $media: [CreateMediaInput!]) {
+        productUpdate(product: $product, media: $media) {
+          product { id }
+          userErrors { field message }
+        }
+      }`;
+      const vars = {product: updateInput};
+      if (newMedia) vars.media = newMedia;
+      const result = await this.shopify.graphql(updateMut, vars);
+
+      if (result.productUpdate.userErrors?.length > 0) {
+        throw new Error(result.productUpdate.userErrors[0].message);
+      }
+
+      return {id: ShopifyService.fromGid(result.productUpdate.product.id)};
     } catch (error) {
       console.error('Error updating product:', error);
       throw new Error(`Failed to update product: ${error.message}`);
@@ -683,36 +761,6 @@ export class ShopifyService {
     }
   }
 
-  /**
-   * Get all orders from Shopify with pagination
-   * Uses since_id to paginate through all orders
-   * @param {Object} params - Query parameters (created_at_min, status, etc.)
-   */
-  async getAllOrders(params = {}) {
-    try {
-      const allOrders = [];
-      let lastId = null;
-      const limit = 250;
-
-      while (true) {
-        const queryParams = {limit, status: 'any', ...params};
-        if (lastId) queryParams.since_id = lastId;
-
-        const orders = await this.shopify.order.list(queryParams);
-        if (orders.length === 0) break;
-
-        allOrders.push(...orders);
-        lastId = orders[orders.length - 1].id;
-
-        if (orders.length < limit) break;
-      }
-
-      return allOrders;
-    } catch (error) {
-      console.error('Error getting all orders:', error);
-      throw new Error(`Failed to get all orders: ${error.message}`);
-    }
-  }
 
   /**
    * Get order by ID
@@ -782,20 +830,36 @@ export class ShopifyService {
   }
 
   /**
-   * Update fulfillment with tracking info
+   * Update fulfillment tracking via GraphQL fulfillmentTrackingInfoUpdate
    */
   async updateFulfillmentTracking(orderId, fulfillmentId, trackingInfo) {
     try {
-      const result = await this.shopify.fulfillment.updateTracking(fulfillmentId, {
-        tracking_info: {
+      const mutation = `mutation fulfillmentTrackingInfoUpdate(
+        $fulfillmentId: ID!, $trackingInfoInput: FulfillmentTrackingInput!, $notifyCustomer: Boolean
+      ) {
+        fulfillmentTrackingInfoUpdate(
+          fulfillmentId: $fulfillmentId, trackingInfoInput: $trackingInfoInput, notifyCustomer: $notifyCustomer
+        ) {
+          fulfillment { id status }
+          userErrors { field message }
+        }
+      }`;
+
+      const result = await this.shopify.graphql(mutation, {
+        fulfillmentId: ShopifyService.toGid('Fulfillment', fulfillmentId),
+        trackingInfoInput: {
           number: trackingInfo.trackingNumber,
           company: trackingInfo.trackingCompany,
           url: trackingInfo.trackingUrl
         },
-        notify_customer: true
+        notifyCustomer: true
       });
 
-      return result;
+      if (result.fulfillmentTrackingInfoUpdate.userErrors?.length > 0) {
+        throw new Error(result.fulfillmentTrackingInfoUpdate.userErrors[0].message);
+      }
+
+      return result.fulfillmentTrackingInfoUpdate.fulfillment;
     } catch (error) {
       console.error('Error updating fulfillment tracking:', error);
       throw new Error(`Failed to update tracking: ${error.message}`);
@@ -803,43 +867,71 @@ export class ShopifyService {
   }
 
   /**
-   * Create a new fulfillment with tracking
-   * Uses Fulfillment Orders API (legacy fulfillment endpoint returns 406)
+   * Create a new fulfillment with tracking via GraphQL fulfillmentCreate.
+   * Queries fulfillment orders first, then creates fulfillment with tracking.
    */
   async createFulfillment(orderId, trackingInfo) {
     try {
-      // Get fulfillment orders for this order
-      const fulfillmentOrders = await this.shopify.order.fulfillmentOrders(orderId);
+      const orderGid = ShopifyService.toGid('Order', orderId);
 
-      // Find open/unfulfilled fulfillment orders
+      // Get fulfillment orders via GraphQL
+      const foQuery = `query orderFulfillmentOrders($id: ID!) {
+        order(id: $id) {
+          fulfillmentOrders(first: 10) {
+            edges {
+              node {
+                id
+                status
+                lineItems(first: 100) {
+                  edges { node { id remainingQuantity } }
+                }
+              }
+            }
+          }
+        }
+      }`;
+
+      const foResult = await this.shopify.graphql(foQuery, {id: orderGid});
+      const fulfillmentOrders = foResult.order.fulfillmentOrders.edges.map(e => e.node);
       const openOrders = fulfillmentOrders.filter(
-        fo => fo.status === 'open' || fo.status === 'in_progress'
+        fo => fo.status === 'OPEN' || fo.status === 'IN_PROGRESS'
       );
 
       if (openOrders.length === 0) {
         throw new Error('No open fulfillment orders found');
       }
 
-      // Build line_items_by_fulfillment_order for createV2
       const lineItemsByFulfillmentOrder = openOrders.map(fo => ({
-        fulfillment_order_id: fo.id,
-        fulfillment_order_line_items: fo.line_items.map(li => ({
-          id: li.id,
-          quantity: li.fulfillable_quantity
-        }))
+        fulfillmentOrderId: fo.id,
+        fulfillmentOrderLineItems: fo.lineItems.edges
+          .filter(e => e.node.remainingQuantity > 0)
+          .map(e => ({id: e.node.id, quantity: e.node.remainingQuantity}))
       }));
 
-      const fulfillment = await this.shopify.fulfillment.createV2({
-        line_items_by_fulfillment_order: lineItemsByFulfillmentOrder,
-        tracking_info: {
-          number: trackingInfo.trackingNumber,
-          company: trackingInfo.trackingCompany,
-          url: trackingInfo.trackingUrl
-        },
-        notify_customer: true
+      const mutation = `mutation fulfillmentCreate($fulfillment: FulfillmentInput!) {
+        fulfillmentCreate(fulfillment: $fulfillment) {
+          fulfillment { id status }
+          userErrors { field message }
+        }
+      }`;
+
+      const result = await this.shopify.graphql(mutation, {
+        fulfillment: {
+          lineItemsByFulfillmentOrder,
+          trackingInfo: {
+            number: trackingInfo.trackingNumber,
+            company: trackingInfo.trackingCompany,
+            url: trackingInfo.trackingUrl
+          },
+          notifyCustomer: true
+        }
       });
 
-      return fulfillment;
+      if (result.fulfillmentCreate.userErrors?.length > 0) {
+        throw new Error(result.fulfillmentCreate.userErrors[0].message);
+      }
+
+      return result.fulfillmentCreate.fulfillment;
     } catch (error) {
       console.error('Error creating fulfillment:', error);
       throw new Error(`Failed to create fulfillment: ${error.message}`);
@@ -847,12 +939,13 @@ export class ShopifyService {
   }
 
   /**
-   * Get shop info
+   * Get shop info via GraphQL
    */
   async getShopInfo() {
     try {
-      const shop = await this.shopify.shop.get();
-      return shop;
+      const query = `query { shop { id name email myshopifyDomain currencyCode primaryDomain { url host } plan { publicDisplayName } } }`;
+      const result = await this.shopify.graphql(query);
+      return result.shop;
     } catch (error) {
       console.error('Error getting shop info:', error);
       throw new Error(`Failed to get shop info: ${error.message}`);
@@ -867,44 +960,6 @@ export class ShopifyService {
     return true;
   }
 
-  /**
-   * Create webhook
-   */
-  async createWebhook(webhookData) {
-    try {
-      const webhook = await this.shopify.webhook.create(webhookData);
-      return webhook;
-    } catch (error) {
-      console.error('Error creating webhook:', error);
-      throw new Error(`Failed to create webhook: ${error.message}`);
-    }
-  }
-
-  /**
-   * List webhooks
-   */
-  async listWebhooks() {
-    try {
-      const webhooks = await this.shopify.webhook.list();
-      return webhooks;
-    } catch (error) {
-      console.error('Error listing webhooks:', error);
-      throw new Error(`Failed to list webhooks: ${error.message}`);
-    }
-  }
-
-  /**
-   * Delete webhook
-   */
-  async deleteWebhook(webhookId) {
-    try {
-      await this.shopify.webhook.delete(webhookId);
-      return true;
-    } catch (error) {
-      console.error('Error deleting webhook:', error);
-      throw new Error(`Failed to delete webhook: ${error.message}`);
-    }
-  }
 
   /**
    * List all themes for the store

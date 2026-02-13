@@ -939,13 +939,11 @@ export class ShopifyService {
   }
 
   /**
-   * Get shop info via GraphQL
+   * Get shop info via REST (simple read, no benefit from GraphQL)
    */
   async getShopInfo() {
     try {
-      const query = `query { shop { id name email myshopifyDomain currencyCode primaryDomain { url host } plan { publicDisplayName } } }`;
-      const result = await this.shopify.graphql(query);
-      return result.shop;
+      return await this.shopify.shop.get();
     } catch (error) {
       console.error('Error getting shop info:', error);
       throw new Error(`Failed to get shop info: ${error.message}`);

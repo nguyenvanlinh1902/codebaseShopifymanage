@@ -111,7 +111,7 @@ app.use((err, req, res, _next) => {
 
 /** Main API */
 export const api = onRequest(
-  {memory: '1GiB', timeoutSeconds: 300, invoker: 'public', cors: true},
+  {memory: '1GiB', timeoutSeconds: 540, invoker: 'public', cors: true},
   app
 );
 

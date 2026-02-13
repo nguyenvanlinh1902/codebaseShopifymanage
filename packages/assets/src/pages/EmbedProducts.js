@@ -114,7 +114,7 @@ export default function EmbedProducts() {
       id: 'history',
       content: `Import History${importHistory.length > 0 ? ` (${importHistory.length})` : ''}`,
       panelID: 'history-panel'
-    }
+    },
   ];
 
   useEffect(() => {
@@ -269,6 +269,7 @@ export default function EmbedProducts() {
           {selectedTab === 1 && (
             <ImportHistoryTab importHistory={importHistory} onViewDetails={setDetailModal} />
           )}
+
         </Tabs>
       </BlockStack>
 

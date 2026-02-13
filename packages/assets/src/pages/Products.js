@@ -18,7 +18,7 @@ import ImportProgressCard from './embed-products/ImportProgressCard';
 import UploadCsvModal from './products/UploadCsvModal';
 import ProductsTableSection from './products/ProductsTableSection';
 import ReimportModal from './products/ReimportModal';
-import StoreImportStatusSection from './products/StoreImportStatusSection';
+import DirectImportTab from './products/DirectImportTab';
 
 /**
  * Products Page - Redesigned to match embed pattern
@@ -37,7 +37,6 @@ export default function Products() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
-  const [storeImportStatus, setStoreImportStatus] = useState([]);
   const [importProgress, setImportProgress] = useState(null);
   const [lastCompletedId, setLastCompletedId] = useState(null);
 
@@ -101,13 +100,6 @@ export default function Products() {
   useEffect(() => {
     fetchStores();
     fetchProducts();
-    fetchStoreImportStatus();
-
-    const interval = setInterval(() => {
-      fetchStoreImportStatus();
-    }, 10000);
-
-    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -149,16 +141,6 @@ export default function Products() {
       console.error('Error fetching products:', err);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const fetchStoreImportStatus = async () => {
-    try {
-      const response = await api('/api/products/successful-imports');
-      const result = await response.json();
-      if (result.success) setStoreImportStatus(result.data || []);
-    } catch (err) {
-      console.error('Error fetching store import status:', err);
     }
   };
 
@@ -219,7 +201,7 @@ export default function Products() {
         setFiles([]);
         setSelectedStores([]);
         setUploadModalOpen(false);
-        await Promise.all([fetchProducts(), fetchStoreImportStatus()]);
+        await fetchProducts();
 
         setSuccessMessage(
           `Import started! ${totalProducts} products queued for ${jobs.length} store(s). Progress will be shown below.`
@@ -322,7 +304,7 @@ export default function Products() {
         setReimportStores([]);
         setSelectedProducts([]);
         setSuccessMessage('Products re-imported successfully!');
-        await Promise.all([fetchProducts(), fetchStoreImportStatus()]);
+        await fetchProducts();
       } else {
         setError(result.error || 'Failed to reimport products');
       }
@@ -352,7 +334,8 @@ export default function Products() {
       id: 'history',
       content: `Import History${importHistory.length > 0 ? ` (${importHistory.length})` : ''}`,
       panelID: 'history-panel'
-    }
+    },
+    {id: 'test-import', content: 'Test Import', panelID: 'test-import-panel'}
   ];
 
   return (
@@ -494,9 +477,11 @@ export default function Products() {
                   )}
                 </BlockStack>
               </Card>
-
-              <StoreImportStatusSection storeImportStatus={storeImportStatus} />
             </BlockStack>
+          )}
+
+          {selectedTab === 2 && (
+            <DirectImportTab stores={stores.filter(s => s.status === 'active')} />
           )}
         </Tabs>
       </BlockStack>

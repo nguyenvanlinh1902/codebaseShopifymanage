@@ -17,7 +17,7 @@ export default function ContactSupport() {
         <Text variant="bodySm" tone="subdued">
           Need help? Our team is available to assist you with any questions or issues.
         </Text>
-        <Button url="mailto:support@trackingorder.mam3.site" external>
+        <Button url="mailto:support@trackingorder-1c98b.firebaseapp.com" external>
           Email Support
         </Button>
       </BlockStack>

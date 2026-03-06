@@ -20,6 +20,7 @@ import setupRoutes from './routes/setupRoutes.js';
 import dashboardRoutes from './routes/dashboardRoutes.js';
 import embedRoutes from './routes/embedRoutes.js';
 import gdprRoutes from './routes/gdprRoutes.js';
+import multiAppAuthRoutes from './routes/multi-app-auth-routes.js';
 // Controllers
 import * as googleAuthController from './controllers/googleAuthController.js';
 import * as webhookController from './controllers/webhookController.js';
@@ -39,6 +40,7 @@ import {
 initializeApp();
 
 const app = express();
+app.set('trust proxy', true);
 
 // ============ HEALTH CHECK ============
 app.get('/', (req, res) => {
@@ -48,6 +50,7 @@ app.get('/', (req, res) => {
 // ============ PUBLIC ROUTES (no auth) ============
 // Shopify OAuth install flow (must come before authRoutes)
 app.use('/api/auth/shopify', shopifyInstallRoutes);
+app.use('/api/authMultip', multiAppAuthRoutes);
 app.use('/api/auth', authRoutes);
 
 // Shopify webhooks (called directly by Shopify)

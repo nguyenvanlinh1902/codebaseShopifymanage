@@ -61,6 +61,12 @@ export default function StoresTable({stores, loading, activeSearch, nicheFilter,
                   Niche: {store.niche}
                 </Text>
               )}
+              {store.partnerClientId && (
+                <Text variant="bodySm" tone="subdued">
+                  Client ID: {store.partnerClientId.slice(0, 8)}...
+                  {store.installedVia ? ` (${store.installedVia})` : ''}
+                </Text>
+              )}
             </BlockStack>
             <InlineStack gap="300" blockAlign="center">
               <Badge tone={store.status === 'active' ? 'success' : 'warning'}>

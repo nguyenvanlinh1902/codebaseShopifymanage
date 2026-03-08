@@ -669,16 +669,6 @@
       ]
     },
     {
-      "collectionGroup": "store_groups",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "createdAt",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
       "collectionGroup": "shopify_stores",
       "queryScope": "COLLECTION",
       "fields": [

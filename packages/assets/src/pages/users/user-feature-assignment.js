@@ -2,8 +2,8 @@ import React from 'react';
 import {ChoiceList, BlockStack, Text, InlineStack, Button} from '@shopify/polaris';
 import PropTypes from 'prop-types';
 
+// Dashboard is always accessible — not included here
 const ALL_FEATURES = [
-  {label: 'Dashboard', value: 'dashboard'},
   {label: 'Stores', value: 'stores'},
   {label: 'Google Sheets', value: 'sheets'},
   {label: 'Products', value: 'products'},
@@ -24,7 +24,7 @@ export default function UserFeatureAssignment({selectedFeatures, onChange}) {
         <Text variant="headingSm">Allowed Features</Text>
         <Button variant="plain" onClick={toggleAll}>{allSelected ? 'Deselect All' : 'Select All'}</Button>
       </InlineStack>
-      <Text variant="bodySm" tone="subdued">Empty = all features allowed</Text>
+      <Text variant="bodySm" tone="subdued">Empty = Dashboard only · Select features to grant access</Text>
       <ChoiceList
         allowMultiple
         title=""

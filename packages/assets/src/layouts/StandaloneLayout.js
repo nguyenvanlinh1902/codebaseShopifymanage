@@ -22,7 +22,6 @@ StandaloneLayout.propTypes = {
 };
 
 const NAV_FEATURE_MAP = {
-  '/': 'dashboard',
   '/stores': 'stores',
   '/sheets': 'sheets',
   '/products': 'products',
@@ -52,11 +51,12 @@ export default function StandaloneLayout({children}) {
 
   const filterNavItems = items => {
     if (isAdmin) return items;
-    const allowed = user?.allowedFeatures || [];
-    if (allowed.length === 0) return items; // empty = all allowed (backward compat)
+    const allowed = user?.allowedFeatures; // null/undefined = all allowed; [] = only dashboard (no nav items)
+    if (allowed === null || allowed === undefined) return items;
     return items.filter(item => {
       const feature = NAV_FEATURE_MAP[item.url];
-      return feature && allowed.includes(feature);
+      if (!feature) return true; // unmapped items always visible
+      return allowed.includes(feature);
     });
   };
 

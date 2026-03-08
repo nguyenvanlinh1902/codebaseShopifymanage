@@ -93,6 +93,10 @@ export async function updateUser(req, res) {
     const {id} = req.params;
     const {displayName, role, assignedStores, allowedFeatures, status, password} = req.body;
 
+    if (status === 'inactive' && id === req.userId) {
+      return res.status(400).json({success: false, error: 'Cannot deactivate your own account'});
+    }
+
     const user = await adminUserRepo.getById(id);
     if (!user) {
       return res.status(404).json({success: false, error: 'User not found'});

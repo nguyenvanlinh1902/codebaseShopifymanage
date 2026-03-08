@@ -25,7 +25,7 @@ export async function login(req, res) {
         displayName: result.user.displayName,
         role: result.user.role,
         assignedStores: result.user.assignedStores || [],
-        allowedFeatures: result.user.allowedFeatures || [],
+        allowedFeatures: result.user.allowedFeatures ?? null, // null = not configured (all allowed); [] = explicitly none
         token: result.tokens.accessToken,
         refreshToken: result.tokens.refreshToken
       }

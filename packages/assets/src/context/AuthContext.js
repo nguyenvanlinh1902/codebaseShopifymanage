@@ -21,19 +21,14 @@ function getStoredUser() {
 AuthProvider.propTypes = {children: PropTypes.node.isRequired};
 
 export function AuthProvider({children}) {
-  const [user, setUser] = useState(() => getStoredUser());
+  const [user, setUser] = useState(getStoredUser);
   const [isAuthenticated, setIsAuthenticated] = useState(
     () => !!localStorage.getItem(STORAGE_KEYS.token) && !!getStoredUser()
   );
-
-  // Auto-refresh token before expiry (every 20 hours for 2d tokens)
-  useEffect(() => {
-    if (!isAuthenticated) return;
-    const interval = setInterval(async () => {
-      await refreshTokenSilent();
-    }, 20 * 60 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, [isAuthenticated]);
+  // true while fetching fresh profile — prevents stale permissions flash
+  const [syncing, setSyncing] = useState(
+    () => !!localStorage.getItem(STORAGE_KEYS.token) && !!getStoredUser()
+  );
 
   const login = useCallback((userData, token, refreshToken) => {
     localStorage.setItem(STORAGE_KEYS.token, token);
@@ -51,8 +46,35 @@ export function AuthProvider({children}) {
     setIsAuthenticated(false);
   }, []);
 
+  // Sync user profile on mount to pick up permission changes (role, allowedFeatures, etc.)
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const token = localStorage.getItem(STORAGE_KEYS.token);
+    if (!token) { setSyncing(false); return; }
+    fetch('/api/users/me', {headers: getAuthHeaders()})
+      .then(r => {
+        if (r.status === 401) { logout(); return null; }
+        return r.ok ? r.json() : null;
+      })
+      .then(data => {
+        if (data?.success && data.data) {
+          localStorage.setItem(STORAGE_KEYS.user, JSON.stringify(data.data));
+          setUser(data.data);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setSyncing(false));
+  }, [isAuthenticated, logout]);
+
+  // Auto-refresh token before expiry (every 20 hours for 2d tokens)
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const interval = setInterval(refreshTokenSilent, 20 * 60 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [isAuthenticated]);
+
   return (
-    <AuthContext.Provider value={{isAuthenticated, user, loading: false, login, logout}}>
+    <AuthContext.Provider value={{isAuthenticated, user, syncing, login, logout}}>
       {children}
     </AuthContext.Provider>
   );

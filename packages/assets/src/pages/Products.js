@@ -18,7 +18,6 @@ import ImportProgressCard from './embed-products/ImportProgressCard';
 import UploadCsvModal from './products/UploadCsvModal';
 import ProductsTableSection from './products/ProductsTableSection';
 import ReimportModal from './products/ReimportModal';
-import DirectImportTab from './products/DirectImportTab';
 
 /**
  * Products Page - Redesigned to match embed pattern
@@ -334,8 +333,7 @@ export default function Products() {
       id: 'history',
       content: `Import History${importHistory.length > 0 ? ` (${importHistory.length})` : ''}`,
       panelID: 'history-panel'
-    },
-    {id: 'test-import', content: 'Test Import', panelID: 'test-import-panel'}
+    }
   ];
 
   return (
@@ -478,10 +476,6 @@ export default function Products() {
                 </BlockStack>
               </Card>
             </BlockStack>
-          )}
-
-          {selectedTab === 2 && (
-            <DirectImportTab stores={stores.filter(s => s.status === 'active')} />
           )}
         </Tabs>
       </BlockStack>

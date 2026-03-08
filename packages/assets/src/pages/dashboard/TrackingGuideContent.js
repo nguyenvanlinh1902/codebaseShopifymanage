@@ -9,21 +9,11 @@ export default function TrackingGuideContent() {
         How to update tracking:
       </Text>
       <List type="number">
-        <List.Item>
-          Go to <strong>Tracking</strong> page
-        </List.Item>
-        <List.Item>
-          Select the <strong>Store</strong> to update tracking for
-        </List.Item>
-        <List.Item>
-          Upload an <strong>Excel file</strong> with tracking data (or download the template)
-        </List.Item>
-        <List.Item>
-          The system will match orders by order number and update fulfillment tracking
-        </List.Item>
-        <List.Item>
-          View detailed results: success/failure per order with error descriptions
-        </List.Item>
+        <List.Item>Go to <strong>Tracking</strong> page</List.Item>
+        <List.Item>Select the <strong>Store</strong> to update tracking for</List.Item>
+        <List.Item>Upload an <strong>Excel file</strong> with tracking data (or download the template first)</List.Item>
+        <List.Item>The system matches orders by order number and updates fulfillment tracking automatically</List.Item>
+        <List.Item>View per-order results: success/failure with error details</List.Item>
       </List>
 
       <Divider />
@@ -38,7 +28,7 @@ export default function TrackingGuideContent() {
 
       <Banner tone="info">
         <p>
-          Tracking updates are processed asynchronously. You'll see a progress bar and can view
+          Tracking updates are processed asynchronously. You&apos;ll see a progress bar and can view
           per-order results including any errors with helpful context messages.
         </p>
       </Banner>

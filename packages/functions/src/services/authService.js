@@ -48,7 +48,9 @@ export async function login(username, password) {
       id: user.id,
       username: user.username,
       displayName: user.displayName,
-      role: user.role
+      role: user.role,
+      assignedStores: user.assignedStores || [],
+      allowedFeatures: user.allowedFeatures ?? null
     },
     tokens
   };
@@ -82,8 +84,18 @@ export async function handleRefreshToken(refreshToken) {
     throw Object.assign(new Error('Refresh token expired. Please login again.'), {statusCode: 401});
   }
 
-  // 4. Create new token pair
-  const newTokens = createTokenPair({userId: decoded.userId, username: decoded.username});
+  // 4. Create new token pair — preserve role across rotation
+  //    Fallback: fetch user from DB if role missing in legacy tokens
+  let role = decoded.role;
+  if (!role) {
+    const user = await adminUserRepo.getById(decoded.userId);
+    role = user?.role || 'staff';
+  }
+  const newTokens = createTokenPair({
+    userId: decoded.userId,
+    username: decoded.username,
+    role
+  });
 
   // 5. Rotate tokens
   await keyTokenRepo.updateRefreshToken(keyToken.id, newTokens.refreshToken, refreshToken);

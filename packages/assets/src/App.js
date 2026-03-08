@@ -102,7 +102,7 @@ function StandaloneRoutes() {
 }
 
 function AuthGate() {
-  const {isAuthenticated} = useAuth();
+  const {isAuthenticated, syncing} = useAuth();
 
   return (
     <Routes>
@@ -110,25 +110,51 @@ function AuthGate() {
       <Route path="/oauth/callback" element={<OAuthCallback />} />
       {/* First-time setup — accessible without login, disabled after first user exists */}
       <Route path="/setup-admin" element={<SetupAdminPage />} />
-      <Route path="*" element={isAuthenticated ? <StandaloneFrame /> : <LoginPage />} />
+      <Route
+        path="*"
+        element={
+          isAuthenticated
+            ? syncing
+              ? null /* wait for /me sync before rendering — prevents stale-permission flash */
+              : <StandaloneFrame />
+            : <LoginPage />
+        }
+      />
     </Routes>
   );
 }
 
+/**
+ * FeatureGuard — redirects to / if user lacks the required feature slug.
+ * Admin always passes. null/undefined allowedFeatures = all features allowed (backward compat).
+ */
+function FeatureGuard({feature, children}) {
+  const {user} = useAuth();
+  if (user?.role === 'admin') return children;
+  const allowed = user?.allowedFeatures;
+  if (allowed === null || allowed === undefined) return children; // null/undefined = all allowed; [] = only dashboard
+  if (!allowed.includes(feature)) return <NotFound />;
+  return children;
+}
+FeatureGuard.propTypes = {feature: PropTypes.string.isRequired, children: PropTypes.node.isRequired};
+
 function StandaloneFrame() {
+  const {user} = useAuth();
+  const isAdmin = user?.role === 'admin';
+
   return (
     <StandaloneLayout>
       <Routes>
         <Route path="/" element={<Dashboard />} />
-        <Route path="/stores" element={<Stores />} />
-        <Route path="/sheets" element={<Sheets />} />
-        <Route path="/products" element={<Products />} />
-        <Route path="/orders" element={<Orders />} />
-        <Route path="/tracking" element={<Tracking />} />
-        <Route path="/themes" element={<Themes />} />
-        <Route path="/analytics" element={<Analytics />} />
-        <Route path="/setup" element={<SetupStore />} />
-        <Route path="/users" element={<Users />} />
+        <Route path="/stores" element={<FeatureGuard feature="stores"><Stores /></FeatureGuard>} />
+        <Route path="/sheets" element={<FeatureGuard feature="sheets"><Sheets /></FeatureGuard>} />
+        <Route path="/products" element={<FeatureGuard feature="products"><Products /></FeatureGuard>} />
+        <Route path="/orders" element={<FeatureGuard feature="orders"><Orders /></FeatureGuard>} />
+        <Route path="/tracking" element={<FeatureGuard feature="tracking"><Tracking /></FeatureGuard>} />
+        <Route path="/themes" element={<FeatureGuard feature="themes"><Themes /></FeatureGuard>} />
+        <Route path="/analytics" element={<FeatureGuard feature="analytics"><Analytics /></FeatureGuard>} />
+        <Route path="/setup" element={<FeatureGuard feature="setup"><SetupStore /></FeatureGuard>} />
+        <Route path="/users" element={isAdmin ? <Users /> : <NotFound />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </StandaloneLayout>

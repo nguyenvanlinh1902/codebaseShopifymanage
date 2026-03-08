@@ -47,7 +47,7 @@ export default function LoginPage() {
           displayName: data.data.displayName,
           role: data.data.role,
           assignedStores: data.data.assignedStores || [],
-          allowedFeatures: data.data.allowedFeatures || []
+          allowedFeatures: data.data.allowedFeatures ?? null
         },
         data.data.token,
         data.data.refreshToken

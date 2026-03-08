@@ -10,7 +10,7 @@ const ROLE_OPTIONS = [
   {label: 'Staff', value: 'staff'}
 ];
 
-export default function UserManagementModal({user, stores, onClose, onSave}) {
+export default function UserManagementModal({user, stores = [], onClose, onSave}) {
   const isEdit = !!user;
 
   const [form, setForm] = useState({
@@ -32,7 +32,7 @@ export default function UserManagementModal({user, stores, onClose, onSave}) {
         displayName: user.displayName,
         role: user.role,
         assignedStores: user.assignedStores || [],
-        allowedFeatures: user.allowedFeatures || []
+        allowedFeatures: user.allowedFeatures ?? []
       });
     }
   }, [user]);
@@ -51,7 +51,9 @@ export default function UserManagementModal({user, stores, onClose, onSave}) {
     }
     setSaving(true);
     try {
-      await onSave(form);
+      const body = {...form};
+      if (body.role === 'admin') delete body.allowedFeatures;
+      await onSave(body);
       onClose();
     } catch (err) {
       setError(err.message || 'Save failed');
@@ -104,7 +106,7 @@ export default function UserManagementModal({user, stores, onClose, onSave}) {
         <Modal.Section>
           <BlockStack gap="400">
             <UserStoreAssignment
-              stores={stores || []}
+              stores={stores}
               selectedStoreIds={form.assignedStores}
               onChange={set('assignedStores')}
             />
@@ -125,8 +127,4 @@ UserManagementModal.propTypes = {
   stores: PropTypes.array,
   onClose: PropTypes.func.isRequired,
   onSave: PropTypes.func.isRequired
-};
-
-UserManagementModal.defaultProps = {
-  stores: []
 };

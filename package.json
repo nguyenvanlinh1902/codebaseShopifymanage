@@ -19,7 +19,7 @@
     "deploy:firestore": "bash scripts/deploy.sh firestore",
     "serve": "./node_modules/.bin/firebase serve",
     "logs": "./node_modules/.bin/firebase functions:log",
-    "emulators": "GOOGLE_APPLICATION_CREDENTIALS=serviceAccount.development.json NODE_ENV=development ./node_modules/.bin/firebase emulators:start --only hosting,functions",
+    "emulators": "GOOGLE_APPLICATION_CREDENTIALS=serviceAccount.development.json NODE_ENV=development ./node_modules/.bin/firebase emulators:start --only hosting,functions,pubsub",
     "predeploy": "yarn workspace @linhnv/assets run production && yarn workspace @linhnv/functions run production",
     "dev": "concurrently \"yarn workspace @linhnv/assets run watch\" \"yarn workspace @linhnv/functions run watch\"",
     "eslint-fix": "npm --prefix packages/assets/ run eslint-fix && npm --prefix packages/functions/ run eslint-fix"

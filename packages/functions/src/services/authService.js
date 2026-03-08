@@ -38,7 +38,7 @@ export async function login(username, password) {
   }
 
   // 4. Create tokens
-  const tokens = createTokenPair({userId: user.id, username: user.username});
+  const tokens = createTokenPair({userId: user.id, username: user.username, role: user.role});
 
   // 5. Store refresh token
   await keyTokenRepo.createOrUpdate(user.id, tokens.refreshToken);

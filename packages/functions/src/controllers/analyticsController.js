@@ -13,14 +13,10 @@ const trackingHistoryRepo = new TrackingHistoryRepository();
  */
 export async function getAnalytics(req, res) {
   try {
-    const {userId} = req.query;
+    const userId = req.userId;
+    const isAdmin = req.userRole === 'admin';
 
-    if (!userId) {
-      return res.status(400).json({success: false, error: 'userId is required'});
-    }
-
-    const isStandalone = userId === 'default-user';
-    const stores = isStandalone ? await storeRepo.getAll() : await storeRepo.getByUser(userId);
+    const stores = isAdmin ? await storeRepo.getAll() : await storeRepo.getByUser(userId);
 
     // Fetch per-store order stats and import history in parallel
     const [storeOrderStats, productImports, trackingImports] = await Promise.all([
@@ -55,8 +51,8 @@ export async function getAnalytics(req, res) {
           };
         })
       ),
-      isStandalone ? importHistoryRepo.getAll() : importHistoryRepo.getByUser(userId),
-      isStandalone ? trackingHistoryRepo.getAll() : trackingHistoryRepo.getByUser(userId)
+      isAdmin ? importHistoryRepo.getAll() : importHistoryRepo.getByUser(userId),
+      isAdmin ? trackingHistoryRepo.getAll() : trackingHistoryRepo.getByUser(userId)
     ]);
 
     // Aggregate totals across stores

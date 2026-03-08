@@ -16,11 +16,15 @@ import trackingRoutes from './routes/trackingRoutes.js';
 import themeRoutes from './routes/themeRoutes.js';
 import analyticsRoutes from './routes/analyticsRoutes.js';
 import storeRoutes from './routes/storeRoutes.js';
+import storeGroupRoutes from './routes/store-group-routes.js';
 import setupRoutes from './routes/setupRoutes.js';
 import dashboardRoutes from './routes/dashboardRoutes.js';
 import embedRoutes from './routes/embedRoutes.js';
 import gdprRoutes from './routes/gdprRoutes.js';
 import multiAppAuthRoutes from './routes/multi-app-auth-routes.js';
+import userRoutes from './routes/user-routes.js';
+// Middleware
+import {authentication} from './middleware/authentication.js';
 // Controllers
 import * as googleAuthController from './controllers/googleAuthController.js';
 import * as webhookController from './controllers/webhookController.js';
@@ -77,17 +81,13 @@ app.post('/api/google/exchange-temp', googleAuthController.exchangeGoogleCodeTem
 
 // ============ EMBEDDED APP ROUTES (session token auth) ============
 app.use('/api/embed', embedRoutes);
-// ============ USER ID MIDDLEWARE ============
-app.use((req, res, next) => {
-  const clientId = req.headers['x-client-id'] || 'default-user';
-  req.userId = clientId;
-  if (!req.query.userId) req.query.userId = clientId;
-  if (req.body && !req.body.userId) req.body.userId = clientId;
-  next();
-});
+// ============ AUTH MIDDLEWARE (JWT verification for all app routes) ============
+app.use(authentication);
 
 // ============ APP ROUTES ============
+app.use('/api/users', userRoutes);
 app.use('/api/stores', storeRoutes);
+app.use('/api/store-groups', storeGroupRoutes);
 app.use('/api/google', googleAuthRoutes);
 app.use('/api/sheets', sheetRoutes);
 app.use('/api/products', productRoutes);

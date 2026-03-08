@@ -93,8 +93,9 @@ export class StoreRepository {
   /**
    * Get stores for a user with server-side pagination (Firestore, no niche filter)
    */
-  async getByUserIdPaginated(userId, {page = 1, limit = 10} = {}) {
-    const baseQuery = this.collection.where('userId', '==', userId);
+  async getByUserIdPaginated(userId, {page = 1, limit = 10, groupId} = {}) {
+    let baseQuery = this.collection.where('userId', '==', userId);
+    if (groupId) baseQuery = baseQuery.where('groupId', '==', groupId);
 
     const countSnapshot = await baseQuery.count().get();
     const total = countSnapshot.data().count;
@@ -221,12 +222,16 @@ export class StoreRepository {
   /**
    * Get all stores with pagination (no userId filter)
    */
-  async getAllPaginated({page = 1, limit = 10} = {}) {
-    const countSnapshot = await this.collection.count().get();
+  async getAllPaginated({page = 1, limit = 10, groupId} = {}) {
+    const baseQuery = groupId
+      ? this.collection.where('groupId', '==', groupId)
+      : this.collection;
+
+    const countSnapshot = await baseQuery.count().get();
     const total = countSnapshot.data().count;
 
     const offset = (page - 1) * limit;
-    const snapshot = await this.collection
+    const snapshot = await baseQuery
       .orderBy('createdAt', 'desc')
       .offset(offset)
       .limit(limit)
@@ -238,6 +243,26 @@ export class StoreRepository {
     }));
 
     return {stores, total, page, limit};
+  }
+
+  /**
+   * Get all stores belonging to a group
+   */
+  async getByGroupId(groupId) {
+    const snap = await this.collection.where('groupId', '==', groupId).get();
+    return snap.docs.map(d => ({id: d.id, ...d.data()}));
+  }
+
+  /**
+   * Clear groupId from all stores in a group (called when group is deleted)
+   */
+  async clearGroupId(groupId) {
+    const snap = await this.collection.where('groupId', '==', groupId).get();
+    if (snap.empty) return;
+    const batch = this.db.batch();
+    const now = new Date().toISOString();
+    snap.docs.forEach(d => batch.update(d.ref, {groupId: null, updatedAt: now}));
+    await batch.commit();
   }
 
   /**

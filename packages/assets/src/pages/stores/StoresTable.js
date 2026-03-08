@@ -8,14 +8,22 @@ import {
   BlockStack,
   Button,
   SkeletonBodyText,
+  SkeletonDisplayText,
   EmptyState
 } from '@shopify/polaris';
-import {EditIcon} from '@shopify/polaris-icons';
+import {EditIcon, DeleteIcon} from '@shopify/polaris-icons';
+
+function formatBalance(balance) {
+  if (!balance) return null;
+  return new Intl.NumberFormat('en-US', {style: 'currency', currency: balance.currency}).format(
+    balance.amount
+  );
+}
 
 /**
- * Stores list with name, domain, niche, status and edit action
+ * Stores list with name, domain, niche, status, balance and edit action
  */
-export default function StoresTable({stores, loading, activeSearch, nicheFilter, onEditClick}) {
+export default function StoresTable({stores, loading, activeSearch, nicheFilter, balances = {}, balancesLoading, onEditClick, onDeleteClick, groups = []}) {
   if (loading) {
     return (
       <div style={{padding: '16px'}}>
@@ -61,6 +69,7 @@ export default function StoresTable({stores, loading, activeSearch, nicheFilter,
                   Niche: {store.niche}
                 </Text>
               )}
+              {(() => { const group = groups.find(g => g.id === store.groupId); return group ? <Badge>{group.name}</Badge> : null; })()}
               {store.partnerClientId && (
                 <Text variant="bodySm" tone="subdued">
                   Client ID: {store.partnerClientId.slice(0, 8)}...
@@ -69,6 +78,14 @@ export default function StoresTable({stores, loading, activeSearch, nicheFilter,
               )}
             </BlockStack>
             <InlineStack gap="300" blockAlign="center">
+              {/* Shopify Payments balance */}
+              {balancesLoading ? (
+                <div style={{width: 64}}>
+                  <SkeletonDisplayText size="small" />
+                </div>
+              ) : balances[store.id] ? (
+                <Badge tone="success">{formatBalance(balances[store.id])}</Badge>
+              ) : null}
               <Badge tone={store.status === 'active' ? 'success' : 'warning'}>
                 {store.status}
               </Badge>
@@ -77,6 +94,13 @@ export default function StoresTable({stores, loading, activeSearch, nicheFilter,
                 variant="plain"
                 onClick={() => onEditClick(store)}
                 accessibilityLabel={`Edit niche for ${store.name}`}
+              />
+              <Button
+                icon={DeleteIcon}
+                variant="plain"
+                tone="critical"
+                onClick={() => onDeleteClick(store)}
+                accessibilityLabel={`Delete ${store.name}`}
               />
             </InlineStack>
           </InlineStack>

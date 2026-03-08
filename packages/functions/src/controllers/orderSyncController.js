@@ -600,9 +600,12 @@ export async function handleOrderWebhook(req, res) {
       return res.status(404).json({error: 'Store not found'});
     }
 
+    // Multi-app stores: webhook is signed with partner's client_secret
+    // Main app stores: webhook is signed with main app's API secret
+    const webhookSecret = store.partnerClientSecret || shopifyConfig.apiSecret;
     const rawBody = req.rawBody || JSON.stringify(req.body);
-    if (!verifyWebhookHmac(rawBody, hmac, shopifyConfig.apiSecret)) {
-      console.error('[WEBHOOK] HMAC verification failed for:', shopDomain);
+    if (!verifyWebhookHmac(rawBody, hmac, webhookSecret)) {
+      console.error('[WEBHOOK] HMAC verification failed for:', shopDomain, '| installedVia:', store.installedVia);
       return res.status(401).json({error: 'Invalid webhook signature'});
     }
 

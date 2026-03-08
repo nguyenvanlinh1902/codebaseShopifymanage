@@ -1,15 +1,12 @@
 import React from 'react';
-import {Select, Button, InlineStack} from '@shopify/polaris';
+import {Select, Button, InlineStack, BlockStack, Text, Banner, Box} from '@shopify/polaris';
 import PreviewDataTable from './PreviewDataTable';
 
 /**
- * Google Sheet Import Tab Component
- * Handles selection of store, sheet, tab, and preview/import actions
+ * Google Sheet Import Tab
+ * Store selector is at page level — this tab handles sheet/tab selection + preview/import.
  */
 export default function GoogleSheetImportTab({
-  storeOptions,
-  selectedStore,
-  onStoreChange,
   sheetOptions,
   selectedSheet,
   onSheetChange,
@@ -20,68 +17,68 @@ export default function GoogleSheetImportTab({
   onPreview,
   importing,
   onImport,
-  previewData
+  previewData,
+  canImport
 }) {
+  const noSheets = sheetOptions.length === 0;
+
   return (
-    <div style={{marginTop: '16px'}}>
-      <div style={{marginBottom: '16px'}}>
-        <Select
-          label="Select Store"
-          options={storeOptions}
-          value={selectedStore}
-          onChange={onStoreChange}
-          placeholder="Choose a store"
-        />
-      </div>
+    <BlockStack gap="400">
+      {noSheets ? (
+        <Banner tone="warning">
+          No Google Sheets connected. Go to the <strong>Google Sheets</strong> page to connect a sheet first.
+        </Banner>
+      ) : (
+        <>
+          <InlineStack gap="400" wrap>
+            <div style={{minWidth: '240px', flex: 2}}>
+              <Select
+                label="Google Sheet"
+                options={[{label: 'Choose a sheet', value: ''}, ...sheetOptions]}
+                value={selectedSheet}
+                onChange={onSheetChange}
+              />
+            </div>
 
-      <div style={{marginBottom: '16px'}}>
-        <Select
-          label="Select Google Sheet"
-          options={sheetOptions}
-          value={selectedSheet}
-          onChange={onSheetChange}
-          placeholder="Choose a sheet"
-          disabled={sheetOptions.length === 0}
-          helpText={
-            sheetOptions.length === 0
-              ? 'No sheets connected. Go to Google Sheets page to connect.'
-              : ''
-          }
-        />
-      </div>
-
-      {selectedSheet && (
-        <div style={{marginBottom: '16px'}}>
-          <Select
-            label="Select Tab"
-            options={sheetTabOptions}
-            value={selectedSheetTab}
-            onChange={onSheetTabChange}
-            placeholder="Choose a tab"
-            disabled={sheetTabOptions.length === 0}
-          />
-        </div>
-      )}
-
-      {selectedSheet && selectedSheetTab && (
-        <div style={{marginBottom: '16px'}}>
-          <InlineStack gap="200">
-            <Button onClick={onPreview} loading={previewLoading} disabled={!selectedSheetTab}>
-              Preview Data
-            </Button>
-            <Button
-              variant="primary"
-              onClick={onImport}
-              loading={importing}
-              disabled={!selectedStore || !selectedSheetTab}
-            >
-              Import Tracking
-            </Button>
+            {selectedSheet && (
+              <div style={{minWidth: '200px', flex: 1}}>
+                <Select
+                  label="Tab"
+                  options={[{label: 'Choose a tab', value: ''}, ...sheetTabOptions]}
+                  value={selectedSheetTab}
+                  onChange={onSheetTabChange}
+                  disabled={sheetTabOptions.length === 0}
+                />
+              </div>
+            )}
           </InlineStack>
-        </div>
+
+          {selectedSheet && selectedSheetTab && (
+            <InlineStack gap="200">
+              <Button onClick={onPreview} loading={previewLoading}>
+                Preview Data
+              </Button>
+              <Button
+                variant="primary"
+                onClick={onImport}
+                loading={importing}
+                disabled={!canImport || !selectedSheetTab}
+              >
+                Import Tracking
+              </Button>
+              {!canImport && (
+                <Text tone="subdued" variant="bodySm">Select a store above to import</Text>
+              )}
+            </InlineStack>
+          )}
+        </>
       )}
 
-      <PreviewDataTable previewData={previewData} />
-    </div>
+      {previewData && (
+        <Box paddingBlockStart="200">
+          <PreviewDataTable previewData={previewData} />
+        </Box>
+      )}
+    </BlockStack>
   );
 }

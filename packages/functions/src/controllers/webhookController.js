@@ -1,11 +1,14 @@
+import crypto from 'crypto';
 import {getFirestore} from 'firebase-admin/firestore';
 import {StoreRepository} from '../repositories/storeRepository.js';
-import {verifyWebhookHmac} from './shopifyInstallController.js';
+import shopifyConfig from '../config/shopify.js';
 
 const storeRepo = new StoreRepository();
 
 /**
- * Verify incoming Shopify webhook and extract store info
+ * Verify incoming Shopify webhook and extract store info.
+ * Multi-app stores: webhook signed with partner's client_secret.
+ * Main app stores: webhook signed with main app's API secret.
  */
 async function verifyAndGetStore(req) {
   const hmacHeader = req.get('X-Shopify-Hmac-Sha256');
@@ -17,12 +20,30 @@ async function verifyAndGetStore(req) {
     .toLowerCase();
 
   if (!shopDomain) return {error: 'Missing shop domain', status: 400};
+  if (!hmacHeader) return {error: 'Missing HMAC header', status: 401};
 
-  if (!verifyWebhookHmac(rawBody, hmacHeader)) {
+  const store = await storeRepo.getByShopDomain(shopDomain);
+  const webhookSecret = store?.partnerClientSecret || shopifyConfig.apiSecret;
+
+  const generatedHmac = crypto
+    .createHmac('sha256', webhookSecret)
+    .update(rawBody, 'utf8')
+    .digest('base64');
+
+  try {
+    const isValid = crypto.timingSafeEqual(
+      Buffer.from(hmacHeader),
+      Buffer.from(generatedHmac)
+    );
+    if (!isValid) {
+      console.error('[WebhookHMAC] Verification failed for:', shopDomain, '| installedVia:', store?.installedVia);
+      return {error: 'HMAC verification failed', status: 401};
+    }
+  } catch {
+    console.error('[WebhookHMAC] Comparison error for:', shopDomain);
     return {error: 'HMAC verification failed', status: 401};
   }
 
-  const store = await storeRepo.getByShopDomain(shopDomain);
   return {store, shopDomain};
 }
 

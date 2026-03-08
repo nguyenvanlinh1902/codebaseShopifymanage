@@ -1,18 +1,82 @@
 import React from 'react';
 import {
-  Card,
   Select,
-  IndexTable,
   Button,
   SkeletonBodyText,
-  EmptyState,
   Badge,
   InlineStack,
   Text,
   BlockStack,
-  Spinner
+  Spinner,
+  Box,
+  Divider
 } from '@shopify/polaris';
-import {RefreshIcon} from '@shopify/polaris-icons';
+import {RefreshIcon, StarIcon} from '@shopify/polaris-icons';
+
+function roleBadge(role) {
+  switch (role) {
+    case 'main': return <Badge tone="success">Live</Badge>;
+    case 'unpublished': return <Badge tone="attention">Unpublished</Badge>;
+    case 'demo': return <Badge tone="warning">Demo</Badge>;
+    case 'development': return <Badge tone="info">Development</Badge>;
+    default: return <Badge>{role}</Badge>;
+  }
+}
+
+function ThemeCard({theme, onPublish, onDelete, actionLoading}) {
+  const isMain = theme.role === 'main';
+  const isLoading = actionLoading === theme.id;
+
+  return (
+    <Box
+      background={isMain ? 'bg-surface-success' : 'bg-surface'}
+      borderWidth="025"
+      borderColor={isMain ? 'border-success' : 'border'}
+      borderRadius="200"
+      padding="400"
+    >
+      <InlineStack align="space-between" blockAlign="center" wrap={false}>
+        <InlineStack gap="300" blockAlign="center">
+          {isMain && <StarIcon style={{color: 'var(--p-color-icon-success)', width: 20, height: 20}} />}
+          <BlockStack gap="100">
+            <InlineStack gap="200" blockAlign="center">
+              <Text variant="bodyMd" fontWeight={isMain ? 'bold' : 'medium'}>
+                {theme.name}
+              </Text>
+              {roleBadge(theme.role)}
+              {theme.processing && (
+                <InlineStack gap="100" blockAlign="center">
+                  <Spinner size="small" />
+                  <Text tone="subdued" variant="bodySm">Processing...</Text>
+                </InlineStack>
+              )}
+            </InlineStack>
+            <Text tone="subdued" variant="bodySm">
+              Updated {theme.updated_at ? new Date(theme.updated_at).toLocaleDateString('en-US', {year: 'numeric', month: 'short', day: 'numeric'}) : '—'}
+            </Text>
+          </BlockStack>
+        </InlineStack>
+
+        <InlineStack gap="200">
+          {isMain ? (
+            <Text tone="success" variant="bodySm" fontWeight="semibold">Currently live</Text>
+          ) : (
+            <>
+              {!theme.processing && (
+                <Button size="slim" variant="primary" onClick={() => onPublish(theme.id)} loading={isLoading}>
+                  Publish
+                </Button>
+              )}
+              <Button size="slim" tone="critical" onClick={() => onDelete(theme)} loading={isLoading} disabled={theme.processing}>
+                Delete
+              </Button>
+            </>
+          )}
+        </InlineStack>
+      </InlineStack>
+    </Box>
+  );
+}
 
 export default function ThemeListSection({
   storeOptions,
@@ -22,103 +86,78 @@ export default function ThemeListSection({
   loadThemes,
   themesLoading,
   themes,
-  errorMsg,
   handlePublish,
   setConfirmDelete,
-  actionLoading,
-  roleBadge
+  actionLoading
 }) {
-  const rowMarkup = themes.map((theme, index) => (
-    <IndexTable.Row id={String(theme.id)} key={theme.id} position={index}>
-      <IndexTable.Cell>
-        <Text variant="bodyMd" fontWeight="bold">
-          {theme.name}
-        </Text>
-      </IndexTable.Cell>
-      <IndexTable.Cell>{roleBadge(theme.role)}</IndexTable.Cell>
-      <IndexTable.Cell>
-        {theme.processing ? (
-          <InlineStack gap="200" blockAlign="center">
-            <Spinner size="small" />
-            <Text tone="subdued">Processing...</Text>
-          </InlineStack>
-        ) : (
-          <Badge tone="success">Ready</Badge>
-        )}
-      </IndexTable.Cell>
-      <IndexTable.Cell>
-        {theme.updated_at ? new Date(theme.updated_at).toLocaleDateString() : '-'}
-      </IndexTable.Cell>
-      <IndexTable.Cell>
-        <InlineStack gap="200">
-          {theme.role !== 'main' && !theme.processing && (
-            <Button
-              size="slim"
-              onClick={() => handlePublish(theme.id)}
-              loading={actionLoading === theme.id}
-            >
-              Publish
-            </Button>
-          )}
-          {theme.role !== 'main' && (
-            <Button
-              size="slim"
-              tone="critical"
-              onClick={() => setConfirmDelete(theme)}
-              loading={actionLoading === theme.id}
-            >
-              Delete
-            </Button>
-          )}
-        </InlineStack>
-      </IndexTable.Cell>
-    </IndexTable.Row>
-  ));
+  const mainTheme = themes.find(t => t.role === 'main');
+  const otherThemes = themes.filter(t => t.role !== 'main');
 
   return (
-    <Card>
-      <BlockStack gap="400">
-        <InlineStack align="space-between" blockAlign="end">
-          <div style={{minWidth: '300px', flex: 1}}>
-            <Select
-              label="View Themes for Store"
-              options={storeOptions}
-              value={selectedStoreId}
-              onChange={setSelectedStoreId}
-              disabled={storesLoading}
-            />
-          </div>
-          <Button icon={RefreshIcon} onClick={loadThemes} disabled={!selectedStoreId}>
-            Refresh
-          </Button>
-        </InlineStack>
+    <BlockStack gap="400">
+      <InlineStack align="space-between" blockAlign="end">
+        <div style={{minWidth: '280px', flex: 1, maxWidth: '400px'}}>
+          <Select
+            label="Store"
+            options={storeOptions}
+            value={selectedStoreId}
+            onChange={setSelectedStoreId}
+            disabled={storesLoading}
+          />
+        </div>
+        <Button icon={RefreshIcon} onClick={loadThemes} disabled={!selectedStoreId || themesLoading}>
+          Refresh
+        </Button>
+      </InlineStack>
 
-        {themesLoading ? (
-          <SkeletonBodyText lines={5} />
-        ) : !selectedStoreId ? (
-          <EmptyState heading="Select a store" image="">
-            <p>Choose a store to view its themes.</p>
-          </EmptyState>
-        ) : themes.length === 0 && !errorMsg ? (
-          <EmptyState heading="No themes found" image="">
-            <p>This store has no themes, or the access token does not have theme permissions.</p>
-          </EmptyState>
-        ) : themes.length > 0 ? (
-          <IndexTable
-            itemCount={themes.length}
-            headings={[
-              {title: 'Name'},
-              {title: 'Role'},
-              {title: 'Status'},
-              {title: 'Updated'},
-              {title: 'Actions'}
-            ]}
-            selectable={false}
-          >
-            {rowMarkup}
-          </IndexTable>
-        ) : null}
-      </BlockStack>
-    </Card>
+      {themesLoading ? (
+        <BlockStack gap="300">
+          <SkeletonBodyText lines={2} />
+          <SkeletonBodyText lines={2} />
+          <SkeletonBodyText lines={2} />
+        </BlockStack>
+      ) : !selectedStoreId ? (
+        <Box padding="800" background="bg-surface-secondary" borderRadius="200">
+          <BlockStack gap="200" inlineAlign="center">
+            <Text tone="subdued" alignment="center">Select a store to view its themes</Text>
+          </BlockStack>
+        </Box>
+      ) : themes.length === 0 ? (
+        <Box padding="800" background="bg-surface-secondary" borderRadius="200">
+          <Text tone="subdued" alignment="center">No themes found for this store</Text>
+        </Box>
+      ) : (
+        <BlockStack gap="300">
+          {/* Live theme first */}
+          {mainTheme && (
+            <ThemeCard
+              theme={mainTheme}
+              onPublish={handlePublish}
+              onDelete={setConfirmDelete}
+              actionLoading={actionLoading}
+            />
+          )}
+
+          {/* Divider when both sections present */}
+          {mainTheme && otherThemes.length > 0 && (
+            <BlockStack gap="200">
+              <Divider />
+              <Text tone="subdued" variant="bodySm">Other themes ({otherThemes.length})</Text>
+            </BlockStack>
+          )}
+
+          {/* Other themes */}
+          {otherThemes.map(theme => (
+            <ThemeCard
+              key={theme.id}
+              theme={theme}
+              onPublish={handlePublish}
+              onDelete={setConfirmDelete}
+              actionLoading={actionLoading}
+            />
+          ))}
+        </BlockStack>
+      )}
+    </BlockStack>
   );
 }

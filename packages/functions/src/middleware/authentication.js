@@ -40,6 +40,7 @@ export async function authentication(req, res, next) {
     // 5. Attach to request
     req.userId = decoded.userId;
     req.username = decoded.username;
+    req.userRole = decoded.role || 'staff';
     req.keyToken = keyToken;
 
     next();

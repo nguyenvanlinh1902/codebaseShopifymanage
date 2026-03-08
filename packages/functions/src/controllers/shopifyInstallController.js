@@ -33,11 +33,12 @@ function verifyHmac(query) {
 /**
  * Verify Shopify webhook HMAC signature from request body
  */
-export function verifyWebhookHmac(body, hmacHeader) {
-  if (!shopifyConfig.apiSecret || !hmacHeader) return false;
+export function verifyWebhookHmac(body, hmacHeader, secret) {
+  const webhookSecret = secret || shopifyConfig.apiSecret;
+  if (!webhookSecret || !hmacHeader) return false;
 
   const generatedHmac = crypto
-    .createHmac('sha256', shopifyConfig.apiSecret)
+    .createHmac('sha256', webhookSecret)
     .update(body, 'utf8')
     .digest('base64');
 
@@ -216,14 +217,6 @@ export async function handleCallback(req, res) {
  */
 export async function handleUninstall(req, res) {
   try {
-    const hmacHeader = req.get('X-Shopify-Hmac-Sha256');
-    const rawBody = req.rawBody || JSON.stringify(req.body);
-
-    if (!verifyWebhookHmac(rawBody, hmacHeader)) {
-      console.error('Webhook HMAC verification failed');
-      return res.status(401).json({success: false, error: 'Unauthorized'});
-    }
-
     const shopDomain = normalizeShopDomain(
       req.get('X-Shopify-Shop-Domain') || req.body?.myshopify_domain
     );
@@ -232,9 +225,19 @@ export async function handleUninstall(req, res) {
       return res.status(400).json({success: false, error: 'Missing shop domain'});
     }
 
-    console.log(`App uninstalled from: ${shopDomain}`);
-
+    // Look up store first to get the correct webhook secret
     const store = await storeRepo.getByShopDomain(shopDomain);
+    const webhookSecret = store?.partnerClientSecret || shopifyConfig.apiSecret;
+
+    const hmacHeader = req.get('X-Shopify-Hmac-Sha256');
+    const rawBody = req.rawBody || JSON.stringify(req.body);
+
+    if (!verifyWebhookHmac(rawBody, hmacHeader, webhookSecret)) {
+      console.error('Webhook HMAC verification failed for:', shopDomain);
+      return res.status(401).json({success: false, error: 'Unauthorized'});
+    }
+
+    console.log(`App uninstalled from: ${shopDomain}`);
     if (store) {
       await storeRepo.update(store.id, {
         status: 'uninstalled',

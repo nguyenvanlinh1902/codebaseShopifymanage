@@ -11,38 +11,30 @@ const orderSyncRepo = new OrderSyncRepository();
  */
 
 /**
- * Get stores for a user (with pagination, optional search via BigQuery)
+ * Get stores for a user (with pagination, optional search via BigQuery).
+ * Admin users see all stores; other roles see only assigned stores.
  */
 export async function getStores(req, res) {
   try {
-    const {userId, page, limit, search, niche} = req.query;
-
-    if (!userId) {
-      return res.status(400).json({
-        success: false,
-        error: 'userId is required'
-      });
-    }
+    const {page, limit, search, niche, groupId} = req.query;
+    const userId = req.userId;
+    const isAdmin = req.userRole === 'admin';
 
     const pageNum = Math.max(1, parseInt(page) || 1);
     const limitNum = Math.min(50, Math.max(1, parseInt(limit) || 10));
     const niches = niche ? niche.split(',').filter(Boolean) : [];
-    const isStandalone = userId === 'default-user';
 
     let stores;
     let total;
 
-    if (isStandalone && !search && niches.length === 0) {
-      // Standalone mode: return ALL stores (no userId filter)
-      const result = await storeRepo.getAllPaginated({
-        page: pageNum,
-        limit: limitNum
-      });
+    if (isAdmin && !search && niches.length === 0) {
+      // Admin: return ALL stores
+      const result = await storeRepo.getAllPaginated({page: pageNum, limit: limitNum, groupId: groupId || null});
       stores = result.stores;
       total = result.total;
     } else if (search && search.trim()) {
       // Search via BigQuery (supports CONTAINS text + niche filter)
-      const result = await storeRepo.searchStores(userId, {
+      const result = await storeRepo.searchStores(isAdmin ? null : userId, {
         search: search.trim(),
         page: pageNum,
         limit: limitNum,
@@ -51,8 +43,8 @@ export async function getStores(req, res) {
       stores = result.stores;
       total = result.total;
     } else if (niches.length > 0) {
-      // Niche filter via BigQuery (avoids Firestore composite indexes)
-      const result = await storeRepo.getByUserIdWithNiches(userId, {
+      // Niche filter via BigQuery
+      const result = await storeRepo.getByUserIdWithNiches(isAdmin ? null : userId, {
         page: pageNum,
         limit: limitNum,
         niches
@@ -60,10 +52,11 @@ export async function getStores(req, res) {
       stores = result.stores;
       total = result.total;
     } else {
-      // Normal listing via Firestore (no filter)
+      // Normal listing via Firestore
       const result = await storeRepo.getByUserIdPaginated(userId, {
         page: pageNum,
-        limit: limitNum
+        limit: limitNum,
+        groupId: groupId || null
       });
       stores = result.stores;
       total = result.total;
@@ -102,19 +95,12 @@ export async function getStores(req, res) {
  */
 export async function getNiches(req, res) {
   try {
-    const {userId} = req.query;
+    const userId = req.userId;
+    const isAdmin = req.userRole === 'admin';
 
-    if (!userId) {
-      return res.status(400).json({
-        success: false,
-        error: 'userId is required'
-      });
-    }
-
-    const niches =
-      userId === 'default-user'
-        ? await storeRepo.getAllNiches()
-        : await storeRepo.getNichesByUserId(userId);
+    const niches = isAdmin
+      ? await storeRepo.getAllNiches()
+      : await storeRepo.getNichesByUserId(userId);
 
     return res.json({
       success: true,
@@ -169,7 +155,7 @@ export async function getStore(req, res) {
 export async function updateStore(req, res) {
   try {
     const {storeId} = req.params;
-    const {name, niche, status} = req.body;
+    const {name, niche, status, groupId} = req.body;
 
     const store = await storeRepo.getById(storeId);
 
@@ -184,6 +170,7 @@ export async function updateStore(req, res) {
     if (name !== undefined) updateData.name = name;
     if (niche !== undefined) updateData.niche = niche;
     if (status !== undefined) updateData.status = status;
+    if (groupId !== undefined) updateData.groupId = groupId || null;
 
     const updatedStore = await storeRepo.update(storeId, updateData);
 

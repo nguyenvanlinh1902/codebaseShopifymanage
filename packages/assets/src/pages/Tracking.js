@@ -1,5 +1,7 @@
 import React, {useState, useEffect, useCallback} from 'react';
-import {Page, Layout, Card, Tabs, Banner, SkeletonBodyText} from '@shopify/polaris';
+import {
+  Page, Layout, Card, Tabs, Banner, Select, InlineStack, BlockStack, Text, Box, Badge
+} from '@shopify/polaris';
 import {api} from '../helpers/api';
 import GoogleSheetImportTab from './tracking/GoogleSheetImportTab';
 import ExcelUploadTab from './tracking/ExcelUploadTab';
@@ -8,19 +10,26 @@ import ImportDetailsModal from './tracking/ImportDetailsModal';
 
 /**
  * Tracking Import Page
- * Two modes: Google Sheet import & Excel file upload
+ * Supports Google Sheet and Excel import with group-based store filtering.
  */
 export default function Tracking() {
-  // Shared state
+  const [selectedTab, setSelectedTab] = useState(0);
+
+  // Stores & groups
   const [stores, setStores] = useState([]);
+  const [groups, setGroups] = useState([]);
+  const [groupFilter, setGroupFilter] = useState('');
   const [selectedStore, setSelectedStore] = useState('');
   const [loading, setLoading] = useState(true);
+
+  // History
   const [importHistory, setImportHistory] = useState([]);
   const [selectedImport, setSelectedImport] = useState(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
+
+  // Feedback
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
-  const [selectedTab, setSelectedTab] = useState(0);
 
   // Google Sheet state
   const [sheets, setSheets] = useState([]);
@@ -40,92 +49,54 @@ export default function Tracking() {
     {id: 'excel-upload', content: 'Excel Upload'}
   ];
 
+  useEffect(() => { fetchData(); }, []);
+  useEffect(() => { if (selectedStore) fetchImportHistory(); }, [selectedStore]);
+  useEffect(() => { if (selectedTab === 0) fetchSheets(); }, [selectedTab]);
   useEffect(() => {
-    fetchData();
-  }, []);
-
-  useEffect(() => {
-    if (selectedStore) {
-      fetchImportHistory();
-    }
-  }, [selectedStore]);
-
-  // Fetch sheets when tab is Google Sheet
-  useEffect(() => {
-    if (selectedTab === 0) {
-      fetchSheets();
-    }
-  }, [selectedTab]);
-
-  // Fetch sheet tabs when sheet selected
-  useEffect(() => {
-    if (selectedSheet) {
-      fetchSheetTabs();
-      setSelectedSheetTab('');
-      setPreviewData(null);
-    }
+    if (selectedSheet) { fetchSheetTabs(); setSelectedSheetTab(''); setPreviewData(null); }
   }, [selectedSheet]);
+  useEffect(() => { setPreviewData(null); }, [selectedSheetTab]);
 
-  // Clear preview when tab changes
+  // Auto-refresh while jobs are processing
   useEffect(() => {
-    setPreviewData(null);
-  }, [selectedSheetTab]);
-
-  // Auto-refresh import history while there are processing jobs
-  useEffect(() => {
-    const hasProcessing = importHistory.some(
-      imp => imp.status === 'processing' || imp.status === 'pending'
-    );
-
-    if (hasProcessing) {
-      const interval = setInterval(() => {
-        fetchImportHistory();
-      }, 3000);
-      return () => clearInterval(interval);
-    }
+    const hasProcessing = importHistory.some(i => i.status === 'processing' || i.status === 'pending');
+    if (!hasProcessing) return;
+    const id = setInterval(fetchImportHistory, 3000);
+    return () => clearInterval(id);
   }, [importHistory]);
 
   const fetchData = async () => {
     try {
       setLoading(true);
-      const response = await api('/api/stores');
-      const result = await response.json();
-
-      if (result.success) {
-        setStores(result.data);
+      const [storesRes, groupsRes] = await Promise.all([
+        api('/api/stores?limit=100'),
+        api('/api/store-groups')
+      ]);
+      const storesData = await storesRes.json();
+      const groupsData = await groupsRes.json();
+      if (storesData.success) {
+        setStores(storesData.data || []);
+        if (storesData.data?.length > 0) setSelectedStore(storesData.data[0].id);
       }
-    } catch (err) {
-      console.error('Error fetching stores:', err);
-      setError('Failed to load stores');
-    } finally {
-      setLoading(false);
-    }
+      if (groupsData.success) setGroups(groupsData.data || []);
+    } catch { setError('Failed to load stores'); }
+    finally { setLoading(false); }
   };
 
   const fetchSheets = async () => {
     try {
-      const response = await api('/api/sheets?limit=50');
-      const result = await response.json();
-
-      if (result.success) {
-        setSheets(result.data);
-      }
-    } catch (err) {
-      console.error('Error fetching sheets:', err);
-    }
+      const res = await api('/api/sheets?limit=50');
+      const data = await res.json();
+      if (data.success) setSheets(data.data);
+    } catch {}
   };
 
   const fetchSheetTabs = async () => {
     try {
-      const response = await api(`/api/sheets/${selectedSheet}/tabs`);
-      const result = await response.json();
-
-      if (result.success) {
-        setSheetTabs(result.data);
-      }
-    } catch (err) {
-      console.error('Error fetching sheet tabs:', err);
-    }
+      const res = await api(`/api/sheets/${selectedSheet}/tabs`);
+      const data = await res.json();
+      if (data.success) setSheetTabs(data.data);
+    } catch {}
   };
 
   const fetchImportHistory = async () => {
@@ -133,219 +104,154 @@ export default function Tracking() {
       const url = selectedStore
         ? `/api/tracking/import-history?storeId=${selectedStore}`
         : '/api/tracking/import-history';
-
-      const response = await api(url);
-      const result = await response.json();
-
-      if (result.success) {
-        setImportHistory(result.data);
-      }
-    } catch (err) {
-      console.error('Error fetching import history:', err);
-    }
+      const res = await api(url);
+      const data = await res.json();
+      if (data.success) setImportHistory(data.data);
+    } catch {}
   };
-
-  // ===== Google Sheet handlers =====
 
   const handlePreviewSheet = async () => {
     try {
       setPreviewLoading(true);
       setError(null);
-
-      const response = await api(
-        `/api/tracking/preview-sheet?sheetId=${selectedSheet}&tabName=${encodeURIComponent(
-          selectedSheetTab
-        )}`
+      const res = await api(
+        `/api/tracking/preview-sheet?sheetId=${selectedSheet}&tabName=${encodeURIComponent(selectedSheetTab)}`
       );
-      const result = await response.json();
-
-      if (result.success) {
-        setPreviewData(result.data);
-      } else {
-        setError(result.error || 'Failed to preview sheet data');
-      }
-    } catch (err) {
-      console.error('Error previewing sheet:', err);
-      setError('Failed to preview sheet data');
-    } finally {
-      setPreviewLoading(false);
-    }
+      const data = await res.json();
+      if (data.success) setPreviewData(data.data);
+      else setError(data.error || 'Failed to preview');
+    } catch { setError('Failed to preview sheet data'); }
+    finally { setPreviewLoading(false); }
   };
 
   const handleImportFromSheet = async () => {
-    if (!selectedStore) {
-      setError('Please select a store first');
-      return;
-    }
-
+    if (!selectedStore) { setError('Please select a store first'); return; }
     try {
       setImporting(true);
       setError(null);
       setSuccessMessage(null);
-
-      const response = await api('/api/tracking/import-from-sheet', {
+      const res = await api('/api/tracking/import-from-sheet', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
-          storeId: selectedStore,
-          sheetId: selectedSheet,
-          tabName: selectedSheetTab
-        })
+        body: JSON.stringify({storeId: selectedStore, sheetId: selectedSheet, tabName: selectedSheetTab})
       });
-
-      const result = await response.json();
-
-      if (result.success) {
-        setSuccessMessage(result.message);
-        setPreviewData(null);
-        fetchImportHistory();
-      } else {
-        setError(result.error || 'Failed to import from sheet');
-      }
-    } catch (err) {
-      console.error('Error importing from sheet:', err);
-      setError('Failed to import from sheet');
-    } finally {
-      setImporting(false);
-    }
+      const data = await res.json();
+      if (data.success) { setSuccessMessage(data.message); setPreviewData(null); fetchImportHistory(); }
+      else setError(data.error || 'Failed to import from sheet');
+    } catch { setError('Failed to import from sheet'); }
+    finally { setImporting(false); }
   };
 
-  // ===== Excel handlers =====
-
-  const handleDropZoneDrop = useCallback((_dropFiles, acceptedFiles, _rejectedFiles) => {
-    setFile(acceptedFiles[0]);
+  const handleDropZoneDrop = useCallback((_drop, accepted) => {
+    setFile(accepted[0]);
     setError(null);
   }, []);
 
   const handleUpload = async () => {
-    if (!selectedStore) {
-      setError('Please select a store first');
-      return;
-    }
-
-    if (!file) {
-      setError('Please upload an Excel file first');
-      return;
-    }
-
+    if (!selectedStore) { setError('Please select a store first'); return; }
+    if (!file) { setError('Please upload an Excel file first'); return; }
     try {
       setUploading(true);
       setError(null);
       setSuccessMessage(null);
-
       const reader = new FileReader();
       reader.onload = async e => {
-        const base64Data = e.target.result.split(',')[1];
-
-        const response = await api('/api/tracking/upload-excel', {
+        const res = await api('/api/tracking/upload-excel', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({
-            storeId: selectedStore,
-            excelBuffer: base64Data,
-            fileName: file.name
-          })
+          body: JSON.stringify({storeId: selectedStore, excelBuffer: e.target.result.split(',')[1], fileName: file.name})
         });
-
-        const result = await response.json();
-
-        if (result.success) {
-          setSuccessMessage(result.message);
-          setFile(null);
-          fetchImportHistory();
-        } else {
-          setError(result.error || 'Failed to upload file');
-        }
-
+        const data = await res.json();
+        if (data.success) { setSuccessMessage(data.message); setFile(null); fetchImportHistory(); }
+        else setError(data.error || 'Failed to upload file');
         setUploading(false);
       };
-
-      reader.onerror = () => {
-        setError('Failed to read file');
-        setUploading(false);
-      };
-
+      reader.onerror = () => { setError('Failed to read file'); setUploading(false); };
       reader.readAsDataURL(file);
-    } catch (err) {
-      console.error('Error uploading file:', err);
-      setError('Failed to upload file');
-      setUploading(false);
-    }
+    } catch { setError('Failed to upload file'); setUploading(false); }
   };
 
   const handleDownloadTemplate = async () => {
     try {
-      const response = await api('/api/tracking/template');
-      const blob = await response.blob();
+      const res = await api('/api/tracking/template');
+      const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = url;
-      a.download = 'tracking-import-template.xlsx';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
+      a.href = url; a.download = 'tracking-import-template.xlsx';
+      document.body.appendChild(a); a.click(); a.remove();
       window.URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error('Error downloading template:', err);
-      setError('Failed to download template');
-    }
+    } catch { setError('Failed to download template'); }
   };
 
-  const handleViewDetails = async importJob => {
-    setSelectedImport(importJob);
-    setShowDetailsModal(true);
-  };
+  // Filter stores by selected group
+  const visibleStores = groupFilter ? stores.filter(s => s.groupId === groupFilter) : stores;
+  const storeOptions = [
+    {label: 'Select store', value: ''},
+    ...visibleStores.map(s => ({label: s.name || s.shopDomain, value: s.id}))
+  ];
+  const sheetOptions = sheets.map(s => ({label: s.title || s.name || s.spreadsheetId, value: s.id}));
+  const sheetTabOptions = sheetTabs.map(t => ({label: t.title, value: t.title}));
 
-  // ===== Render helpers =====
-
-  const storeOptions = stores.map(store => ({
-    label: store.name,
-    value: store.id
-  }));
-
-  const sheetOptions = sheets.map(s => ({
-    label: s.title || s.name || s.spreadsheetId,
-    value: s.id
-  }));
-
-  const sheetTabOptions = sheetTabs.map(t => ({
-    label: t.title,
-    value: t.title
-  }));
+  const selectedStoreName = stores.find(s => s.id === selectedStore)?.name || '';
+  const selectedGroupName = groups.find(g => g.id === groupFilter)?.name || '';
 
   return (
-    <Page
-      title="Tracking Import"
-      subtitle="Import tracking numbers from Google Sheet or Excel file"
-    >
+    <Page title="Tracking Import" subtitle="Import tracking numbers from Google Sheet or Excel">
       <Layout>
         {error && (
           <Layout.Section>
-            <Banner tone="critical" onDismiss={() => setError(null)}>
-              {error}
-            </Banner>
+            <Banner tone="critical" onDismiss={() => setError(null)}>{error}</Banner>
           </Layout.Section>
         )}
-
         {successMessage && (
           <Layout.Section>
-            <Banner tone="success" onDismiss={() => setSuccessMessage(null)}>
-              {successMessage}
-            </Banner>
+            <Banner tone="success" onDismiss={() => setSuccessMessage(null)}>{successMessage}</Banner>
           </Layout.Section>
         )}
 
+        {/* Store + Group selector — shared across all tabs */}
         <Layout.Section>
           <Card>
-            <Tabs tabs={tabs} selected={selectedTab} onSelect={setSelectedTab}>
-              <div style={{padding: '16px'}}>
-                {loading ? (
-                  <SkeletonBodyText lines={5} />
-                ) : selectedTab === 0 ? (
+            <BlockStack gap="300">
+              <Text variant="headingSm" fontWeight="semibold">Target Store</Text>
+              <InlineStack gap="400" wrap>
+                {groups.length > 0 && (
+                  <div style={{minWidth: '200px', flex: 1}}>
+                    <Select
+                      label="Filter by group"
+                      options={[{label: 'All groups', value: ''}, ...groups.map(g => ({label: g.name, value: g.id}))]}
+                      value={groupFilter}
+                      onChange={v => { setGroupFilter(v); setSelectedStore(''); }}
+                    />
+                  </div>
+                )}
+                <div style={{minWidth: '240px', flex: 2}}>
+                  <Select
+                    label="Store"
+                    options={storeOptions}
+                    value={selectedStore}
+                    onChange={setSelectedStore}
+                    disabled={loading}
+                  />
+                </div>
+              </InlineStack>
+              {(selectedGroupName || selectedStoreName) && (
+                <InlineStack gap="200">
+                  {selectedGroupName && <Badge tone="info">{selectedGroupName}</Badge>}
+                  {selectedStoreName && <Badge>{selectedStoreName}</Badge>}
+                </InlineStack>
+              )}
+            </BlockStack>
+          </Card>
+        </Layout.Section>
+
+        {/* Import method tabs */}
+        <Layout.Section>
+          <Card padding="0">
+            <Tabs tabs={tabs} selected={selectedTab} onSelect={i => { setSelectedTab(i); setError(null); setSuccessMessage(null); }}>
+              <Box padding="400">
+                {selectedTab === 0 ? (
                   <GoogleSheetImportTab
-                    storeOptions={storeOptions}
-                    selectedStore={selectedStore}
-                    onStoreChange={setSelectedStore}
                     sheetOptions={sheetOptions}
                     selectedSheet={selectedSheet}
                     onSheetChange={setSelectedSheet}
@@ -357,27 +263,31 @@ export default function Tracking() {
                     importing={importing}
                     onImport={handleImportFromSheet}
                     previewData={previewData}
+                    canImport={!!selectedStore}
                   />
                 ) : (
                   <ExcelUploadTab
-                    storeOptions={storeOptions}
-                    selectedStore={selectedStore}
-                    onStoreChange={setSelectedStore}
                     file={file}
                     uploading={uploading}
                     onDropZoneDrop={handleDropZoneDrop}
                     onUpload={handleUpload}
                     onDownloadTemplate={handleDownloadTemplate}
                     onFileRemove={() => setFile(null)}
+                    canUpload={!!selectedStore}
                   />
                 )}
-              </div>
+              </Box>
             </Tabs>
           </Card>
         </Layout.Section>
 
+        {/* Import history */}
         <Layout.Section>
-          <ImportHistoryTable importHistory={importHistory} onViewDetails={handleViewDetails} />
+          <ImportHistoryTable
+            importHistory={importHistory}
+            onViewDetails={imp => { setSelectedImport(imp); setShowDetailsModal(true); }}
+            onRefresh={fetchImportHistory}
+          />
         </Layout.Section>
       </Layout>
 

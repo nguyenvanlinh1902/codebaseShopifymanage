@@ -11,56 +11,42 @@ import {
   BlockStack,
   InlineStack
 } from '@shopify/polaris';
-import {LockIcon} from '@shopify/polaris-icons';
-import {useAuth} from '../context/AuthContext';
+import {PersonIcon} from '@shopify/polaris-icons';
 
-export default function LoginPage() {
-  const {login} = useAuth();
+export default function SetupAdminPage() {
   const navigate = useNavigate();
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
+  const [form, setForm] = useState({username: 'admin', password: '', displayName: 'Admin'});
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const set = field => val => setForm(f => ({...f, [field]: val}));
 
   const handleSubmit = async () => {
     setError('');
-    if (!username || !password) {
-      setError('Username and password are required');
+    if (!form.username || !form.password || !form.displayName) {
+      setError('All fields are required');
       return;
     }
     setLoading(true);
     try {
-      const res = await fetch('/api/auth/login', {
+      const res = await fetch('/api/auth/setup', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({username, password})
+        body: JSON.stringify(form)
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
-        setError(data.error || 'Login failed');
+        setError(data.error || 'Setup failed');
         return;
       }
-      login(
-        {
-          id: data.data.id,
-          username: data.data.username,
-          displayName: data.data.displayName,
-          role: data.data.role,
-          assignedStores: data.data.assignedStores || [],
-          allowedFeatures: data.data.allowedFeatures || []
-        },
-        data.data.token,
-        data.data.refreshToken
-      );
+      setSuccess('Admin account created! Redirecting to login...');
+      setTimeout(() => navigate('/'), 2000);
     } catch {
       setError('Network error. Please try again.');
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleKeyDown = e => {
-    if (e.key === 'Enter') handleSubmit();
   };
 
   return (
@@ -79,44 +65,52 @@ export default function LoginPage() {
             <BlockStack gap="400">
               <InlineStack align="center">
                 <Text variant="headingLg" as="h1">
-                  Admin Portal
+                  Initial Setup
                 </Text>
               </InlineStack>
+              <Text variant="bodyMd" tone="subdued" alignment="center">
+                Create the first admin account. This page will be disabled afterwards.
+              </Text>
 
               {error && (
                 <Banner tone="critical" onDismiss={() => setError('')}>
                   {error}
                 </Banner>
               )}
+              {success && <Banner tone="success">{success}</Banner>}
 
               <FormLayout>
                 <TextField
                   label="Username"
-                  value={username}
-                  onChange={setUsername}
-                  onKeyDown={handleKeyDown}
-                  autoComplete="username"
+                  value={form.username}
+                  onChange={set('username')}
+                  autoComplete="off"
                   autoFocus
+                />
+                <TextField
+                  label="Display Name"
+                  value={form.displayName}
+                  onChange={set('displayName')}
+                  autoComplete="off"
                 />
                 <TextField
                   label="Password"
                   type="password"
-                  value={password}
-                  onChange={setPassword}
-                  onKeyDown={handleKeyDown}
-                  autoComplete="current-password"
+                  value={form.password}
+                  onChange={set('password')}
+                  autoComplete="new-password"
                 />
                 <Button
                   variant="primary"
-                  icon={LockIcon}
+                  icon={PersonIcon}
                   onClick={handleSubmit}
                   loading={loading}
                   fullWidth
                 >
-                  Login
+                  Create Admin Account
                 </Button>
-                <Button variant="plain" onClick={() => navigate('/setup-admin')} fullWidth>
-                  First time? Setup admin account
+                <Button variant="plain" onClick={() => navigate('/')} fullWidth>
+                  Back to Login
                 </Button>
               </FormLayout>
             </BlockStack>

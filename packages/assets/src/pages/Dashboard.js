@@ -19,7 +19,7 @@ export default function Dashboard() {
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await api('/api/dashboard/stats?userId=default-user');
+      const res = await api('/api/dashboard/stats');
       const json = await res.json();
       if (json.success) setData(json.data);
     } catch (error) {

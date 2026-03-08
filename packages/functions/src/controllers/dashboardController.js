@@ -17,27 +17,23 @@ const trackingHistoryRepo = new TrackingHistoryRepository();
  */
 export async function getDashboardStats(req, res) {
   try {
-    const {userId} = req.query;
+    const userId = req.userId;
+    const isAdmin = req.userRole === 'admin';
 
-    if (!userId) {
-      return res.status(400).json({success: false, error: 'userId is required'});
-    }
-
-    const isStandalone = userId === 'default-user';
-
-    // Fetch stores and sheets in parallel
+    // Fetch stores and sheets in parallel — admin sees all, others see assigned stores
     const [stores, sheets] = await Promise.all([
-      isStandalone ? storeRepo.getAll() : storeRepo.getByUser(userId),
+      isAdmin ? storeRepo.getAll() : storeRepo.getByUser(userId),
       sheetRepo.getAll()
     ]);
 
     // Fetch per-store data in parallel
     const storeDetails = await Promise.all(
       stores.map(async store => {
-        const [syncConfigs, syncStats, orderCount] = await Promise.all([
+        const [syncConfigs, syncStats] = await Promise.all([
           orderSyncRepo.getSyncJobsByStore(store.id).catch(() => []),
-          orderRepo.getSyncStats(store.id).catch(() => ({total: 0, syncedToSheet: 0, failedToSync: 0})),
-          orderRepo.getOrdersCount(store.id).catch(() => 0)
+          orderRepo
+            .getSyncStats(store.id)
+            .catch(() => ({total: 0, syncedToSheet: 0, failedToSync: 0}))
         ]);
 
         const activeConfig = syncConfigs.find(c => c.status === 'active');
@@ -71,7 +67,7 @@ export async function getDashboardStats(req, res) {
     let recentImports = [];
     let recentTracking = [];
     try {
-      recentImports = isStandalone
+      recentImports = isAdmin
         ? await importHistoryRepo.getAll(10)
         : await importHistoryRepo.getByUser(userId);
       recentImports = recentImports.slice(0, 10);
@@ -79,7 +75,7 @@ export async function getDashboardStats(req, res) {
       // ignore
     }
     try {
-      recentTracking = isStandalone
+      recentTracking = isAdmin
         ? await trackingHistoryRepo.getAll(10)
         : await trackingHistoryRepo.getByUser(userId);
       recentTracking = recentTracking.slice(0, 10);

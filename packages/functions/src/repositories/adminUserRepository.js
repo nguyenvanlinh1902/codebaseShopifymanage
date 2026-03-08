@@ -53,4 +53,16 @@ export class AdminUserRepository {
       updatedAt: new Date().toISOString()
     });
   }
+
+  async getAll() {
+    const snapshot = await this.collection.orderBy('createdAt', 'desc').get();
+    return snapshot.docs.map(doc => ({id: doc.id, ...doc.data()}));
+  }
+
+  async deactivate(userId) {
+    await this.collection.doc(userId).update({
+      status: 'inactive',
+      updatedAt: new Date().toISOString()
+    });
+  }
 }

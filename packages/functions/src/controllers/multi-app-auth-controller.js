@@ -34,20 +34,30 @@ async function registerOrderWebhook(shopDomain, accessToken) {
     if (res.ok) {
       const data = await res.json();
       console.log(`Webhook orders/create registered for ${shopDomain}: id=${data.webhook?.id}`);
+      return {success: true, id: data.webhook?.id};
     } else if (res.status === 422) {
       console.log(`Webhook orders/create already exists for ${shopDomain}`);
+      return {success: true, existing: true};
     } else {
-      console.error(`Failed to register webhook for ${shopDomain}:`, await res.text());
+      const errText = await res.text();
+      const isProtectedData = errText.includes('protected customer data');
+      if (isProtectedData) {
+        console.warn(`[${shopDomain}] App needs Protected Customer Data access for orders/create webhook`);
+      } else {
+        console.error(`Failed to register webhook for ${shopDomain}:`, errText);
+      }
+      return {success: false, error: isProtectedData ? 'Need Protected Customer Data access' : errText};
     }
   } catch (err) {
     console.error(`Webhook registration error for ${shopDomain}:`, err.message);
+    return {success: false, error: err.message};
   }
 }
 
 /**
  * Fetch shop info and save/update store in Firestore
  */
-async function saveStore(shopDomain, accessToken, {clientId, scopes, installedVia}) {
+async function saveStore(shopDomain, accessToken, {clientId, clientSecret, scopes, installedVia}) {
   const shopInfoUrl = `https://${shopDomain}.myshopify.com/admin/api/${shopifyConfig.apiVersion}/shop.json`;
   const shopInfoResponse = await fetch(shopInfoUrl, {
     headers: {'X-Shopify-Access-Token': accessToken, 'Content-Type': 'application/json'}
@@ -74,6 +84,7 @@ async function saveStore(shopDomain, accessToken, {clientId, scopes, installedVi
     status: 'active',
     installedVia,
     partnerClientId: clientId,
+    partnerClientSecret: clientSecret || '',
     scopes: scopes || '',
     lastConnected: new Date().toISOString()
   };
@@ -234,6 +245,7 @@ function go(){
     // Save store to Firestore & register webhook
     await saveStore(shopDomain, accessToken, {
       clientId: client_id,
+      clientSecret: client_secret,
       scopes: tokenData.scope,
       installedVia: 'multi-app-oauth'
     });
@@ -246,5 +258,283 @@ function go(){
     console.error('Multi-app OAuth callback error:', error);
     const fallbackOrigin = shopifyConfig.appUrl;
     return redirectWithScript(`${fallbackOrigin}/stores?error=${encodeURIComponent(error.message)}`);
+  }
+}
+
+// Required webhooks: topic → expected address suffix
+const REQUIRED_WEBHOOKS = [
+  {topic: 'orders/create', address: `${shopifyConfig.appUrl}/api/orders/webhook`}
+];
+
+/**
+ * GET /api/authMultip/webhooks?shop=xxx
+ * List webhooks for a store and check which required ones are missing
+ */
+export async function checkWebhooks(req, res) {
+  try {
+    const {shop} = req.query;
+    if (!shop) {
+      return res.status(400).json({success: false, error: 'Missing shop param'});
+    }
+
+    const shopDomain = normalizeShopDomain(shop);
+    const store = await storeRepo.getByShopDomain(shopDomain);
+    if (!store || !store.accessToken) {
+      return res.status(404).json({success: false, error: 'Store not found or no access token'});
+    }
+
+    const apiUrl = `https://${shopDomain}.myshopify.com/admin/api/${shopifyConfig.apiVersion}/webhooks.json`;
+    const response = await fetch(apiUrl, {
+      headers: {'X-Shopify-Access-Token': store.accessToken}
+    });
+
+    if (!response.ok) {
+      return res.status(response.status).json({success: false, error: await response.text()});
+    }
+
+    const {webhooks} = await response.json();
+    const missing = [];
+    const wrongAddress = [];
+    for (const req of REQUIRED_WEBHOOKS) {
+      const match = webhooks.find(w => w.topic === req.topic);
+      if (!match) {
+        missing.push(req.topic);
+      } else if (match.address !== req.address) {
+        wrongAddress.push({topic: req.topic, current: match.address, expected: req.address, id: match.id});
+      }
+    }
+
+    return res.json({
+      success: true,
+      shop: shopDomain,
+      registered: webhooks.map(w => ({id: w.id, topic: w.topic, address: w.address})),
+      missing,
+      wrongAddress,
+      allPresent: missing.length === 0 && wrongAddress.length === 0
+    });
+  } catch (error) {
+    console.error('Check webhooks error:', error);
+    return res.status(500).json({success: false, error: error.message});
+  }
+}
+
+/**
+ * POST /api/authMultip/webhooks/fix?shop=xxx
+ * Register missing required webhooks for a store
+ */
+export async function fixWebhooks(req, res) {
+  try {
+    const {shop} = req.query;
+    if (!shop) {
+      return res.status(400).json({success: false, error: 'Missing shop param'});
+    }
+
+    const shopDomain = normalizeShopDomain(shop);
+    const store = await storeRepo.getByShopDomain(shopDomain);
+    if (!store || !store.accessToken) {
+      return res.status(404).json({success: false, error: 'Store not found or no access token'});
+    }
+
+    // Get current webhooks
+    const baseApiUrl = `https://${shopDomain}.myshopify.com/admin/api/${shopifyConfig.apiVersion}`;
+    const listRes = await fetch(`${baseApiUrl}/webhooks.json`, {
+      headers: {'X-Shopify-Access-Token': store.accessToken}
+    });
+    const {webhooks} = await listRes.json();
+
+    const missing = [];
+    const wrongAddress = [];
+    for (const rw of REQUIRED_WEBHOOKS) {
+      const match = webhooks.find(w => w.topic === rw.topic);
+      if (!match) {
+        missing.push(rw.topic);
+      } else if (match.address !== rw.address) {
+        wrongAddress.push({topic: rw.topic, id: match.id});
+      }
+    }
+
+    if (missing.length === 0 && wrongAddress.length === 0) {
+      return res.json({success: true, message: 'All webhooks already registered', fixed: []});
+    }
+
+    const fixed = [];
+    const errors = [];
+
+    // Delete webhooks with wrong address, then re-register
+    for (const wa of wrongAddress) {
+      await fetch(`${baseApiUrl}/webhooks/${wa.id}.json`, {
+        method: 'DELETE',
+        headers: {'X-Shopify-Access-Token': store.accessToken}
+      });
+      const result = await registerOrderWebhook(shopDomain, store.accessToken);
+      if (result?.success) {
+        fixed.push(`${wa.topic} (updated address)`);
+      } else {
+        errors.push(`${wa.topic}: ${result?.error || 'Unknown error'}`);
+      }
+    }
+
+    // Register missing webhooks
+    for (const topic of missing) {
+      const result = await registerOrderWebhook(shopDomain, store.accessToken);
+      if (result?.success) {
+        fixed.push(topic);
+      } else {
+        errors.push(`${topic}: ${result?.error || 'Unknown error'}`);
+      }
+    }
+
+    return res.json({success: true, fixed, errors, message: `Fixed ${fixed.length}, errors ${errors.length}`});
+  } catch (error) {
+    console.error('Fix webhooks error:', error);
+    return res.status(500).json({success: false, error: error.message});
+  }
+}
+
+/**
+ * GET /api/authMultip/webhooks/all
+ * Check webhooks for ALL stores, report missing ones
+ */
+export async function checkAllWebhooks(req, res) {
+  try {
+    const allStores = await storeRepo.getAll();
+    const results = [];
+
+    for (const store of allStores) {
+      if (!store.accessToken || !store.shopDomain) continue;
+
+      try {
+        const apiUrl = `https://${store.shopDomain}.myshopify.com/admin/api/${shopifyConfig.apiVersion}/webhooks.json`;
+        const response = await fetch(apiUrl, {
+          headers: {'X-Shopify-Access-Token': store.accessToken}
+        });
+
+        if (!response.ok) {
+          results.push({shop: store.shopDomain, error: `HTTP ${response.status}`, missing: REQUIRED_WEBHOOKS.map(r => r.topic)});
+          continue;
+        }
+
+        const {webhooks} = await response.json();
+        const missing = [];
+        const wrongAddress = [];
+        for (const rw of REQUIRED_WEBHOOKS) {
+          const match = webhooks.find(w => w.topic === rw.topic);
+          if (!match) {
+            missing.push(rw.topic);
+          } else if (match.address !== rw.address) {
+            wrongAddress.push({topic: rw.topic, current: match.address, expected: rw.address, id: match.id});
+          }
+        }
+
+        results.push({
+          shop: store.shopDomain,
+          installedVia: store.installedVia || 'main-app',
+          registered: webhooks.map(w => ({id: w.id, topic: w.topic, address: w.address})),
+          missing,
+          wrongAddress,
+          ok: missing.length === 0 && wrongAddress.length === 0
+        });
+      } catch (err) {
+        results.push({shop: store.shopDomain, error: err.message, missing: REQUIRED_WEBHOOKS.map(r => r.topic)});
+      }
+    }
+
+    const storesNeedFix = results.filter(r => (r.missing?.length > 0) || (r.wrongAddress?.length > 0) || r.error);
+    return res.json({
+      success: true,
+      total: results.length,
+      ok: results.filter(r => r.ok).length,
+      needsFix: storesNeedFix.length,
+      stores: results
+    });
+  } catch (error) {
+    console.error('Check all webhooks error:', error);
+    return res.status(500).json({success: false, error: error.message});
+  }
+}
+
+/**
+ * POST /api/authMultip/webhooks/fix-all
+ * Register missing webhooks for ALL stores
+ */
+export async function fixAllWebhooks(req, res) {
+  try {
+    const allStores = await storeRepo.getAll();
+    const results = [];
+
+    for (const store of allStores) {
+      if (!store.accessToken || !store.shopDomain) continue;
+
+      try {
+        const baseApiUrl = `https://${store.shopDomain}.myshopify.com/admin/api/${shopifyConfig.apiVersion}`;
+        const listRes = await fetch(`${baseApiUrl}/webhooks.json`, {
+          headers: {'X-Shopify-Access-Token': store.accessToken}
+        });
+
+        if (!listRes.ok) {
+          results.push({shop: store.shopDomain, error: `HTTP ${listRes.status}`, fixed: []});
+          continue;
+        }
+
+        const {webhooks} = await listRes.json();
+        const missing = [];
+        const wrongAddress = [];
+        for (const rw of REQUIRED_WEBHOOKS) {
+          const match = webhooks.find(w => w.topic === rw.topic);
+          if (!match) {
+            missing.push(rw.topic);
+          } else if (match.address !== rw.address) {
+            wrongAddress.push({topic: rw.topic, id: match.id});
+          }
+        }
+
+        if (missing.length === 0 && wrongAddress.length === 0) {
+          results.push({shop: store.shopDomain, fixed: [], message: 'Already OK'});
+          continue;
+        }
+
+        const fixed = [];
+        const errors = [];
+
+        // Delete webhooks with wrong address, then re-register
+        for (const wa of wrongAddress) {
+          await fetch(`${baseApiUrl}/webhooks/${wa.id}.json`, {
+            method: 'DELETE',
+            headers: {'X-Shopify-Access-Token': store.accessToken}
+          });
+          const result = await registerOrderWebhook(store.shopDomain, store.accessToken);
+          if (result?.success) {
+            fixed.push(`${wa.topic} (updated)`);
+          } else {
+            errors.push(`${wa.topic}: ${result?.error || 'Unknown error'}`);
+          }
+        }
+
+        // Register missing webhooks
+        for (const topic of missing) {
+          const result = await registerOrderWebhook(store.shopDomain, store.accessToken);
+          if (result?.success) {
+            fixed.push(topic);
+          } else {
+            errors.push(`${topic}: ${result?.error || 'Unknown error'}`);
+          }
+        }
+
+        results.push({shop: store.shopDomain, fixed, errors: errors.length > 0 ? errors : undefined});
+      } catch (err) {
+        results.push({shop: store.shopDomain, error: err.message, fixed: []});
+      }
+    }
+
+    const totalFixed = results.filter(r => r.fixed?.length > 0).length;
+    return res.json({
+      success: true,
+      total: results.length,
+      fixed: totalFixed,
+      stores: results
+    });
+  } catch (error) {
+    console.error('Fix all webhooks error:', error);
+    return res.status(500).json({success: false, error: error.message});
   }
 }

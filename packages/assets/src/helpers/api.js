@@ -1,4 +1,5 @@
 import {isEmbeddedApp} from '../config/app';
+import {getAuthHeaders} from '../context/AuthContext';
 
 /**
  * Wait for App Bridge to be ready (window.shopify.idToken to be available)
@@ -45,7 +46,7 @@ export async function api(url, options = {}) {
     }
     mergedOptions.headers.Authorization = `Bearer ${token}`;
   } else {
-    mergedOptions.headers['x-client-id'] = 'default-user';
+    Object.assign(mergedOptions.headers, getAuthHeaders());
   }
 
   if (mergedOptions.body && !(mergedOptions.body instanceof FormData)) {
@@ -54,6 +55,14 @@ export async function api(url, options = {}) {
   }
 
   const response = await fetch(url, mergedOptions);
+
+  // Auto-clear auth on 401 for standalone mode
+  if (!isEmbeddedApp && response.status === 401) {
+    const {clearAuth} = await import('../context/AuthContext');
+    clearAuth();
+    window.location.href = '/';
+    return response;
+  }
 
   if (isEmbeddedApp && response.headers.get('X-Shopify-API-Request-Failure-Reauthorize') === '1') {
     const reauthorizeUrl = response.headers.get('X-Shopify-API-Request-Failure-Reauthorize-Url');

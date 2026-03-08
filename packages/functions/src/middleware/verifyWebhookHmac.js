@@ -1,38 +1,60 @@
 import crypto from 'crypto';
 import shopifyConfig from '../config/shopify.js';
+import {StoreRepository} from '../repositories/storeRepository.js';
+
+const storeRepo = new StoreRepository();
 
 /**
- * Middleware to verify Shopify webhook HMAC signature.
- * Reusable for all webhook endpoints including GDPR.
+ * Verify HMAC with a given secret
  */
-export function verifyWebhookHmac(req, res, next) {
-  const hmacHeader = req.get('X-Shopify-Hmac-Sha256');
-  const rawBody = req.rawBody || JSON.stringify(req.body);
-
-  if (!shopifyConfig.apiSecret || !hmacHeader) {
-    console.error('[WebhookHMAC] Missing API secret or HMAC header');
-    return res.status(401).json({success: false, error: 'Unauthorized'});
-  }
-
+function verifyHmacWithSecret(rawBody, hmacHeader, secret) {
+  if (!secret || !hmacHeader) return false;
   const generatedHmac = crypto
-    .createHmac('sha256', shopifyConfig.apiSecret)
+    .createHmac('sha256', secret)
     .update(rawBody, 'utf8')
     .digest('base64');
-
   try {
-    const isValid = crypto.timingSafeEqual(
+    return crypto.timingSafeEqual(
       Buffer.from(hmacHeader),
       Buffer.from(generatedHmac)
     );
-
-    if (!isValid) {
-      console.error('[WebhookHMAC] HMAC verification failed');
-      return res.status(401).json({success: false, error: 'Unauthorized'});
-    }
   } catch {
-    console.error('[WebhookHMAC] HMAC comparison error');
+    return false;
+  }
+}
+
+/**
+ * Middleware to verify Shopify webhook HMAC signature.
+ * Supports multi-app stores by looking up partner's client_secret.
+ */
+export async function verifyWebhookHmac(req, res, next) {
+  const hmacHeader = req.get('X-Shopify-Hmac-Sha256');
+  const rawBody = req.rawBody || JSON.stringify(req.body);
+
+  if (!hmacHeader) {
+    console.error('[WebhookHMAC] Missing HMAC header');
     return res.status(401).json({success: false, error: 'Unauthorized'});
   }
 
-  next();
+  // Try main app secret first
+  if (verifyHmacWithSecret(rawBody, hmacHeader, shopifyConfig.apiSecret)) {
+    return next();
+  }
+
+  // Fallback: look up store's partnerClientSecret for multi-app stores
+  const shopDomain = (req.get('X-Shopify-Shop-Domain') || '')
+    .replace(/^https?:\/\//, '')
+    .replace(/\.myshopify\.com.*$/, '')
+    .trim()
+    .toLowerCase();
+
+  if (shopDomain) {
+    const store = await storeRepo.getByShopDomain(shopDomain);
+    if (store?.partnerClientSecret && verifyHmacWithSecret(rawBody, hmacHeader, store.partnerClientSecret)) {
+      return next();
+    }
+  }
+
+  console.error('[WebhookHMAC] HMAC verification failed for:', shopDomain || 'unknown');
+  return res.status(401).json({success: false, error: 'Unauthorized'});
 }

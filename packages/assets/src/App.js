@@ -31,8 +31,10 @@ import Analytics from './pages/Analytics';
 import Themes from './pages/Themes';
 import SetupStore from './pages/SetupStore';
 import Stores from './pages/Stores';
+import Users from './pages/Users';
 import NotFound from './pages/NotFound';
 import LoginPage from './pages/LoginPage';
+import SetupAdminPage from './pages/SetupAdminPage';
 
 // Polaris link component for standalone (React Router integration)
 const PolarisLink = forwardRef(({url, external, ...rest}, ref) => {
@@ -106,6 +108,8 @@ function AuthGate() {
     <Routes>
       {/* OAuth callback must be accessible without login */}
       <Route path="/oauth/callback" element={<OAuthCallback />} />
+      {/* First-time setup — accessible without login, disabled after first user exists */}
+      <Route path="/setup-admin" element={<SetupAdminPage />} />
       <Route path="*" element={isAuthenticated ? <StandaloneFrame /> : <LoginPage />} />
     </Routes>
   );
@@ -124,6 +128,7 @@ function StandaloneFrame() {
         <Route path="/themes" element={<Themes />} />
         <Route path="/analytics" element={<Analytics />} />
         <Route path="/setup" element={<SetupStore />} />
+        <Route path="/users" element={<Users />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </StandaloneLayout>

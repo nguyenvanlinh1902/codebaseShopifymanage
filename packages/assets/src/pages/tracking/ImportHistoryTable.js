@@ -1,80 +1,107 @@
 import React from 'react';
-import {Card, Text, DataTable, Badge, ProgressBar, Button} from '@shopify/polaris';
+import {Card, Text, Badge, ProgressBar, Button, BlockStack, InlineStack, Box, Divider} from '@shopify/polaris';
+import {RefreshIcon} from '@shopify/polaris-icons';
 
-/**
- * Import History Table Component
- * Displays import job history with status, progress, and actions
- */
-export default function ImportHistoryTable({importHistory, onViewDetails}) {
-  const importRows = importHistory.map(imp => [
-    imp.fileName || 'N/A',
-    imp.storeName || 'N/A',
-    <Badge
-      key={`status-${imp.id}`}
-      tone={
-        imp.status === 'completed'
-          ? 'success'
-          : imp.status === 'failed'
-          ? 'critical'
-          : imp.status === 'processing'
-          ? 'info'
-          : 'attention'
-      }
-    >
-      {imp.status || 'pending'}
-    </Badge>,
-    imp.status === 'processing' ? (
-      <div key={`progress-${imp.id}`} style={{width: '100px'}}>
-        <ProgressBar
-          progress={((imp.processedRecords || 0) / (imp.totalRecords || 1)) * 100}
-          size="small"
-        />
-        <Text variant="bodySm" as="span" tone="subdued">
-          {imp.processedRecords || 0}/{imp.totalRecords || 0}
-        </Text>
-      </div>
-    ) : (
-      `${imp.processedRecords || 0}/${imp.totalRecords || 0}`
-    ),
-    imp.status === 'completed' ? (
-      <div key={`results-${imp.id}`}>
-        <Text variant="bodySm" as="span" tone="success">
-          {imp.successCount || 0} ok
-        </Text>
-        {' / '}
-        <Text variant="bodySm" as="span" tone="critical">
-          {imp.failedCount || 0} fail
-        </Text>
-      </div>
-    ) : (
-      '-'
-    ),
-    new Date(imp.createdAt).toLocaleString(),
-    <Button key={`btn-${imp.id}`} size="slim" onClick={() => onViewDetails(imp)}>
-      View Details
-    </Button>
-  ]);
+const STATUS_TONE = {
+  completed: 'success',
+  failed: 'critical',
+  processing: 'info',
+  pending: 'attention'
+};
+
+function ImportRow({imp, onViewDetails}) {
+  const progress = imp.totalRecords > 0 ? (imp.processedRecords / imp.totalRecords) * 100 : 0;
+  const isProcessing = imp.status === 'processing' || imp.status === 'pending';
+  const date = new Date(imp.createdAt);
 
   return (
-    <Card>
-      <div style={{padding: '16px'}}>
-        <Text variant="headingMd" as="h2">
-          Import History
-        </Text>
-      </div>
+    <Box padding="400">
+      <InlineStack align="space-between" blockAlign="start" wrap={false}>
+        <BlockStack gap="150">
+          {/* Source file / sheet name */}
+          <InlineStack gap="200" blockAlign="center">
+            <Text variant="bodyMd" fontWeight="semibold">{imp.fileName || 'N/A'}</Text>
+            <Badge tone={STATUS_TONE[imp.status] || 'attention'}>
+              {imp.status || 'pending'}
+            </Badge>
+          </InlineStack>
+
+          {/* Store + date */}
+          <InlineStack gap="300">
+            {imp.storeName && (
+              <Text tone="subdued" variant="bodySm">{imp.storeName}</Text>
+            )}
+            <Text tone="subdued" variant="bodySm">
+              {date.toLocaleDateString('en-US', {month: 'short', day: 'numeric', year: 'numeric'})}
+              {' · '}
+              {date.toLocaleTimeString('en-US', {hour: '2-digit', minute: '2-digit'})}
+            </Text>
+          </InlineStack>
+
+          {/* Progress bar while processing */}
+          {isProcessing && imp.totalRecords > 0 && (
+            <BlockStack gap="100">
+              <div style={{width: '200px'}}>
+                <ProgressBar progress={progress} size="small" tone="highlight" />
+              </div>
+              <Text tone="subdued" variant="bodySm">
+                {imp.processedRecords || 0} / {imp.totalRecords} records
+              </Text>
+            </BlockStack>
+          )}
+
+          {/* Results when completed */}
+          {imp.status === 'completed' && (
+            <InlineStack gap="200">
+              <Badge tone="success">{imp.successCount || 0} ok</Badge>
+              {(imp.failedCount || 0) > 0 && (
+                <Badge tone="critical">{imp.failedCount} failed</Badge>
+              )}
+              <Text tone="subdued" variant="bodySm">
+                {imp.totalRecords || 0} total
+              </Text>
+            </InlineStack>
+          )}
+        </BlockStack>
+
+        <Button size="slim" onClick={() => onViewDetails(imp)}>
+          Details
+        </Button>
+      </InlineStack>
+    </Box>
+  );
+}
+
+export default function ImportHistoryTable({importHistory, onViewDetails, onRefresh}) {
+  return (
+    <Card padding="0">
+      <Box padding="400">
+        <InlineStack align="space-between" blockAlign="center">
+          <BlockStack gap="050">
+            <Text as="h2" variant="headingMd">Import History</Text>
+            {importHistory.length > 0 && (
+              <Text tone="subdued" variant="bodySm">{importHistory.length} job{importHistory.length !== 1 ? 's' : ''}</Text>
+            )}
+          </BlockStack>
+          <Button icon={RefreshIcon} size="slim" onClick={onRefresh}>Refresh</Button>
+        </InlineStack>
+      </Box>
 
       {importHistory.length === 0 ? (
-        <div style={{padding: '40px', textAlign: 'center'}}>
-          <Text variant="bodySm" as="p" tone="subdued">
-            No import history yet. Import your first tracking data to get started!
+        <Box padding="1000">
+          <Text tone="subdued" alignment="center" variant="bodySm">
+            No import history yet — import your first tracking data to get started
           </Text>
-        </div>
+        </Box>
       ) : (
-        <DataTable
-          columnContentTypes={['text', 'text', 'text', 'text', 'text', 'text', 'text']}
-          headings={['Source', 'Store', 'Status', 'Progress', 'Results', 'Created At', 'Actions']}
-          rows={importRows}
-        />
+        <BlockStack>
+          {importHistory.map((imp, i) => (
+            <React.Fragment key={imp.id}>
+              {i > 0 && <Divider />}
+              <ImportRow imp={imp} onViewDetails={onViewDetails} />
+            </React.Fragment>
+          ))}
+        </BlockStack>
       )}
     </Card>
   );

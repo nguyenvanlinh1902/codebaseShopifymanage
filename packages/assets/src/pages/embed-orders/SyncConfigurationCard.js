@@ -49,7 +49,20 @@ export default function SyncConfigurationCard({
           <Banner tone="info">
             <BlockStack gap="100">
               <Text variant="bodySm" fontWeight="semibold">
-                Sheet: {activeConfig.sheetName} / Tab: {activeConfig.targetSheet}
+                Sheet:{' '}
+                {activeConfig.spreadsheetId ? (
+                  <a
+                    href={`https://docs.google.com/spreadsheets/d/${activeConfig.spreadsheetId}/edit`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{color: '#2c6ecb'}}
+                  >
+                    {activeConfig.sheetName}
+                  </a>
+                ) : (
+                  activeConfig.sheetName
+                )}{' '}
+                / Tab: {activeConfig.targetSheet}
               </Text>
               <Text variant="bodySm">
                 {activeConfig.totalOrdersSynced || 0} orders synced

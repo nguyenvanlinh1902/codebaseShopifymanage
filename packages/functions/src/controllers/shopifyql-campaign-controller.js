@@ -17,16 +17,21 @@ async function runShopifyQL(shopDomain, accessToken, query) {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        query: `{ shopifyqlQuery(query: ${JSON.stringify(query)}) { tableData { unformattedData columns { name dataType displayName } } parseErrors { code message } } }`
+        query: `{ shopifyqlQuery(query: ${JSON.stringify(query)}) { tableData { rows columns { name dataType displayName } } parseErrors } }`
       })
     }
   );
 
   if (!res.ok) {
+    const errText = await res.text();
+    console.error(`[ShopifyQL] API error ${res.status} for ${shopDomain}:`, errText);
     throw new Error(`Shopify API error: ${res.status}`);
   }
 
   const json = await res.json();
+  if (json?.errors) {
+    console.error(`[ShopifyQL] GraphQL errors for ${shopDomain}:`, JSON.stringify(json.errors));
+  }
   return json?.data?.shopifyqlQuery;
 }
 
@@ -48,22 +53,26 @@ export async function getCampaignAds(req, res) {
       return res.status(404).json({success: false, error: 'Store not found or no access token'});
     }
 
-    const shopifyqlQuery = [
+    const parts = [
       'FROM shop_campaign_insights',
       'SHOW shop_campaign_ad_spend',
-      'GROUP BY day WITH TOTALS, PERCENT_CHANGE',
+      'GROUP BY day',
       'TIMESERIES day',
       `SINCE ${since} UNTIL ${until}`,
-      `COMPARE TO ${compareTo}`,
       'ORDER BY day ASC'
-    ].join(' ');
+    ];
+    if (compareTo && compareTo !== 'none') {
+      parts[2] = 'GROUP BY day WITH TOTALS, PERCENT_CHANGE';
+      parts.splice(5, 0, `COMPARE TO ${compareTo}`);
+    }
+    const shopifyqlQuery = parts.join(' ');
 
     const result = await runShopifyQL(store.shopDomain, store.accessToken, shopifyqlQuery);
 
     if (result?.parseErrors?.length > 0) {
       return res.status(422).json({
         success: false,
-        error: result.parseErrors.map(e => e.message).join('; '),
+        error: result.parseErrors.join('; '),
         parseErrors: result.parseErrors
       });
     }
@@ -72,7 +81,7 @@ export async function getCampaignAds(req, res) {
       success: true,
       data: {
         columns: result?.tableData?.columns || [],
-        rows: result?.tableData?.unformattedData || [],
+        rows: result?.tableData?.rows || [],
         store: {id: store.id, name: store.name, shopDomain: store.shopDomain}
       }
     });
@@ -106,13 +115,13 @@ export async function getCampaignAdsAllStores(req, res) {
       activeStores.map(async store => {
         try {
           const result = await runShopifyQL(store.shopDomain, store.accessToken, shopifyqlQuery);
-          if (result?.parseErrors?.length > 0) return {storeId: store.id, name: store.name, shopDomain: store.shopDomain, error: result.parseErrors[0].message};
+          if (result?.parseErrors?.length > 0) return {storeId: store.id, name: store.name, shopDomain: store.shopDomain, error: result.parseErrors[0]};
           return {
             storeId: store.id,
             name: store.name,
             shopDomain: store.shopDomain,
             columns: result?.tableData?.columns || [],
-            rows: result?.tableData?.unformattedData || []
+            rows: result?.tableData?.rows || []
           };
         } catch (err) {
           return {storeId: store.id, name: store.name, shopDomain: store.shopDomain, error: err.message};

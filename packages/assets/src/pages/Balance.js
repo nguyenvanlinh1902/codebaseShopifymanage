@@ -1,16 +1,16 @@
 import React, {useState, useEffect} from 'react';
-import {Page, Layout, Card, Select, InlineStack} from '@shopify/polaris';
+import {Page, Layout, Select, InlineStack} from '@shopify/polaris';
 import {api} from '../helpers/api';
 import {useAuth} from '../context/AuthContext';
-import AnalyticsOrderPanel from './analytics/analytics-order-panel';
+import AnalyticsBalancePanel from './analytics/analytics-balance-panel';
 
-export default function Analytics() {
+export default function Balance() {
   const {user} = useAuth();
   const isAdmin = user?.role === 'admin';
   const [stores, setStores] = useState([]);
   const [selectedStoreId, setSelectedStoreId] = useState('');
-  const [storeData, setStoreData] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [balanceData, setBalanceData] = useState(null);
+  const [balanceLoading, setBalanceLoading] = useState(false);
   const [groups, setGroups] = useState([]);
   const [groupFilter, setGroupFilter] = useState('');
 
@@ -25,14 +25,14 @@ export default function Analytics() {
   }, []);
 
   useEffect(() => {
-    if (selectedStoreId) fetchStoreAnalytics(selectedStoreId);
-  }, [selectedStoreId]);
-
-  useEffect(() => {
     const filtered = groupFilter ? stores.filter(s => s.groupId === groupFilter) : stores;
     if (filtered.length > 0) setSelectedStoreId(filtered[0].id);
     else if (stores.length > 0 && !selectedStoreId) setSelectedStoreId(stores[0].id);
   }, [stores, groupFilter]);
+
+  useEffect(() => {
+    if (selectedStoreId) fetchBalance(selectedStoreId);
+  }, [selectedStoreId]);
 
   const fetchStores = async () => {
     try {
@@ -50,17 +50,21 @@ export default function Analytics() {
     }
   };
 
-  const fetchStoreAnalytics = async storeId => {
-    setLoading(true);
-    setStoreData(null);
+  const fetchBalance = async storeId => {
+    setBalanceLoading(true);
+    setBalanceData(null);
     try {
-      const res = await api(`/api/analytics/store-stats?storeId=${storeId}`);
+      const res = await api(`/api/stores/balance?storeId=${storeId}`);
       const result = await res.json();
-      if (result.success) setStoreData(result.data);
-    } catch {
-      // non-critical
+      if (result.success) {
+        setBalanceData({balance: result.balance, payouts: result.payouts, reason: result.reason});
+      } else {
+        setBalanceData({balance: null, payouts: [], reason: result.error});
+      }
+    } catch (err) {
+      setBalanceData({balance: null, payouts: [], reason: err.message});
     } finally {
-      setLoading(false);
+      setBalanceLoading(false);
     }
   };
 
@@ -72,7 +76,7 @@ export default function Analytics() {
   ];
 
   return (
-    <Page title="Analytics" subtitle="Per-store order metrics">
+    <Page title="Balance" subtitle="Shopify Payments account balance & payouts">
       <Layout>
         <Layout.Section>
           <InlineStack align="start" gap="400">
@@ -97,13 +101,10 @@ export default function Analytics() {
           </InlineStack>
         </Layout.Section>
         <Layout.Section>
-          <Card>
-            <AnalyticsOrderPanel
-              orderSummary={storeData?.orderSummary}
-              orderTrend={storeData?.orderTrend}
-              loading={loading}
-            />
-          </Card>
+          <AnalyticsBalancePanel
+            balance={balanceData}
+            loading={balanceLoading}
+          />
         </Layout.Section>
       </Layout>
     </Page>

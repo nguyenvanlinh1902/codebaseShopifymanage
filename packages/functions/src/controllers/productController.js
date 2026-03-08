@@ -18,12 +18,13 @@ const syncJobRepo = new SyncJobRepository();
  */
 export async function importProducts(req, res) {
   try {
-    const {userId, storeId, sheetId, range, mode = 'create'} = req.body;
+    const {storeId, sheetId, range, mode = 'create'} = req.body;
+    const userId = req.body.userId || 'default-user';
 
-    if (!userId || !storeId || !sheetId || !range) {
+    if (!storeId || !sheetId || !range) {
       return res.status(400).json({
         success: false,
-        error: 'userId, storeId, sheetId, and range are required'
+        error: 'storeId, sheetId, and range are required'
       });
     }
 
@@ -187,20 +188,13 @@ export async function getJobStatus(req, res) {
  */
 export async function getJobs(req, res) {
   try {
-    const {userId, storeId} = req.query;
+    const {storeId} = req.query;
 
     let jobs;
     if (storeId) {
       jobs = await syncJobRepo.getByStoreId(storeId);
-    } else if (userId === 'default-user') {
-      jobs = await syncJobRepo.getAll();
-    } else if (userId) {
-      jobs = await syncJobRepo.getByUserId(userId);
     } else {
-      return res.status(400).json({
-        success: false,
-        error: 'userId or storeId is required'
-      });
+      jobs = await syncJobRepo.getAll();
     }
 
     return res.json({

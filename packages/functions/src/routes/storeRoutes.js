@@ -7,6 +7,7 @@ const router = new Router();
 router.get('/', storeController.getStores);
 router.get('/niches', storeController.getNiches);
 router.get('/balances', storeBalanceController.getAllBalances);
+router.get('/balance', storeBalanceController.getStoreBalance);
 router.get('/:storeId', storeController.getStore);
 router.put('/:storeId', storeController.updateStore);
 router.post('/bulk-delete', storeController.bulkDeleteStores);

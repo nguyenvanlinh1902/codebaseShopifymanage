@@ -41,11 +41,8 @@ router.get('/', async (req, res) => {
     await Promise.all([
       productImportController.getQueueStats({query: {storeId: req.store.id}}, productStatsMock),
       orderSyncController.getSyncConfigs({query: {storeId: req.store.id, userId: req.store.userId || 'default-user'}}, syncConfigsMock),
-      sheetController.getSheets({query: {storeId: req.store.id, userId: req.store.userId || 'default-user'}}, sheetsMock),
-      googleAuthController.checkGoogleAuth(
-        {query: {storeId: req.store.id, userId: req.store.userId || 'default-user'}},
-        googleStatusMock
-      )
+      sheetController.getSheets({query: {}}, sheetsMock),
+      googleAuthController.checkGoogleAuth({query: {}}, googleStatusMock)
     ]);
 
     // Extract captured data

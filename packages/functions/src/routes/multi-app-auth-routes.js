@@ -12,5 +12,9 @@ router.get('/webhooks', multiAppAuthController.checkWebhooks);
 router.post('/webhooks/fix', multiAppAuthController.fixWebhooks);
 router.get('/webhooks/all', multiAppAuthController.checkAllWebhooks);
 router.post('/webhooks/fix-all', multiAppAuthController.fixAllWebhooks);
+router.post('/webhooks/register', multiAppAuthController.registerWebhook);
+
+// Store OAuth scopes
+router.get('/scopes', multiAppAuthController.getStoreScopes);
 
 export default router;

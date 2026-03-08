@@ -13,6 +13,11 @@ router.post('/setup-sync', (req, res) => {
   return orderSyncController.setupSync(req, res);
 });
 
-router.get('/sync-configs', orderSyncController.getSyncConfigs);
+router.get('/sync-configs', (req, res) => {
+  if (req.store && !req.query.storeId) {
+    req.query.storeId = req.store.id;
+  }
+  return orderSyncController.getSyncConfigs(req, res);
+});
 
 export default router;

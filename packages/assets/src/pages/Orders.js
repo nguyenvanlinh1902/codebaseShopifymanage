@@ -149,7 +149,19 @@ export default function Orders() {
 
   const configRows = filteredConfigs.map(config => [
     config.storeName || 'N/A',
-    config.sheetName || 'N/A',
+    config.spreadsheetId ? (
+      <a
+        key={`sheet-${config.id}`}
+        href={`https://docs.google.com/spreadsheets/d/${config.spreadsheetId}/edit`}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{textDecoration: 'none', color: '#2c6ecb'}}
+      >
+        {config.sheetName || 'N/A'}
+      </a>
+    ) : (
+      config.sheetName || 'N/A'
+    ),
     config.targetSheet || 'N/A',
     <Badge key={`s-${config.id}`} tone={config.status === 'active' ? 'success' : 'info'}>
       {config.status}

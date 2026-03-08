@@ -4,23 +4,11 @@ const authRepo = new GoogleAuthRepository();
 
 /**
  * GET /api/google/status
- * Check if user has any valid Google auth
- * SECURITY: Now requires storeId for proper data isolation
+ * Check if any valid Google auth exists
  */
 export async function checkGoogleAuth(req, res) {
   try {
-    const {userId, storeId} = req.query;
-
-    if (!userId) {
-      return res.status(400).json({success: false, error: 'userId is required'});
-    }
-
-    if (!storeId) {
-      return res.status(400).json({success: false, error: 'storeId is required for security'});
-    }
-
-    // SECURITY FIX: Use store-scoped method
-    const allRecords = await authRepo.getAllByStoreAndUser(storeId, userId);
+    const allRecords = await authRepo.getAll();
     const validRecord = allRecords.find(r => r.refreshToken);
 
     if (!validRecord) {

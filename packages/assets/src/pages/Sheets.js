@@ -8,6 +8,7 @@ import {
   useSetIndexFiltersMode,
   Banner,
   SkeletonBodyText,
+  Modal,
   Select
 } from '@shopify/polaris';
 import {useGoogleAuth} from '../hooks/useGoogleAuth';
@@ -26,10 +27,6 @@ export default function Sheets() {
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  // Store selector state (must be before useGoogleAuth)
-  const [stores, setStores] = useState([]);
-  const [selectedStoreId, setSelectedStoreId] = useState('');
-
   const {
     authenticated,
     loading: authLoading,
@@ -37,7 +34,7 @@ export default function Sheets() {
     setError: setAuthError,
     startAuth,
     checkAuth
-  } = useGoogleAuth(selectedStoreId);
+  } = useGoogleAuth();
   const {openPicker, loading: pickerLoading, error: pickerError} = useGooglePicker();
 
   // Tab state from URL
@@ -53,7 +50,6 @@ export default function Sheets() {
     [setSearchParams]
   );
 
-  // IndexFilters tabs (rendered inside the toolbar)
   const indexFiltersTabs = [
     {id: 'accounts', content: 'Accounts'},
     {id: 'sheets', content: 'Sheets'}
@@ -93,6 +89,13 @@ export default function Sheets() {
   const [pendingDisconnectEmails, setPendingDisconnectEmails] = useState([]);
   const [disconnecting, setDisconnecting] = useState(false);
 
+  // Store picker modal state (for add sheet action)
+  const [stores, setStores] = useState([]);
+  const [storePickerOpen, setStorePickerOpen] = useState(false);
+  const [storePickerStoreId, setStorePickerStoreId] = useState('');
+  const [pendingPickerEmail, setPendingPickerEmail] = useState(null);
+  const [pendingPickerData, setPendingPickerData] = useState(null);
+
   // Ref dedup for StrictMode
   const lastSheetsFetchKeyRef = useRef(null);
   const lastAccountsFetchKeyRef = useRef(null);
@@ -108,7 +111,7 @@ export default function Sheets() {
         const result = await res.json();
         if (result.success && result.data?.length > 0) {
           setStores(result.data);
-          setSelectedStoreId(result.data[0].id);
+          setStorePickerStoreId(result.data[0].id);
         }
       } catch (err) {
         console.error('Error fetching stores:', err);
@@ -140,19 +143,19 @@ export default function Sheets() {
 
   // Fetch sheets when search changes (also handles initial load)
   useEffect(() => {
-    const key = `sheets:${activeSheetSearch}:${selectedStoreId}`;
+    const key = `sheets:${activeSheetSearch}`;
     if (lastSheetsFetchKeyRef.current === key) return;
     lastSheetsFetchKeyRef.current = key;
     fetchSheets(1, activeSheetSearch);
-  }, [activeSheetSearch, selectedStoreId]);
+  }, [activeSheetSearch]);
 
-  // Fetch accounts when search or store changes (also handles initial load)
+  // Fetch accounts when search changes (also handles initial load)
   useEffect(() => {
-    const key = `accounts:${activeAccountSearch}:${selectedStoreId}`;
+    const key = `accounts:${activeAccountSearch}`;
     if (lastAccountsFetchKeyRef.current === key) return;
     lastAccountsFetchKeyRef.current = key;
     fetchAccounts(1, activeAccountSearch);
-  }, [activeAccountSearch, selectedStoreId]);
+  }, [activeAccountSearch]);
 
   // Search handlers
   const handleSheetSearchChange = useCallback(value => {
@@ -193,7 +196,6 @@ export default function Sheets() {
         limit: String(PAGE_LIMIT)
       });
       if (search) params.set('search', search);
-      if (selectedStoreId) params.set('storeId', selectedStoreId);
 
       const response = await api(`/api/sheets?${params}`);
       const result = await response.json();
@@ -216,7 +218,6 @@ export default function Sheets() {
         limit: String(PAGE_LIMIT)
       });
       if (search) params.set('search', search);
-      if (selectedStoreId) params.set('storeId', selectedStoreId);
 
       const response = await api(`/api/google/connected-accounts?${params}`);
       const result = await response.json();
@@ -241,20 +242,16 @@ export default function Sheets() {
     [sheetsPagination.page, accountsPagination.page, activeSheetSearch, activeAccountSearch]
   );
 
-  const saveSheet = useCallback(
-    async (spreadsheet, refreshToken, googleEmail) => {
-      if (!selectedStoreId) {
-        setError('Please select a store first');
-        return;
-      }
+  // Save sheet with a specific storeId
+  const saveSheetToStore = useCallback(
+    async (storeId, spreadsheet, googleEmail) => {
       try {
         setAddingSheet(true);
         const body = {
           spreadsheetId: spreadsheet.spreadsheetId,
           name: spreadsheet.name,
-          storeId: selectedStoreId
+          storeId
         };
-        if (refreshToken) body.refreshToken = refreshToken;
         if (googleEmail) body.googleEmail = googleEmail;
 
         const response = await api('/api/sheets/add', {
@@ -278,7 +275,7 @@ export default function Sheets() {
         setAddingSheet(false);
       }
     },
-    [refreshData, selectedStoreId]
+    [refreshData]
   );
 
   const handleConnectAccount = useCallback(async () => {
@@ -374,7 +371,7 @@ export default function Sheets() {
         const response = await api('/api/google/bulk-disconnect-accounts', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({emails: pendingDisconnectEmails, storeId: selectedStoreId})
+          body: JSON.stringify({emails: pendingDisconnectEmails})
         });
         const result = await response.json();
         if (result.success) {
@@ -390,7 +387,7 @@ export default function Sheets() {
         const response = await api('/api/google/disconnect-account', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({googleEmail: pendingDisconnectEmail, storeId: selectedStoreId})
+          body: JSON.stringify({googleEmail: pendingDisconnectEmail})
         });
         const result = await response.json();
         if (result.success) {
@@ -420,6 +417,7 @@ export default function Sheets() {
     setPendingDisconnectEmails([]);
   }, []);
 
+  // --- Add sheet from account (opens picker, then store picker modal) ---
   const handleAddSheetFromAccount = useCallback(
     async email => {
       try {
@@ -427,7 +425,6 @@ export default function Sheets() {
         setError(null);
 
         const tokenParams = new URLSearchParams({googleEmail: email});
-        if (selectedStoreId) tokenParams.set('storeId', selectedStoreId);
         const res = await api(`/api/google/account-token?${tokenParams}`);
         const result = await res.json();
 
@@ -442,7 +439,19 @@ export default function Sheets() {
           appId: result.data.appId,
           onCancel: () => setAddingSheet(false),
           onSelect: async selected => {
-            await saveSheet(selected, undefined, email);
+            // If only one store, save directly
+            if (stores.length === 1) {
+              await saveSheetToStore(stores[0].id, selected, email);
+            } else if (stores.length > 1) {
+              // Show store picker modal
+              setPendingPickerEmail(email);
+              setPendingPickerData(selected);
+              setStorePickerStoreId(stores[0].id);
+              setStorePickerOpen(true);
+            } else {
+              setError('No stores available. Please connect a store first.');
+              setAddingSheet(false);
+            }
           }
         });
       } catch (err) {
@@ -450,8 +459,24 @@ export default function Sheets() {
         setAddingSheet(false);
       }
     },
-    [openPicker, saveSheet, selectedStoreId]
+    [openPicker, saveSheetToStore, stores]
   );
+
+  // Store picker modal confirm
+  const handleStorePickerConfirm = useCallback(async () => {
+    if (!storePickerStoreId || !pendingPickerData) return;
+    setStorePickerOpen(false);
+    await saveSheetToStore(storePickerStoreId, pendingPickerData, pendingPickerEmail);
+    setPendingPickerData(null);
+    setPendingPickerEmail(null);
+  }, [storePickerStoreId, pendingPickerData, pendingPickerEmail, saveSheetToStore]);
+
+  const handleStorePickerClose = useCallback(() => {
+    setStorePickerOpen(false);
+    setPendingPickerData(null);
+    setPendingPickerEmail(null);
+    setAddingSheet(false);
+  }, []);
 
   const displayError = error || authError || pickerError;
 
@@ -499,17 +524,6 @@ export default function Sheets() {
             >
               {displayError}
             </Banner>
-          </Layout.Section>
-        )}
-
-        {stores.length > 0 && (
-          <Layout.Section>
-            <Select
-              label="Store"
-              options={stores.map(s => ({label: s.name || s.shopDomain, value: s.id}))}
-              value={selectedStoreId}
-              onChange={setSelectedStoreId}
-            />
           </Layout.Section>
         )}
 
@@ -582,6 +596,28 @@ export default function Sheets() {
         pendingDisconnectEmail={pendingDisconnectEmail}
         pendingDisconnectEmails={pendingDisconnectEmails}
       />
+
+      {/* Store picker modal — shown when adding a sheet and multiple stores exist */}
+      <Modal
+        open={storePickerOpen}
+        onClose={handleStorePickerClose}
+        title="Select a store"
+        primaryAction={{
+          content: 'Add sheet',
+          onAction: handleStorePickerConfirm,
+          loading: addingSheet
+        }}
+        secondaryActions={[{content: 'Cancel', onAction: handleStorePickerClose}]}
+      >
+        <Modal.Section>
+          <Select
+            label="Store"
+            options={stores.map(s => ({label: s.name || s.shopDomain, value: s.id}))}
+            value={storePickerStoreId}
+            onChange={setStorePickerStoreId}
+          />
+        </Modal.Section>
+      </Modal>
     </Page>
   );
 }

@@ -14,10 +14,9 @@ import {
 import {EditIcon, DeleteIcon} from '@shopify/polaris-icons';
 
 function formatBalance(balance) {
-  if (!balance) return null;
-  return new Intl.NumberFormat('en-US', {style: 'currency', currency: balance.currency}).format(
-    balance.amount
-  );
+  if (!balance || !balance.amount) return null;
+  const currency = balance.currency || balance.currencyCode || 'USD';
+  return new Intl.NumberFormat('en-US', {style: 'currency', currency}).format(balance.amount);
 }
 
 /**

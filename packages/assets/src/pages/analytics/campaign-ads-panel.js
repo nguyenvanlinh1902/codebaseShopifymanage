@@ -1,15 +1,5 @@
 import React, {useState, useEffect} from 'react';
-import {
-  BlockStack,
-  InlineStack,
-  Text,
-  Select,
-  DataTable,
-  SkeletonBodyText,
-  Banner,
-  Badge,
-  Card
-} from '@shopify/polaris';
+import {BlockStack, InlineStack, Text, Select, DataTable, SkeletonBodyText, Banner, Badge} from '@shopify/polaris';
 import {api} from '../../helpers/api';
 
 function formatUSD(val) {
@@ -18,17 +8,41 @@ function formatUSD(val) {
   return new Intl.NumberFormat('en-US', {style: 'currency', currency: 'USD'}).format(num);
 }
 
+function formatDay(val) {
+  if (!val) return '';
+  try {
+    return new Date(val).toLocaleDateString('en-US', {month: 'short', day: 'numeric'});
+  } catch {
+    return String(val);
+  }
+}
+
+const TIME_OPTIONS = [
+  {label: 'This month', value: 'this_month'},
+  {label: 'Last 7 days', value: 'last_7'},
+  {label: 'Last 30 days', value: 'last_30'},
+  {label: 'Last month', value: 'last_month'},
+  {label: 'This year', value: 'this_year'}
+];
+
+const TIME_PARAMS = {
+  this_month: {since: 'startOfMonth(0m)', until: 'today'},
+  last_7: {since: '-7d', until: 'today'},
+  last_30: {since: '-30d', until: 'today'},
+  last_month: {since: 'startOfMonth(-1m)', until: 'endOfMonth(-1m)'},
+  this_year: {since: 'startOfYear(0y)', until: 'today'}
+};
+
 /**
- * Campaign Ads Panel — uses shopifyqlQuery to fetch shop_campaign_insights per store.
- * Requires read_analytics scope.
+ * Campaign Ads Panel — clean display of ad spend data via ShopifyQL.
  */
 export default function CampaignAdsPanel({stores = []}) {
   const [selectedStoreId, setSelectedStoreId] = useState('');
+  const [timePeriod, setTimePeriod] = useState('this_month');
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
 
-  // Auto-select first store
   useEffect(() => {
     if (stores.length > 0 && !selectedStoreId) {
       setSelectedStoreId(stores[0].id);
@@ -36,15 +50,22 @@ export default function CampaignAdsPanel({stores = []}) {
   }, [stores]);
 
   useEffect(() => {
-    if (selectedStoreId) fetchCampaignAds(selectedStoreId);
-  }, [selectedStoreId]);
+    if (selectedStoreId) fetchCampaignAds(selectedStoreId, timePeriod);
+  }, [selectedStoreId, timePeriod]);
 
-  const fetchCampaignAds = async storeId => {
+  const fetchCampaignAds = async (storeId, period) => {
     setLoading(true);
     setError('');
     setData(null);
     try {
-      const res = await api(`/api/analytics/campaign-ads?storeId=${storeId}`);
+      const params = TIME_PARAMS[period] || TIME_PARAMS.this_month;
+      const qs = new URLSearchParams({
+        storeId,
+        since: params.since,
+        until: params.until,
+        compareTo: 'none'
+      });
+      const res = await api(`/api/analytics/campaign-ads?${qs}`);
       const result = await res.json();
       if (result.success) {
         setData(result.data);
@@ -60,48 +81,68 @@ export default function CampaignAdsPanel({stores = []}) {
 
   const storeOptions = stores.map(s => ({label: s.name || s.shopDomain, value: s.id}));
 
-  // Parse rows: columns = [{name, displayName, dataType}], rows = [[val, val, ...], ...]
-  // unformattedData is array of arrays
-  const rows = data?.rows || [];
+  // Parse and clean data
   const columns = data?.columns || [];
+  const rawRows = data?.rows || [];
+  const parsedRows = typeof rawRows === 'string' ? JSON.parse(rawRows) : rawRows;
+  const allRows = Array.isArray(parsedRows)
+    ? parsedRows.map(row => (Array.isArray(row) ? row : columns.map(c => row[c.name] ?? '')))
+    : [];
 
-  // Find ad_spend column index for formatting
-  const headings = columns.map(c => c.displayName || c.name);
-  const spendColIndexes = columns
-    .map((c, i) => (c.name.includes('ad_spend') ? i : -1))
-    .filter(i => i >= 0);
+  // Filter out totals row and comparison columns
+  const dayColIdx = columns.findIndex(c => c.name === 'day');
+  const spendColIdx = columns.findIndex(c => c.name === 'shop_campaign_ad_spend');
 
-  const tableRows = rows.map(row =>
-    row.map((cell, i) => (spendColIndexes.includes(i) ? formatUSD(cell) : cell))
-  );
+  const hasData = dayColIdx >= 0 && spendColIdx >= 0;
+  const displayRows = hasData
+    ? allRows
+        .filter(row => row[dayColIdx] && row[dayColIdx] !== 'Total')
+        .map(row => [formatDay(row[dayColIdx]), formatUSD(row[spendColIdx])])
+    : [];
 
-  // Calculate total spend from last row if WITH TOTALS was used
-  const totalSpend = rows.length > 0 ? rows[rows.length - 1]?.[spendColIndexes[0]] : null;
+  // Total from all rows
+  const totalSpend = hasData
+    ? allRows.reduce((sum, row) => {
+        const val = parseFloat(row[spendColIdx]);
+        return sum + (isNaN(val) ? 0 : val);
+      }, 0)
+    : 0;
 
   return (
     <BlockStack gap="400">
-      <InlineStack align="space-between" blockAlign="center" wrap={false}>
+      <InlineStack align="space-between" blockAlign="end" wrap>
         <BlockStack gap="100">
-          <Text variant="headingMd" as="h2">Shop Campaign Ad Spend</Text>
-          <Text variant="bodySm" tone="subdued">Month to date vs previous month — via ShopifyQL</Text>
+          <Text variant="headingMd" as="h2">Campaign Ad Spend</Text>
+          <Text variant="bodySm" tone="subdued">Daily ad spend via ShopifyQL</Text>
         </BlockStack>
-        {storeOptions.length > 0 && (
-          <div style={{minWidth: 220}}>
+        <InlineStack gap="300">
+          <div style={{minWidth: 160}}>
             <Select
-              label=""
+              label="Period"
               labelHidden
-              options={storeOptions}
-              value={selectedStoreId}
-              onChange={setSelectedStoreId}
+              options={TIME_OPTIONS}
+              value={timePeriod}
+              onChange={setTimePeriod}
             />
           </div>
-        )}
+          {storeOptions.length > 0 && (
+            <div style={{minWidth: 220}}>
+              <Select
+                label="Store"
+                labelHidden
+                options={storeOptions}
+                value={selectedStoreId}
+                onChange={setSelectedStoreId}
+              />
+            </div>
+          )}
+        </InlineStack>
       </InlineStack>
 
-      {totalSpend !== null && !loading && (
+      {totalSpend > 0 && !loading && (
         <InlineStack gap="200" blockAlign="center">
           <Text variant="heading2xl" as="p">{formatUSD(totalSpend)}</Text>
-          <Badge tone="info">MTD Total</Badge>
+          <Badge tone="info">Total</Badge>
         </InlineStack>
       )}
 
@@ -109,17 +150,16 @@ export default function CampaignAdsPanel({stores = []}) {
 
       {loading && <SkeletonBodyText lines={6} />}
 
-      {!loading && !error && tableRows.length > 0 && (
+      {!loading && !error && displayRows.length > 0 && (
         <DataTable
-          columnContentTypes={columns.map(c =>
-            c.dataType === 'Money' || c.name.includes('spend') ? 'numeric' : 'text'
-          )}
-          headings={headings}
-          rows={tableRows}
+          columnContentTypes={['text', 'numeric']}
+          headings={['Date', 'Ad Spend']}
+          rows={displayRows}
+          totals={totalSpend > 0 ? ['', formatUSD(totalSpend)] : undefined}
         />
       )}
 
-      {!loading && !error && tableRows.length === 0 && data && (
+      {!loading && !error && displayRows.length === 0 && data && (
         <Text tone="subdued">No campaign data for this period.</Text>
       )}
 

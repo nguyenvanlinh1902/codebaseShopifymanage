@@ -9,24 +9,14 @@ const sheetRepo = new SheetRepository();
 /**
  * GET /api/google/picker-token
  * Get fresh access token + config for Google Picker
- * SECURITY: Now requires storeId for proper data isolation
  */
 export async function getPickerToken(req, res) {
   try {
-    const {userId, storeId} = req.query;
+    // Find any valid auth record with a refresh token
+    const allRecords = await authRepo.getAll();
+    const authRecord = allRecords.find(r => r.refreshToken);
 
-    if (!userId) {
-      return res.status(400).json({success: false, error: 'userId is required'});
-    }
-
-    if (!storeId) {
-      return res.status(400).json({success: false, error: 'storeId is required for security'});
-    }
-
-    // SECURITY FIX: Use store-scoped method
-    const authRecord = await authRepo.getByStoreAndUser(storeId, userId);
-
-    if (!authRecord || !authRecord.refreshToken) {
+    if (!authRecord) {
       return res.status(401).json({success: false, error: 'Not authenticated with Google'});
     }
 
@@ -54,34 +44,29 @@ export async function getPickerToken(req, res) {
 /**
  * GET /api/google/account-token
  * Get fresh access token for a specific Google account
- * SECURITY: Now requires storeId for proper data isolation
  */
 export async function getAccountToken(req, res) {
   try {
-    const {userId, googleEmail, storeId} = req.query;
+    const {googleEmail} = req.query;
 
-    if (!userId || !googleEmail) {
-      return res.status(400).json({success: false, error: 'userId and googleEmail are required'});
-    }
-
-    if (!storeId) {
-      return res.status(400).json({success: false, error: 'storeId is required for security'});
+    if (!googleEmail) {
+      return res.status(400).json({success: false, error: 'googleEmail is required'});
     }
 
     const appId = GOOGLE_OAUTH_CONFIG.clientId?.split('-')[0] || '';
 
-    // Find refresh_token: auth records first, then sheet records
-    // SECURITY FIX: Use store-scoped methods
+    // Find refresh_token from auth records or sheets by googleEmail
     let refreshToken = null;
 
-    const authRecord = await authRepo.getByStoreUserAndEmail(storeId, userId, googleEmail);
+    const allAuthRecords = await authRepo.getAll();
+    const authRecord = allAuthRecords.find(r => r.googleEmail === googleEmail && r.refreshToken);
     if (authRecord) {
       refreshToken = authRecord.refreshToken;
     }
 
     if (!refreshToken) {
-      const userSheets = await sheetRepo.getByStoreAndUser(storeId, userId);
-      const donor = userSheets.find(s => s.googleEmail === googleEmail && s.refreshToken);
+      const allSheets = await sheetRepo.getAll();
+      const donor = allSheets.find(s => s.googleEmail === googleEmail && s.refreshToken);
       if (donor) refreshToken = donor.refreshToken;
     }
 

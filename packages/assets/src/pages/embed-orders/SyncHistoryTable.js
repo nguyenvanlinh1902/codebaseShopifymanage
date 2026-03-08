@@ -10,7 +10,19 @@ export default function SyncHistoryTable({syncConfigs}) {
   }
 
   const configRows = syncConfigs.map(config => [
-    config.sheetName || 'N/A',
+    config.spreadsheetId ? (
+      <a
+        key={`link-${config.id}`}
+        href={`https://docs.google.com/spreadsheets/d/${config.spreadsheetId}/edit`}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{textDecoration: 'none', color: '#2c6ecb'}}
+      >
+        {config.sheetName || 'N/A'}
+      </a>
+    ) : (
+      config.sheetName || 'N/A'
+    ),
     config.targetSheet || 'N/A',
     <Badge key={`status-${config.id}`} tone={config.status === 'active' ? 'success' : 'info'}>
       {config.status}

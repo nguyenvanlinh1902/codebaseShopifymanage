@@ -279,6 +279,14 @@ export class GoogleAuthRepository {
   }
 
   /**
+   * Get ALL auth records (no filter)
+   */
+  async getAll() {
+    const snapshot = await this.collection.get();
+    return snapshot.docs.map(doc => ({id: doc.id, ...doc.data()}));
+  }
+
+  /**
    * Delete auth record for a user (legacy)
    * @deprecated Use deleteByStore for proper data isolation
    */

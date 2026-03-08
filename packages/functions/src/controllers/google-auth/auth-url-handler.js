@@ -7,11 +7,13 @@ import {createOAuth2Client} from './oauth-client-factory.js';
  */
 export async function getGoogleAuthUrl(req, res) {
   try {
-    const {userId, mode, storeId} = req.query;
+    const {mode, storeId} = req.query;
+    // Use userId from JWT middleware (req.userId) — req.query.userId is not sent by frontend
+    const userId = req.userId || req.query.userId || '';
     const oauth2Client = createOAuth2Client();
 
     const state = JSON.stringify({
-      userId: userId || '',
+      userId,
       mode: mode || 'connect',
       storeId: storeId || ''
     });

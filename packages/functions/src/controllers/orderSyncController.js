@@ -6,6 +6,7 @@ import {StoreRepository} from '../repositories/storeRepository.js';
 import {SheetRepository} from '../repositories/sheetRepository.js';
 import {ShopifyService} from '../services/shopifyService.js';
 import {GoogleSheetsService} from '../services/googleSheetsService.js';
+import {GoogleAuthRepository} from '../repositories/googleAuthRepository.js';
 import crypto from 'crypto';
 import shopifyConfig from '../config/shopify.js';
 
@@ -15,19 +16,21 @@ const orderSyncQueueRepo = new OrderSyncQueueRepository();
 const orderSyncJobRepo = new OrderSyncJobRepository();
 const storeRepo = new StoreRepository();
 const sheetRepo = new SheetRepository();
+const authRepo = new GoogleAuthRepository();
 
 /**
  * Setup order sync configuration
  */
 export async function setupSync(req, res) {
   try {
-    const {userId, storeId, sheetId, sheetName, targetSheetId} = req.body;
+    const {storeId, sheetId, sheetName, targetSheetId} = req.body;
+    const userId = req.body.userId || 'default-user';
 
     // Validate input
-    if (!userId || !storeId || !sheetId) {
+    if (!storeId || !sheetId) {
       return res.status(400).json({
         success: false,
-        error: 'userId, storeId, and sheetId are required'
+        error: 'storeId and sheetId are required'
       });
     }
 
@@ -125,7 +128,7 @@ export async function processOrderSyncQueue() {
             ? new GoogleSheetsService(sheet.credentials)
             : sheet.refreshToken
             ? await GoogleSheetsService.createFromRefreshToken(sheet.refreshToken)
-            : await GoogleSheetsService.createForUser(sheet.userId);
+            : await GoogleSheetsService.createFromAnyAuth(authRepo);
         } catch (error) {
           console.error(`[OrderSync] Failed to init sheets service for job ${syncJobId}:`, error);
           continue;
@@ -474,7 +477,7 @@ export async function resyncFailedOrders(req, res) {
       ? new GoogleSheetsService(sheet.credentials)
       : sheet.refreshToken
       ? await GoogleSheetsService.createFromRefreshToken(sheet.refreshToken)
-      : await GoogleSheetsService.createForUser(sheet.userId);
+      : await GoogleSheetsService.createFromAnyAuth(authRepo);
 
     let resynced = 0;
     let failed = 0;
@@ -543,19 +546,14 @@ export async function getSyncStats(req, res) {
  */
 export async function getSyncConfigs(req, res) {
   try {
-    const {userId, storeId} = req.query;
-
-    if (!userId) {
-      return res.status(400).json({success: false, error: 'userId is required'});
-    }
+    const {storeId} = req.query;
 
     let configs;
     if (storeId) {
       configs = await orderSyncRepo.getSyncJobsByStore(storeId);
     } else {
-      // Get all stores (standalone returns ALL, embed returns user-scoped)
-      const stores =
-        userId === 'default-user' ? await storeRepo.getAll() : await storeRepo.getByUser(userId);
+      // Get all configs across all stores
+      const stores = await storeRepo.getAll();
       configs = [];
       for (const store of stores) {
         const storeConfigs = await orderSyncRepo.getSyncJobsByStore(store.id);
@@ -643,7 +641,7 @@ export async function handleOrderWebhook(req, res) {
         ? new GoogleSheetsService(sheet.credentials)
         : sheet.refreshToken
         ? await GoogleSheetsService.createFromRefreshToken(sheet.refreshToken)
-        : await GoogleSheetsService.createForUser(sheet.userId);
+        : await GoogleSheetsService.createFromAnyAuth(authRepo);
 
       await sheetsService.appendOrder(
         syncConfig.spreadsheetId,

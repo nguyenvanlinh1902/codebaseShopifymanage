@@ -28,10 +28,13 @@ import Products from './pages/Products';
 import Orders from './pages/Orders';
 import Tracking from './pages/Tracking';
 import Analytics from './pages/Analytics';
+import Balance from './pages/Balance';
+import CampaignAds from './pages/CampaignAds';
 import Themes from './pages/Themes';
 import SetupStore from './pages/SetupStore';
 import Stores from './pages/Stores';
 import Users from './pages/Users';
+import DevWebhooks from './pages/DevWebhooks';
 import NotFound from './pages/NotFound';
 import LoginPage from './pages/LoginPage';
 import SetupAdminPage from './pages/SetupAdminPage';
@@ -153,8 +156,11 @@ function StandaloneFrame() {
         <Route path="/tracking" element={<FeatureGuard feature="tracking"><Tracking /></FeatureGuard>} />
         <Route path="/themes" element={<FeatureGuard feature="themes"><Themes /></FeatureGuard>} />
         <Route path="/analytics" element={<FeatureGuard feature="analytics"><Analytics /></FeatureGuard>} />
+        <Route path="/balance" element={<FeatureGuard feature="analytics"><Balance /></FeatureGuard>} />
+        <Route path="/campaign-ads" element={<FeatureGuard feature="analytics"><CampaignAds /></FeatureGuard>} />
         <Route path="/setup" element={<FeatureGuard feature="setup"><SetupStore /></FeatureGuard>} />
         <Route path="/users" element={isAdmin ? <Users /> : <NotFound />} />
+        <Route path="/dev/webhooks" element={isAdmin ? <DevWebhooks /> : <NotFound />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </StandaloneLayout>

@@ -3,6 +3,7 @@ import {StoreRepository} from '../repositories/storeRepository.js';
 import {SheetRepository} from '../repositories/sheetRepository.js';
 import {ShopifyService} from '../services/shopifyService.js';
 import {GoogleSheetsService} from '../services/googleSheetsService.js';
+import {GoogleAuthRepository} from '../repositories/googleAuthRepository.js';
 import {
   parseTrackingExcel,
   validateTrackingRecord,
@@ -23,13 +24,14 @@ const TRACKING_IMPORT_TOPIC = 'tracking-import';
  */
 export async function uploadAndImport(req, res) {
   try {
-    const {userId, storeId, excelBuffer, fileName} = req.body;
+    const {storeId, excelBuffer, fileName} = req.body;
+    const userId = req.body.userId || 'default-user';
 
     // Task 1: Validate input
-    if (!userId || !storeId || !excelBuffer) {
+    if (!storeId || !excelBuffer) {
       return res.status(400).json({
         success: false,
-        error: 'userId, storeId, and excelBuffer are required'
+        error: 'storeId and excelBuffer are required'
       });
     }
 
@@ -154,22 +156,13 @@ export async function uploadAndImport(req, res) {
  */
 export async function getImportHistory(req, res) {
   try {
-    const {userId, storeId} = req.query;
-
-    if (!userId) {
-      return res.status(400).json({
-        success: false,
-        error: 'userId is required'
-      });
-    }
+    const {storeId} = req.query;
 
     let imports;
     if (storeId) {
       imports = await trackingHistoryRepo.getByStore(storeId);
-    } else if (userId === 'default-user') {
-      imports = await trackingHistoryRepo.getAll();
     } else {
-      imports = await trackingHistoryRepo.getByUser(userId);
+      imports = await trackingHistoryRepo.getAll();
     }
 
     return res.json({
@@ -242,7 +235,7 @@ export async function downloadTemplate(req, res) {
 async function initSheetsService(sheet) {
   if (sheet.credentials) return new GoogleSheetsService(sheet.credentials);
   if (sheet.refreshToken) return GoogleSheetsService.createFromRefreshToken(sheet.refreshToken);
-  return GoogleSheetsService.createForUser(sheet.userId);
+  return GoogleSheetsService.createFromAnyAuth(new GoogleAuthRepository());
 }
 
 /**
@@ -300,12 +293,13 @@ export async function previewSheet(req, res) {
  */
 export async function importFromSheet(req, res) {
   try {
-    const {userId, storeId, sheetId, tabName} = req.body;
+    const {storeId, sheetId, tabName} = req.body;
+    const userId = req.body.userId || 'default-user';
 
-    if (!userId || !storeId || !sheetId || !tabName) {
+    if (!storeId || !sheetId || !tabName) {
       return res.status(400).json({
         success: false,
-        error: 'userId, storeId, sheetId, and tabName are required'
+        error: 'storeId, sheetId, and tabName are required'
       });
     }
 

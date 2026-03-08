@@ -15,13 +15,11 @@ const productRepo = new ProductRepository();
  */
 export async function getProducts(req, res) {
   try {
-    const {userId, storeId, importId, page, limit, search, vendor, store} = req.query;
+    const {storeId, importId, page, limit, search, vendor, store} = req.query;
+    const userId = req.query.userId || 'default-user';
 
-    if (!userId && !storeId && !importId) {
-      return res.status(400).json({
-        success: false,
-        error: 'userId, storeId, or importId is required'
-      });
+    if (!storeId && !importId) {
+      // Fall through to get all products
     }
 
     // Handle import ID separately (no pagination needed usually)
@@ -98,14 +96,7 @@ export async function getProducts(req, res) {
  */
 export async function getProductFilterOptions(req, res) {
   try {
-    const {userId} = req.query;
-
-    if (!userId) {
-      return res.status(400).json({
-        success: false,
-        error: 'userId is required'
-      });
-    }
+    const userId = req.query.userId || 'default-user';
 
     const options = await productRepo.getFilterOptions(userId);
 

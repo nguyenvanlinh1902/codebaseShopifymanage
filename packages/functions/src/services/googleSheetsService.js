@@ -55,6 +55,18 @@ export class GoogleSheetsService {
   }
 
   /**
+   * Factory: create a service instance from any available auth record
+   */
+  static async createFromAnyAuth(authRepo) {
+    const allRecords = await authRepo.getAll();
+    const record = allRecords.find(r => r.refreshToken);
+    if (!record) {
+      throw new Error('No Google auth found. Please connect a Google account.');
+    }
+    return GoogleSheetsService.createFromRefreshToken(record.refreshToken);
+  }
+
+  /**
    * Initialize Google Sheets API with OAuth2 credentials
    */
   initializeAuth(credentials) {

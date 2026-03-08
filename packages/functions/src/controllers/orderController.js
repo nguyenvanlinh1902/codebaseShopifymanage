@@ -3,10 +3,12 @@ import {SheetRepository} from '../repositories/sheetRepository.js';
 import {SyncJobRepository} from '../repositories/syncJobRepository.js';
 import {GoogleSheetsService} from '../services/googleSheetsService.js';
 import {ShopifyService} from '../services/shopifyService.js';
+import {GoogleAuthRepository} from '../repositories/googleAuthRepository.js';
 
 const storeRepo = new StoreRepository();
 const sheetRepo = new SheetRepository();
 const syncJobRepo = new SyncJobRepository();
+const authRepo = new GoogleAuthRepository();
 
 /**
  * Order Controller
@@ -18,12 +20,13 @@ const syncJobRepo = new SyncJobRepository();
  */
 export async function syncOrders(req, res) {
   try {
-    const {userId, storeId, sheetId, sheetName = 'Orders', params = {}} = req.body;
+    const {storeId, sheetId, sheetName = 'Orders', params = {}} = req.body;
+    const userId = req.body.userId || 'default-user';
 
-    if (!userId || !storeId || !sheetId) {
+    if (!storeId || !sheetId) {
       return res.status(400).json({
         success: false,
-        error: 'userId, storeId, and sheetId are required'
+        error: 'storeId and sheetId are required'
       });
     }
 
@@ -90,7 +93,7 @@ async function processOrderSync(jobId, store, sheet, sheetName, params) {
       ? new GoogleSheetsService(sheet.credentials)
       : sheet.refreshToken
       ? await GoogleSheetsService.createFromRefreshToken(sheet.refreshToken)
-      : await GoogleSheetsService.createForUser(sheet.userId);
+      : await GoogleSheetsService.createFromAnyAuth(authRepo);
     const shopifyService = new ShopifyService({
       shopDomain: store.shopDomain,
       accessToken: store.accessToken
@@ -181,12 +184,12 @@ export async function getOrders(req, res) {
  */
 export async function scheduleOrderSync(req, res) {
   try {
-    const {userId, storeId, sheetId, schedule = 'daily'} = req.body;
+    const {storeId, sheetId, schedule = 'daily'} = req.body;
 
-    if (!userId || !storeId || !sheetId) {
+    if (!storeId || !sheetId) {
       return res.status(400).json({
         success: false,
-        error: 'userId, storeId, and sheetId are required'
+        error: 'storeId and sheetId are required'
       });
     }
 

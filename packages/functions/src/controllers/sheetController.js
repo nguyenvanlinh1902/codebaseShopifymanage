@@ -126,28 +126,11 @@ export async function connectSheet(req, res) {
 }
 
 /**
- * Get all sheets for a user
- * SECURITY: Now requires storeId for proper data isolation
+ * Get all sheets (no store filter — returns everything)
  */
 export async function getSheets(req, res) {
   try {
-    const {userId, page, limit, search, storeId} = req.query;
-
-    if (!userId) {
-      return res.status(400).json({
-        success: false,
-        error: 'userId is required'
-      });
-    }
-
-    const isStandalone = userId === 'default-user';
-
-    if (!isStandalone && !storeId) {
-      return res.status(400).json({
-        success: false,
-        error: 'storeId is required for security'
-      });
-    }
+    const {page, limit, search} = req.query;
 
     const pageNum = Math.max(1, parseInt(page) || 1);
     const limitNum = Math.min(50, Math.max(1, parseInt(limit) || 5));
@@ -155,14 +138,8 @@ export async function getSheets(req, res) {
     let sheets;
     let total;
 
-    if (isStandalone && !storeId) {
-      // Standalone mode: return ALL sheets (no store/user filter)
-      const result = await sheetRepo.getAllPaginated({page: pageNum, limit: limitNum});
-      sheets = result.sheets;
-      total = result.total;
-    } else if (search) {
-      // SECURITY FIX: Fetch all from store-scoped method
-      const allSheets = await sheetRepo.getByStoreAndUser(storeId, userId);
+    if (search) {
+      const allSheets = await sheetRepo.getAll();
       const searchLower = search.toLowerCase();
       const filtered = allSheets.filter(
         s =>
@@ -173,11 +150,7 @@ export async function getSheets(req, res) {
       const offset = (pageNum - 1) * limitNum;
       sheets = filtered.slice(offset, offset + limitNum);
     } else {
-      // SECURITY FIX: Use store-scoped paginated method
-      const result = await sheetRepo.getByStoreAndUserPaginated(storeId, userId, {
-        page: pageNum,
-        limit: limitNum
-      });
+      const result = await sheetRepo.getAllPaginated({page: pageNum, limit: limitNum});
       sheets = result.sheets;
       total = result.total;
     }
@@ -333,12 +306,12 @@ export async function previewSheetData(req, res) {
       });
     }
 
-    // Initialize Google Sheets service (3-tier fallback)
+    // Initialize Google Sheets service
     const sheetsService = sheet.credentials
       ? new GoogleSheetsService(sheet.credentials)
       : sheet.refreshToken
       ? await GoogleSheetsService.createFromRefreshToken(sheet.refreshToken)
-      : await GoogleSheetsService.createForUser(sheet.userId);
+      : await GoogleSheetsService.createFromAnyAuth(authRepo);
 
     // Read data
     const rows = await sheetsService.readSheet(sheet.spreadsheetId, range);
@@ -375,12 +348,12 @@ export async function getSheetTabs(req, res) {
       });
     }
 
-    // Initialize Google Sheets service (3-tier fallback)
+    // Initialize Google Sheets service
     const sheetsService = sheet.credentials
       ? new GoogleSheetsService(sheet.credentials)
       : sheet.refreshToken
       ? await GoogleSheetsService.createFromRefreshToken(sheet.refreshToken)
-      : await GoogleSheetsService.createForUser(sheet.userId);
+      : await GoogleSheetsService.createFromAnyAuth(authRepo);
 
     const spreadsheetInfo = await sheetsService.getSpreadsheetInfo(sheet.spreadsheetId);
 
@@ -398,65 +371,58 @@ export async function getSheetTabs(req, res) {
 }
 
 /**
- * Add sheet from Google Picker selection (new flow)
+ * Add sheet from Google Picker selection
  */
 export async function addSheetFromPicker(req, res) {
   try {
-    const {userId, spreadsheetId, name, refreshToken, googleEmail, storeId} = req.body;
+    const {spreadsheetId, name, refreshToken, googleEmail, storeId} = req.body;
 
-    if (!userId || !spreadsheetId) {
-      return res.status(400).json({
-        success: false,
-        error: 'userId and spreadsheetId are required'
-      });
+    if (!spreadsheetId) {
+      return res.status(400).json({success: false, error: 'spreadsheetId is required'});
     }
 
     if (!storeId) {
-      return res.status(400).json({
-        success: false,
-        error: 'storeId is required'
-      });
+      return res.status(400).json({success: false, error: 'storeId is required'});
     }
 
-    // Check if this store already has this sheet (prevent duplicate)
-    // Note: Different stores CAN add the same sheet, but one store cannot add the same sheet twice
+    // Check duplicate within same store
     const existing = await sheetRepo.getByStoreAndSpreadsheet(storeId, spreadsheetId);
     if (existing) {
-      return res.status(400).json({
-        success: false,
-        error: 'This sheet is already added to your store'
-      });
+      return res.status(400).json({success: false, error: 'This sheet is already added to your store'});
     }
 
-    // Determine which token to use and save
+    // Find refresh token: from request, auth records, or existing sheets
     let tokenToSave = refreshToken;
     let emailToSave = googleEmail;
 
-    // Fallback 1: centralized auth (store-scoped)
     if (!tokenToSave) {
-      const authRecord = await authRepo.getByStoreAndUser(storeId, userId);
-      if (authRecord && (!emailToSave || authRecord.googleEmail === emailToSave)) {
-        tokenToSave = authRecord.refreshToken;
-        emailToSave = emailToSave || authRecord.googleEmail;
+      const allAuthRecords = await authRepo.getAll();
+      const match = emailToSave
+        ? allAuthRecords.find(r => r.googleEmail === emailToSave && r.refreshToken)
+        : allAuthRecords.find(r => r.refreshToken);
+      if (match) {
+        tokenToSave = match.refreshToken;
+        emailToSave = emailToSave || match.googleEmail;
       }
     }
 
-    // Fallback 2: copy refreshToken from sibling sheet with same googleEmail
     if (!tokenToSave && emailToSave) {
-      const storeSheets = await sheetRepo.getByStoreAndUser(storeId, userId);
-      const donor = storeSheets.find(s => s.googleEmail === emailToSave && s.refreshToken);
+      const allSheets = await sheetRepo.getAll();
+      const donor = allSheets.find(s => s.googleEmail === emailToSave && s.refreshToken);
       if (donor) tokenToSave = donor.refreshToken;
     }
 
-    // Create service to verify access
-    const sheetsService = tokenToSave
-      ? await GoogleSheetsService.createFromRefreshToken(tokenToSave)
-      : await GoogleSheetsService.createForUser(userId);
+    if (!tokenToSave) {
+      return res.status(400).json({success: false, error: 'No Google auth token found. Please connect a Google account first.'});
+    }
 
+    // Verify access to spreadsheet
+    const sheetsService = await GoogleSheetsService.createFromRefreshToken(tokenToSave);
     const spreadsheetInfo = await sheetsService.getSpreadsheetInfo(spreadsheetId);
 
     // Lookup store to save shopDomain
     const store = await storeRepo.getById(storeId);
+    const userId = req.userId || 'default-user';
 
     const sheet = await sheetRepo.create({
       userId,

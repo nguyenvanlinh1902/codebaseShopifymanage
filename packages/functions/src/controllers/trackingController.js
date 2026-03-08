@@ -3,10 +3,12 @@ import {SheetRepository} from '../repositories/sheetRepository.js';
 import {SyncJobRepository} from '../repositories/syncJobRepository.js';
 import {GoogleSheetsService} from '../services/googleSheetsService.js';
 import {ShopifyService} from '../services/shopifyService.js';
+import {GoogleAuthRepository} from '../repositories/googleAuthRepository.js';
 
 const storeRepo = new StoreRepository();
 const sheetRepo = new SheetRepository();
 const syncJobRepo = new SyncJobRepository();
+const authRepo = new GoogleAuthRepository();
 
 /**
  * Tracking Controller
@@ -18,12 +20,13 @@ const syncJobRepo = new SyncJobRepository();
  */
 export async function updateTracking(req, res) {
   try {
-    const {userId, storeId, sheetId, range} = req.body;
+    const {storeId, sheetId, range} = req.body;
+    const userId = req.body.userId || 'default-user';
 
-    if (!userId || !storeId || !sheetId || !range) {
+    if (!storeId || !sheetId || !range) {
       return res.status(400).json({
         success: false,
-        error: 'userId, storeId, sheetId, and range are required'
+        error: 'storeId, sheetId, and range are required'
       });
     }
 
@@ -89,7 +92,7 @@ async function processTrackingUpdate(jobId, store, sheet, range) {
       ? new GoogleSheetsService(sheet.credentials)
       : sheet.refreshToken
       ? await GoogleSheetsService.createFromRefreshToken(sheet.refreshToken)
-      : await GoogleSheetsService.createForUser(sheet.userId);
+      : await GoogleSheetsService.createFromAnyAuth(authRepo);
     const shopifyService = new ShopifyService({
       shopDomain: store.shopDomain,
       accessToken: store.accessToken
@@ -177,7 +180,7 @@ export async function previewTracking(req, res) {
       ? new GoogleSheetsService(sheet.credentials)
       : sheet.refreshToken
       ? await GoogleSheetsService.createFromRefreshToken(sheet.refreshToken)
-      : await GoogleSheetsService.createForUser(sheet.userId);
+      : await GoogleSheetsService.createFromAnyAuth(authRepo);
 
     // Read tracking data
     const rows = await sheetsService.readSheet(sheet.spreadsheetId, range);

@@ -7,19 +7,17 @@ const authRepo = new GoogleAuthRepository();
 /**
  * POST /api/google/exchange
  * Exchange authorization code for tokens and save (multi-account)
- * SECURITY: Now requires storeId for proper data isolation
  */
 export async function exchangeGoogleCode(req, res) {
   try {
     const {code, userId, storeId} = req.body;
 
-    if (!code || !userId) {
-      return res.status(400).json({success: false, error: 'code and userId are required'});
+    if (!code) {
+      return res.status(400).json({success: false, error: 'code is required'});
     }
 
-    if (!storeId) {
-      return res.status(400).json({success: false, error: 'storeId is required for security'});
-    }
+    const effectiveUserId = userId || 'default-user';
+    const effectiveStoreId = storeId || 'default';
 
     const oauth2Client = createOAuth2Client();
     const {tokens} = await oauth2Client.getToken(code);
@@ -28,8 +26,7 @@ export async function exchangeGoogleCode(req, res) {
     // Try to get user's Google email
     const googleEmail = await getGoogleUserEmail(oauth2Client);
 
-    // SECURITY FIX: Use store-scoped method
-    await authRepo.upsertByStoreAndEmail(storeId, userId, googleEmail, {
+    await authRepo.upsertByStoreAndEmail(effectiveStoreId, effectiveUserId, googleEmail, {
       refreshToken: tokens.refresh_token,
       scopes: GOOGLE_SHEETS_CONFIG.scopes
     });

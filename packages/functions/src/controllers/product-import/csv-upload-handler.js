@@ -82,10 +82,6 @@ export async function parseAndValidateCsvFiles(filesToProcess) {
  * Returns error message if invalid, null if valid
  */
 export function validateUploadInput(userId, targetStoreIds, filesToProcess) {
-  if (!userId) {
-    return 'userId is required';
-  }
-
   if (targetStoreIds.length === 0) {
     return 'At least one store must be selected';
   }

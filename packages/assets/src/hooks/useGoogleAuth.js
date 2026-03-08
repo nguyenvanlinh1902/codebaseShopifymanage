@@ -3,38 +3,23 @@ import {api} from '../helpers/api';
 import {isEmbeddedApp} from '../config/app';
 
 /**
- * Google Auth hook
- * @param {string} storeId - Required in standalone mode for store-scoped API calls
+ * Google Auth hook — checks and manages Google OAuth state
  */
-export function useGoogleAuth(storeId) {
+export function useGoogleAuth() {
   const [authenticated, setAuthenticated] = useState(false);
   const [googleEmail, setGoogleEmail] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const checkedStoreRef = useRef(null);
+  const checkedRef = useRef(false);
 
   const getEndpoint = useCallback(path => {
     return isEmbeddedApp ? `/api/embed${path}` : `/api${path}`;
   }, []);
 
-  // Append storeId to query string for GET requests (standalone only)
-  const withStoreId = useCallback(
-    url => {
-      if (isEmbeddedApp || !storeId) return url;
-      const sep = url.includes('?') ? '&' : '?';
-      return `${url}${sep}storeId=${encodeURIComponent(storeId)}`;
-    },
-    [storeId]
-  );
-
   const checkAuth = useCallback(async () => {
-    if (!storeId && !isEmbeddedApp) {
-      setLoading(false);
-      return;
-    }
     try {
       setLoading(true);
-      const response = await api(withStoreId(getEndpoint('/google/status')));
+      const response = await api(getEndpoint('/google/status'));
       const result = await response.json();
 
       if (result.success && result.data.authenticated) {
@@ -50,27 +35,20 @@ export function useGoogleAuth(storeId) {
     } finally {
       setLoading(false);
     }
-  }, [getEndpoint, withStoreId, storeId]);
+  }, [getEndpoint]);
 
-  // Check auth when storeId becomes available or changes
+  // Check auth on mount
   useEffect(() => {
-    if (isEmbeddedApp) {
-      if (!checkedStoreRef.current) {
-        checkedStoreRef.current = 'embed';
-        checkAuth();
-      }
-      return;
-    }
-    if (storeId && checkedStoreRef.current !== storeId) {
-      checkedStoreRef.current = storeId;
+    if (!checkedRef.current) {
+      checkedRef.current = true;
       checkAuth();
     }
-  }, [storeId, checkAuth]);
+  }, [checkAuth]);
 
   const startAuth = useCallback(() => {
     return new Promise(async (resolve, reject) => {
       try {
-        const response = await api(withStoreId(getEndpoint('/google/auth-url')));
+        const response = await api(getEndpoint('/google/auth-url'));
         const result = await response.json();
         if (!result.success) {
           setError(result.error || 'Failed to get authorization URL');
@@ -116,17 +94,14 @@ export function useGoogleAuth(storeId) {
         reject(err);
       }
     });
-  }, [getEndpoint, withStoreId]);
+  }, [getEndpoint]);
 
   const disconnect = useCallback(async () => {
     try {
-      const body = {};
-      if (!isEmbeddedApp && storeId) body.storeId = storeId;
-
       const response = await api(getEndpoint('/google/disconnect'), {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(body)
+        body: JSON.stringify({})
       });
       const result = await response.json();
       if (result.success) {
@@ -136,12 +111,12 @@ export function useGoogleAuth(storeId) {
     } catch (err) {
       setError('Failed to disconnect');
     }
-  }, [getEndpoint, storeId]);
+  }, [getEndpoint]);
 
   const startAuthForNewAccount = useCallback(() => {
     return new Promise(async (resolve, reject) => {
       try {
-        const response = await api(withStoreId(getEndpoint('/google/auth-url?mode=temp')));
+        const response = await api(getEndpoint('/google/auth-url?mode=temp'));
         const result = await response.json();
         if (!result.success) {
           reject(new Error(result.error || 'Failed to get authorization URL'));
@@ -186,11 +161,11 @@ export function useGoogleAuth(storeId) {
         reject(err);
       }
     });
-  }, [getEndpoint, withStoreId]);
+  }, [getEndpoint]);
 
   const getPickerToken = useCallback(async () => {
     try {
-      const response = await api(withStoreId(getEndpoint('/google/picker-token')));
+      const response = await api(getEndpoint('/google/picker-token'));
       const result = await response.json();
       if (result.success) {
         return result.data;
@@ -200,7 +175,7 @@ export function useGoogleAuth(storeId) {
       setError(err.message);
       return null;
     }
-  }, [getEndpoint, withStoreId]);
+  }, [getEndpoint]);
 
   return {
     authenticated,

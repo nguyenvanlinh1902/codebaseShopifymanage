@@ -122,7 +122,7 @@ export async function initiateInstall(req, res) {
       return res.status(400).json({success: false, error: 'Invalid shop domain'});
     }
 
-    const origin = `${req.protocol}://${req.get('host')}`;
+    const origin = shopifyConfig.appUrl || `${req.protocol}://${req.get('host')}`;
     const statePayload = Buffer.from(JSON.stringify({client_id, client_secret, origin})).toString('base64');
     const redirectUri = `${origin}/api/authMultip/shopify/callback`;
 
@@ -231,8 +231,12 @@ function go(){
 
     if (!tokenResponse.ok) {
       const errorText = await tokenResponse.text();
-      console.error('Token exchange failed:', errorText);
-      return redirectWithError(baseOrigin, 'Failed to exchange authorization code');
+      console.error(`Token exchange failed [${tokenResponse.status}] for ${shopDomain}:`, errorText);
+      console.error('Token exchange details:', {client_id, redirectUri: `${shopifyConfig.appUrl}/api/authMultip/shopify/callback`});
+      const errorMsg = errorText.includes('invalid_client')
+        ? 'Invalid client_id or client_secret. Please check your Partner app credentials and ensure the redirect URI is whitelisted.'
+        : `Token exchange failed (${tokenResponse.status})`;
+      return redirectWithError(baseOrigin, errorMsg);
     }
 
     const tokenData = await tokenResponse.json();
@@ -283,16 +287,21 @@ export async function checkWebhooks(req, res) {
       return res.status(404).json({success: false, error: 'Store not found or no access token'});
     }
 
-    const apiUrl = `https://${shopDomain}.myshopify.com/admin/api/${shopifyConfig.apiVersion}/webhooks.json`;
-    const response = await fetch(apiUrl, {
-      headers: {'X-Shopify-Access-Token': store.accessToken}
-    });
+    const headers = {'X-Shopify-Access-Token': store.accessToken};
+    const shopBase = `https://${shopDomain}.myshopify.com`;
 
-    if (!response.ok) {
-      return res.status(response.status).json({success: false, error: await response.text()});
+    // Fetch webhooks and scopes in parallel
+    // access_scopes uses /admin/oauth/ path (not versioned API)
+    const [webhooksRes, scopesRes] = await Promise.all([
+      fetch(`${shopBase}/admin/api/${shopifyConfig.apiVersion}/webhooks.json`, {headers}),
+      fetch(`${shopBase}/admin/oauth/access_scopes.json`, {headers})
+    ]);
+
+    if (!webhooksRes.ok) {
+      return res.status(webhooksRes.status).json({success: false, error: await webhooksRes.text()});
     }
 
-    const {webhooks} = await response.json();
+    const {webhooks} = await webhooksRes.json();
     const missing = [];
     const wrongAddress = [];
     for (const req of REQUIRED_WEBHOOKS) {
@@ -304,13 +313,34 @@ export async function checkWebhooks(req, res) {
       }
     }
 
+    // Scopes are best-effort (don't fail the whole request if scopes API errors)
+    let scopes = [];
+    let missingScopes = [];
+    let scopesError = null;
+    if (scopesRes.ok) {
+      const scopesData = await scopesRes.json();
+      scopes = scopesData.access_scopes?.map(s => s.handle) || [];
+      // Compare against required scopes from config
+      const requiredScopes = shopifyConfig.scopes
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean);
+      missingScopes = requiredScopes.filter(s => !scopes.includes(s));
+    } else {
+      scopesError = `access_scopes ${scopesRes.status}: ${await scopesRes.text()}`;
+      console.warn(`[${shopDomain}] Scopes fetch failed:`, scopesError);
+    }
+
     return res.json({
       success: true,
       shop: shopDomain,
       registered: webhooks.map(w => ({id: w.id, topic: w.topic, address: w.address})),
       missing,
       wrongAddress,
-      allPresent: missing.length === 0 && wrongAddress.length === 0
+      allPresent: missing.length === 0 && wrongAddress.length === 0,
+      scopes,
+      missingScopes,
+      ...(scopesError && {scopesError})
     });
   } catch (error) {
     console.error('Check webhooks error:', error);
@@ -535,6 +565,87 @@ export async function fixAllWebhooks(req, res) {
     });
   } catch (error) {
     console.error('Fix all webhooks error:', error);
+    return res.status(500).json({success: false, error: error.message});
+  }
+}
+
+/**
+ * GET /api/authMultip/scopes?shop=xxx
+ * Get granted OAuth scopes for a store from Shopify
+ */
+export async function getStoreScopes(req, res) {
+  try {
+    const {shop} = req.query;
+    if (!shop) return res.status(400).json({success: false, error: 'Missing shop param'});
+
+    const shopDomain = normalizeShopDomain(shop);
+    const store = await storeRepo.getByShopDomain(shopDomain);
+    if (!store || !store.accessToken) {
+      return res.status(404).json({success: false, error: 'Store not found or no access token'});
+    }
+
+    const apiUrl = `https://${shopDomain}.myshopify.com/admin/oauth/access_scopes.json`;
+    const response = await fetch(apiUrl, {
+      headers: {'X-Shopify-Access-Token': store.accessToken}
+    });
+
+    if (!response.ok) {
+      return res.status(response.status).json({success: false, error: await response.text()});
+    }
+
+    const data = await response.json();
+    return res.json({
+      success: true,
+      shop: shopDomain,
+      scopes: data.access_scopes?.map(s => s.handle) || [],
+      storedScopes: store.scopes ? store.scopes.split(',').map(s => s.trim()) : []
+    });
+  } catch (error) {
+    console.error('Get scopes error:', error);
+    return res.status(500).json({success: false, error: error.message});
+  }
+}
+
+/**
+ * POST /api/authMultip/webhooks/register?shop=xxx
+ * Register a webhook with a custom URL (useful for local dev/ngrok debugging)
+ * Body: { webhookUrl: string, topic: string }
+ */
+export async function registerWebhook(req, res) {
+  try {
+    const {shop} = req.query;
+    const {webhookUrl, topic = 'orders/create'} = req.body;
+
+    if (!shop || !webhookUrl) {
+      return res.status(400).json({success: false, error: 'Missing shop or webhookUrl'});
+    }
+
+    const shopDomain = normalizeShopDomain(shop);
+    const store = await storeRepo.getByShopDomain(shopDomain);
+    if (!store || !store.accessToken) {
+      return res.status(404).json({success: false, error: 'Store not found or no access token'});
+    }
+
+    const apiUrl = `https://${shopDomain}.myshopify.com/admin/api/${shopifyConfig.apiVersion}/webhooks.json`;
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'X-Shopify-Access-Token': store.accessToken,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({webhook: {topic, address: webhookUrl, format: 'json'}})
+    });
+
+    const data = await response.json();
+    if (response.ok) {
+      return res.json({success: true, webhook: data.webhook});
+    } else if (response.status === 422) {
+      return res.json({success: false, error: 'Webhook already exists for this topic/address', errors: data.errors});
+    } else {
+      return res.status(response.status).json({success: false, error: JSON.stringify(data.errors || data)});
+    }
+  } catch (error) {
+    console.error('Register webhook error:', error);
     return res.status(500).json({success: false, error: error.message});
   }
 }

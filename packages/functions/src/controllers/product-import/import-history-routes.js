@@ -11,16 +11,10 @@ const importHistoryRepo = new ImportHistoryRepository();
  */
 export async function getImportHistory(req, res) {
   try {
-    const {userId, storeId} = req.query;
+    const {storeId} = req.query;
+    const userId = req.query.userId || 'default-user';
 
-    if (!userId) {
-      return res.status(400).json({
-        success: false,
-        error: 'userId is required'
-      });
-    }
-
-    const isStandalone = userId === 'default-user';
+    const isStandalone = true;
 
     let imports;
     if (storeId) {
@@ -138,17 +132,9 @@ export async function getImportStatus(req, res) {
  */
 export async function getSuccessfulImports(req, res) {
   try {
-    const {userId} = req.query;
+    const userId = req.query.userId || 'default-user';
 
-    if (!userId) {
-      return res.status(400).json({
-        success: false,
-        error: 'userId is required'
-      });
-    }
-
-    const isStandalone = userId === 'default-user';
-    const successfulImports = isStandalone
+    const successfulImports = (userId === 'default-user')
       ? await importHistoryRepo.getAllRecentSuccessful(20)
       : await importHistoryRepo.getRecentSuccessful(userId, 20);
 

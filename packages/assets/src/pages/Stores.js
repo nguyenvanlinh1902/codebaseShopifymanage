@@ -6,7 +6,6 @@ import {
   Banner,
   Modal,
   TextField,
-  Select,
   Text,
   Badge,
   InlineStack,
@@ -14,12 +13,10 @@ import {
 } from '@shopify/polaris';
 import {api} from '../helpers/api';
 import {useAuth} from '../context/AuthContext';
-import {useStores} from '../context/store-context';
+import {usePermittedStores} from '../hooks/usePermittedStores';
 import StoresFilterBar from './stores/StoresFilterBar';
 import StoresTable from './stores/StoresTable';
 import StoresPagination from './stores/StoresPagination';
-import StoreGroupManager from './stores/store-group-manager';
-import StoreGroupSelect from './stores/store-group-select';
 
 const PAGE_LIMIT = 10;
 
@@ -32,9 +29,8 @@ export default function Stores() {
   const isAdmin = user?.role === 'admin';
   const [stores, setStores] = useState([]);
   const [loading, setLoading] = useState(true);
-  const {groups, refetch: refetchStoreContext} = useStores();
-  const [groupFilter, setGroupFilter] = useState('');
-  const [groupManagerOpen, setGroupManagerOpen] = useState(false);
+  const {refetch: refetchStoreContext} = usePermittedStores();
+
   const [pagination, setPagination] = useState({page: 1, total: 0, totalPages: 0});
   const [searchValue, setSearchValue] = useState('');
   const [activeSearch, setActiveSearch] = useState('');
@@ -50,7 +46,6 @@ export default function Stores() {
   const [editModalActive, setEditModalActive] = useState(false);
   const [editStore, setEditStore] = useState(null);
   const [editNicheValue, setEditNicheValue] = useState('');
-  const [editGroupId, setEditGroupId] = useState('');
   const [saving, setSaving] = useState(false);
 
   // Delete store modal state
@@ -68,7 +63,7 @@ export default function Stores() {
   const [webhookLoading, setWebhookLoading] = useState(false);
   const [webhookFixing, setWebhookFixing] = useState(false);
 
-  const fetchStores = async (page = 1, search = '', niches = [], groupId = groupFilter) => {
+  const fetchStores = async (page = 1, search = '', niches = []) => {
     try {
       setLoading(true);
       const params = new URLSearchParams({
@@ -77,7 +72,10 @@ export default function Stores() {
       });
       if (search) params.set('search', search);
       if (niches.length > 0) params.set('niche', niches.join(','));
-      if (groupId) params.set('groupId', groupId);
+      // Non-admin: restrict to assigned stores only
+      if (!isAdmin && user?.assignedStores?.length > 0) {
+        params.set('storeIds', user.assignedStores.join(','));
+      }
 
       const response = await api(`/api/stores?${params}`);
       const result = await response.json();
@@ -130,11 +128,11 @@ export default function Stores() {
   }, []);
 
   useEffect(() => {
-    const key = `${activeSearch}|${JSON.stringify(nicheFilter)}|${groupFilter}`;
+    const key = `${activeSearch}|${JSON.stringify(nicheFilter)}`;
     if (lastStoresFetchKeyRef.current === key) return;
     lastStoresFetchKeyRef.current = key;
-    fetchStores(1, activeSearch, nicheFilter, groupFilter);
-  }, [activeSearch, nicheFilter, groupFilter]);
+    fetchStores(1, activeSearch, nicheFilter);
+  }, [activeSearch, nicheFilter]);
 
   const handleSearchChange = useCallback(value => {
     setSearchValue(value);
@@ -175,7 +173,6 @@ export default function Stores() {
   const handleEditClick = useCallback(store => {
     setEditStore(store);
     setEditNicheValue(store.niche || '');
-    setEditGroupId(store.groupId || '');
     setEditModalActive(true);
   }, []);
 
@@ -183,7 +180,6 @@ export default function Stores() {
     setEditModalActive(false);
     setEditStore(null);
     setEditNicheValue('');
-    setEditGroupId('');
   }, []);
 
   const handleEditSave = async () => {
@@ -193,7 +189,7 @@ export default function Stores() {
       const response = await api(`/api/stores/${editStore.id}`, {
         method: 'PUT',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({niche: editNicheValue.trim(), groupId: editGroupId || null})
+        body: JSON.stringify({niche: editNicheValue.trim()})
       });
       const result = await response.json();
       if (result.success) {
@@ -271,8 +267,7 @@ export default function Stores() {
       title="Shopify Stores"
       subtitle="Stores are added automatically when merchants install the app"
       secondaryActions={[
-        {content: 'Check Webhooks', onAction: handleCheckWebhooks, loading: webhookLoading},
-        ...(isAdmin ? [{content: 'Manage Groups', onAction: () => setGroupManagerOpen(true)}] : [])
+        {content: 'Check Webhooks', onAction: handleCheckWebhooks, loading: webhookLoading}
       ]}
     >
       <Layout>
@@ -286,17 +281,6 @@ export default function Stores() {
 
         <Layout.Section>
           <Card padding="0">
-            {groups.length > 0 && (
-              <div style={{padding: '12px 16px 0'}}>
-                <Select
-                  label="Filter by group"
-                  labelInline
-                  options={[{label: 'All groups', value: ''}, ...groups.map(g => ({label: g.name, value: g.id}))]}
-                  value={groupFilter}
-                  onChange={v => setGroupFilter(v)}
-                />
-              </div>
-            )}
             <StoresFilterBar
               searchValue={searchValue}
               onSearchChange={handleSearchChange}
@@ -318,7 +302,6 @@ export default function Stores() {
               balancesLoading={balancesLoading}
               onEditClick={handleEditClick}
               onDeleteClick={handleDeleteClick}
-              groups={groups}
             />
             <StoresPagination
               page={page}
@@ -353,7 +336,6 @@ export default function Stores() {
               autoComplete="off"
               placeholder="e.g. Fashion, Electronics, Home & Garden"
             />
-            <StoreGroupSelect groups={groups} value={editGroupId} onChange={setEditGroupId} />
           </BlockStack>
         </Modal.Section>
       </Modal>
@@ -383,8 +365,8 @@ export default function Stores() {
       >
         <Modal.Section>
           <Text as="p">
-            Are you sure you want to delete <strong>{deleteStore?.name}</strong> ({deleteStore?.shopDomain})?
-            This action cannot be undone.
+            Are you sure you want to delete <strong>{deleteStore?.name}</strong> (
+            {deleteStore?.shopDomain})? This action cannot be undone.
           </Text>
         </Modal.Section>
       </Modal>
@@ -436,9 +418,7 @@ export default function Stores() {
                         <Text variant="bodyMd" fontWeight="bold">
                           {s.shop}
                         </Text>
-                        {s.installedVia && (
-                          <Badge tone="info">{s.installedVia}</Badge>
-                        )}
+                        {s.installedVia && <Badge tone="info">{s.installedVia}</Badge>}
                       </InlineStack>
                       {s.error ? (
                         <Badge tone="warning">{s.error}</Badge>
@@ -461,14 +441,17 @@ export default function Stores() {
                             <Badge tone="critical">Missing: {s.missing.join(', ')}</Badge>
                           )}
                           {s.wrongAddress?.length > 0 && (
-                            <Badge tone="warning">Wrong URL: {s.wrongAddress.map(w => w.topic).join(', ')}</Badge>
+                            <Badge tone="warning">
+                              Wrong URL: {s.wrongAddress.map(w => w.topic).join(', ')}
+                            </Badge>
                           )}
                         </InlineStack>
                       )}
                     </InlineStack>
                     {s.registered && (
                       <Text variant="bodySm" tone="subdued">
-                        Registered: {s.registered.map(w => `${w.topic} → ${w.address}`).join(' | ') || 'none'}
+                        Registered:{' '}
+                        {s.registered.map(w => `${w.topic} → ${w.address}`).join(' | ') || 'none'}
                       </Text>
                     )}
                     {s.wrongAddress?.length > 0 && (
@@ -483,10 +466,6 @@ export default function Stores() {
           )}
         </Modal.Section>
       </Modal>
-      <StoreGroupManager
-        open={groupManagerOpen}
-        onClose={() => setGroupManagerOpen(false)}
-      />
     </Page>
   );
 }

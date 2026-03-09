@@ -1,7 +1,10 @@
 import {StoreRepository} from '../repositories/storeRepository.js';
+import {AdminUserRepository} from '../repositories/adminUserRepository.js';
 import shopifyConfig from '../config/shopify.js';
+import {extractStoreIds} from '../utils/store-access.js';
 
 const storeRepo = new StoreRepository();
+const adminUserRepo = new AdminUserRepository();
 
 // Fetch both shop-level alerts AND recent critical/important events
 const ALERTS_QUERY = `{
@@ -69,8 +72,18 @@ async function fetchStoreAlertsAndEvents(shopDomain, accessToken) {
  */
 export async function getAllAlerts(req, res) {
   try {
-    const allStores = await storeRepo.getAll();
-    const activeStores = allStores.filter(s => s.status === 'active' && s.accessToken && s.shopDomain);
+    const userId = req.userId;
+    const isAdmin = req.userRole === 'admin';
+
+    let stores;
+    if (isAdmin) {
+      stores = await storeRepo.getAll();
+    } else {
+      const userRecord = await adminUserRepo.getById(userId);
+      const assignedIds = extractStoreIds(userRecord?.assignedStores);
+      stores = assignedIds.length > 0 ? await storeRepo.getByIds(assignedIds) : [];
+    }
+    const activeStores = stores.filter(s => s.status === 'active' && s.accessToken && s.shopDomain);
 
     const results = await Promise.all(
       activeStores.map(async store => {

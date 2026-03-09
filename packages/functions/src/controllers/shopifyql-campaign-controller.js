@@ -1,7 +1,10 @@
 import {StoreRepository} from '../repositories/storeRepository.js';
+import {AdminUserRepository} from '../repositories/adminUserRepository.js';
 import {runShopifyQL} from '../helpers/shopifyql-runner.js';
+import {extractStoreIds, hasStoreAccess} from '../utils/store-access.js';
 
 const storeRepo = new StoreRepository();
+const adminUserRepo = new AdminUserRepository();
 
 /**
  * GET /api/analytics/campaign-ads?storeId=xxx&since=startOfMonth(0m)&until=today&compareTo=previous_month
@@ -19,6 +22,13 @@ export async function getCampaignAds(req, res) {
     const store = await storeRepo.getById(storeId);
     if (!store || !store.accessToken) {
       return res.status(404).json({success: false, error: 'Store not found or no access token'});
+    }
+
+    if (req.userRole !== 'admin') {
+      const userRecord = await adminUserRepo.getById(req.userId);
+      if (!hasStoreAccess(userRecord?.assignedStores, storeId)) {
+        return res.status(403).json({success: false, error: 'Access denied to this store'});
+      }
     }
 
     const parts = [
@@ -67,8 +77,16 @@ export async function getCampaignAds(req, res) {
 export async function getCampaignAdsAllStores(req, res) {
   try {
     const {since = 'startOfMonth(0m)', until = 'today'} = req.query;
+    const isAdmin = req.userRole === 'admin';
 
-    const allStores = await storeRepo.getAll();
+    let allStores;
+    if (isAdmin) {
+      allStores = await storeRepo.getAll();
+    } else {
+      const userRecord = await adminUserRepo.getById(req.userId);
+      const assignedIds = extractStoreIds(userRecord?.assignedStores);
+      allStores = assignedIds.length > 0 ? await storeRepo.getByIds(assignedIds) : [];
+    }
     const activeStores = allStores.filter(s => s.status === 'active' && s.accessToken);
 
     const shopifyqlQuery = [

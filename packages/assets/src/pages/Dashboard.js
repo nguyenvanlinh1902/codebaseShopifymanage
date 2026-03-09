@@ -76,12 +76,10 @@ export default function Dashboard() {
           </Layout.Section>
         )}
 
-        {/* Finance Overview (admin only) */}
-        {user?.role === 'admin' && (
-          <Layout.Section>
-            <DashboardFinanceSummary />
-          </Layout.Section>
-        )}
+        {/* Finance Overview — scoped to user's permitted stores */}
+        <Layout.Section>
+          <DashboardFinanceSummary />
+        </Layout.Section>
 
       </Layout>
     </Page>

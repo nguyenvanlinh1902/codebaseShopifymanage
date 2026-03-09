@@ -14,14 +14,14 @@ import {
   BlockStack
 } from '@shopify/polaris';
 import {api} from '../helpers/api';
-import {useStores} from '../context/store-context';
+import {usePermittedStores} from '../hooks/usePermittedStores';
 
 /**
  * Orders Sync Page - Setup which Google Sheet to sync orders to.
  * Webhooks are auto-registered on app install.
  */
 export default function Orders() {
-  const {stores} = useStores();
+  const {stores} = usePermittedStores();
   const [sheets, setSheets] = useState([]);
   const [selectedStore, setSelectedStore] = useState('');
   const [selectedSheet, setSelectedSheet] = useState('');
@@ -35,7 +35,6 @@ export default function Orders() {
   const [showSetupModal, setShowSetupModal] = useState(false);
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
-
 
   useEffect(() => {
     fetchData();
@@ -124,7 +123,9 @@ export default function Orders() {
       const result = await response.json();
 
       if (result.success) {
-        setSuccessMessage('Order sync configured successfully! New orders will auto-sync to this sheet.');
+        setSuccessMessage(
+          'Order sync configured successfully! New orders will auto-sync to this sheet.'
+        );
         setShowSetupModal(false);
         fetchAllSyncConfigs();
       } else {
@@ -225,7 +226,14 @@ export default function Orders() {
               ) : (
                 <DataTable
                   columnContentTypes={['text', 'text', 'text', 'text', 'numeric', 'text']}
-                  headings={['Store', 'Google Sheet', 'Tab', 'Status', 'Orders Synced', 'Last Sync']}
+                  headings={[
+                    'Store',
+                    'Google Sheet',
+                    'Tab',
+                    'Status',
+                    'Orders Synced',
+                    'Last Sync'
+                  ]}
                   rows={configRows}
                 />
               )}

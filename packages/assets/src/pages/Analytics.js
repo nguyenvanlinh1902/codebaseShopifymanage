@@ -1,8 +1,7 @@
 import React, {useState, useEffect, useMemo} from 'react';
 import {Page, Layout, Select, InlineStack} from '@shopify/polaris';
 import {api} from '../helpers/api';
-import {useAuth} from '../context/AuthContext';
-import {useStores} from '../context/store-context';
+import {usePermittedStores} from '../hooks/usePermittedStores';
 import AnalyticsOrderStats from './analytics/analytics-order-stats';
 import AnalyticsOrderChart from './analytics/analytics-order-chart';
 
@@ -46,66 +45,48 @@ function aggregateResults(results) {
     }
   }
 
-  summary.avgOrderValue = summary.totalOrders > 0
-    ? Math.round((summary.totalRevenue / summary.totalOrders) * 100) / 100
-    : 0;
+  summary.avgOrderValue =
+    summary.totalOrders > 0
+      ? Math.round((summary.totalRevenue / summary.totalOrders) * 100) / 100
+      : 0;
 
   const timeSeries = Object.values(timeMap).sort((a, b) => a.date.localeCompare(b.date));
   return {summary, byStatus: statusMap, timeSeries};
 }
 
 export default function Analytics() {
-  const {user} = useAuth();
-  const isAdmin = user?.role === 'admin';
-  const {stores: allStores, groups} = useStores();
-  const stores = isAdmin
-    ? allStores
-    : allStores.filter(s => (user?.assignedStores || []).includes(s.id));
+  const {stores, user} = usePermittedStores();
 
   const [selectedStoreId, setSelectedStoreId] = useState('');
   const [analyticsData, setAnalyticsData] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [groupFilter, setGroupFilter] = useState('');
   const [timePeriod, setTimePeriod] = useState('-30d');
   const userTimezone = user?.timezone || '';
 
-  const visibleStores = useMemo(
-    () => (groupFilter ? stores.filter(s => s.groupId === groupFilter) : stores),
-    [groupFilter, stores]
-  );
-
   // Stable list of store IDs for the "All stores" fetch
-  const visibleStoreIds = useMemo(
-    () => visibleStores.map(s => s.id).join(','),
-    [visibleStores]
-  );
+  const storeIds = useMemo(() => stores.map(s => s.id).join(','), [stores]);
 
   const storeOptions = [
-    ...(visibleStores.length > 1
-      ? [{label: `All stores (${visibleStores.length})`, value: ALL_STORES_VALUE}]
+    ...(stores.length > 1
+      ? [{label: `All stores (${stores.length})`, value: ALL_STORES_VALUE}]
       : []),
-    ...visibleStores.map(s => ({label: s.name || s.shopDomain, value: s.id}))
+    ...stores.map(s => ({label: s.name || s.shopDomain, value: s.id}))
   ];
 
-  const groupOptions = [
-    {label: 'All groups', value: ''},
-    ...groups.map(g => ({label: g.name, value: g.id}))
-  ];
-
-  // Auto-select when group or stores list changes
+  // Auto-select when stores list changes
   useEffect(() => {
-    if (visibleStores.length > 1) {
+    if (stores.length > 1) {
       setSelectedStoreId(ALL_STORES_VALUE);
-    } else if (visibleStores.length === 1) {
-      setSelectedStoreId(visibleStores[0].id);
+    } else if (stores.length === 1) {
+      setSelectedStoreId(stores[0].id);
     } else {
       setSelectedStoreId('');
     }
-  }, [visibleStores]);
+  }, [stores]);
 
   // Fetch analytics whenever selection changes
   useEffect(() => {
-    if (!selectedStoreId || visibleStores.length === 0) return;
+    if (!selectedStoreId || stores.length === 0) return;
 
     let cancelled = false;
 
@@ -114,7 +95,7 @@ export default function Analytics() {
       setAnalyticsData(null);
       try {
         if (selectedStoreId === ALL_STORES_VALUE) {
-          const ids = visibleStoreIds.split(',').filter(Boolean);
+          const ids = storeIds.split(',').filter(Boolean);
           const results = await Promise.all(
             ids.map(id => {
               const params = new URLSearchParams({storeId: id, since: timePeriod});
@@ -140,24 +121,16 @@ export default function Analytics() {
     };
 
     fetchData();
-    return () => { cancelled = true; };
-  }, [selectedStoreId, timePeriod, visibleStoreIds, userTimezone]);
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedStoreId, timePeriod, storeIds, userTimezone]);
 
   return (
     <Page title="Analytics" subtitle="Real-time Shopify order metrics">
       <Layout>
         <Layout.Section>
           <InlineStack align="start" gap="400">
-            {groups.length > 0 && (
-              <div style={{minWidth: 200}}>
-                <Select
-                  label="Group"
-                  options={groupOptions}
-                  value={groupFilter}
-                  onChange={setGroupFilter}
-                />
-              </div>
-            )}
             <div style={{minWidth: 280}}>
               <Select
                 label="Store"

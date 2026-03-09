@@ -14,7 +14,7 @@ import {
 import {useGoogleAuth} from '../hooks/useGoogleAuth';
 import {useGooglePicker} from '../hooks/useGooglePicker';
 import {api} from '../helpers/api';
-import {useStores} from '../context/store-context';
+import {usePermittedStores} from '../hooks/usePermittedStores';
 import AccountsContent from './sheets/AccountsContent';
 import SheetsContent from './sheets/SheetsContent';
 import DeleteConfirmationModal from './sheets/DeleteConfirmationModal';
@@ -91,7 +91,7 @@ export default function Sheets() {
   const [disconnecting, setDisconnecting] = useState(false);
 
   // Store picker modal state (for add sheet action)
-  const {stores} = useStores();
+  const {stores} = usePermittedStores();
   const [storePickerOpen, setStorePickerOpen] = useState(false);
   const [storePickerStoreId, setStorePickerStoreId] = useState('');
   const [pendingPickerEmail, setPendingPickerEmail] = useState(null);

@@ -13,7 +13,7 @@ import {
 import {ImportIcon} from '@shopify/polaris-icons';
 import {api} from '../helpers/api';
 import {useAuth} from '../context/AuthContext';
-import {useStores} from '../context/store-context';
+import {usePermittedStores} from '../hooks/usePermittedStores';
 import useImportProgressAllStores from '../hooks/useImportProgressAllStores';
 import ImportProgressCard from './embed-products/ImportProgressCard';
 import UploadCsvModal from './products/UploadCsvModal';
@@ -26,7 +26,7 @@ import ReimportModal from './products/ReimportModal';
  */
 export default function Products() {
   const {user} = useAuth();
-  const {stores} = useStores();
+  const {stores} = usePermittedStores();
   const [selectedTab, setSelectedTab] = useState(0);
   const [selectedStore, setSelectedStore] = useState('');
   const [selectedStores, setSelectedStores] = useState([]);

@@ -166,63 +166,29 @@ export class ProductRepository {
   }
 
   /**
-   * Get products with pagination and search
-   * @param {Object} options - Query options
-   * @param {string} options.userId - User ID
-   * @param {string} options.storeId - Store ID (optional)
-   * @param {number} options.page - Page number (1-indexed)
-   * @param {number} options.limit - Items per page
-   * @param {string} options.search - Search query (optional)
-   * @returns {Promise<{products: Array, total: number, page: number, totalPages: number}>}
+   * Get products with Firestore pagination.
+   * Access control:
+   *   - permittedStoreIds = null → admin, no filter
+   *   - permittedStoreIds = string[] → non-admin, filter by those stores
+   *   - storeId → override: filter by single store (user-selected)
    */
-  async getWithPagination({userId, storeId, page = 1, limit = 50, search = ''}) {
+  async getWithPagination({permittedStoreIds, storeId, page = 1, limit = 50}) {
     let query = this.collection;
 
-    // Build base query
     if (storeId) {
+      // User selected a specific store — filter by it
       query = query.where('storeId', '==', storeId);
-    } else if (userId) {
-      query = query.where('userId', '==', userId);
+    } else if (permittedStoreIds !== null) {
+      // Non-admin: filter by assigned stores (Firestore 'in' supports up to 30 values)
+      const ids = permittedStoreIds.slice(0, 30);
+      query = query.where('storeId', 'in', ids);
     }
+    // else: admin (permittedStoreIds === null) — no filter, get all
 
-    // Get total count for the base query
     const countSnapshot = await query.count().get();
     const total = countSnapshot.data().count;
 
-    // If search query exists, fetch all and filter client-side
-    // (Firestore doesn't support full-text search natively)
-    if (search) {
-      const allSnapshot = await query.orderBy('createdAt', 'desc').get();
-      const allProducts = allSnapshot.docs.map(doc => doc.data());
-
-      // Filter by search query (case-insensitive)
-      const searchLower = search.toLowerCase();
-      const filteredProducts = allProducts.filter(
-        p =>
-          p.title?.toLowerCase().includes(searchLower) ||
-          p.sku?.toLowerCase().includes(searchLower) ||
-          p.vendor?.toLowerCase().includes(searchLower) ||
-          p.productType?.toLowerCase().includes(searchLower)
-      );
-
-      const filteredTotal = filteredProducts.length;
-      const totalPages = Math.ceil(filteredTotal / limit);
-      const offset = (page - 1) * limit;
-      const paginatedProducts = filteredProducts.slice(offset, offset + limit);
-
-      return {
-        products: paginatedProducts,
-        total: filteredTotal,
-        page,
-        limit,
-        totalPages
-      };
-    }
-
-    // No search: use Firestore pagination
     const offset = (page - 1) * limit;
-
-    // Get documents with offset (fetch offset + limit, then skip first offset)
     const snapshot = await query
       .orderBy('createdAt', 'desc')
       .limit(offset + limit)
@@ -231,28 +197,19 @@ export class ProductRepository {
     const allDocs = snapshot.docs.map(doc => doc.data());
     const products = allDocs.slice(offset);
 
-    return {
-      products,
-      total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit)
-    };
+    return {products, total, page, limit, totalPages: Math.ceil(total / limit)};
   }
 
   /**
-   * Search products using BigQuery (for full-text search)
-   * @param {Object} options - Search options
-   * @param {string} options.userId - User ID (required)
-   * @param {string} options.search - Search query
-   * @param {Array} options.vendors - Vendor filter
-   * @param {Array} options.stores - Store ID filter
-   * @param {number} options.page - Page number (1-indexed)
-   * @param {number} options.limit - Items per page
-   * @returns {Promise<{products: Array, total: number, page: number, totalPages: number}>}
+   * Search products using BigQuery (full-text search).
+   * Access control:
+   *   - permittedStoreIds = null → admin, no store filter
+   *   - permittedStoreIds = string[] → non-admin, filter by those stores
+   *   - storeId → user-selected single store override
    */
   async searchProducts({
-    userId,
+    permittedStoreIds,
+    storeId,
     search = '',
     vendors = [],
     stores = [],
@@ -262,9 +219,22 @@ export class ProductRepository {
     const dataset = bigQueryConfig.datasetId;
     const offset = (page - 1) * limit;
 
-    // Build WHERE clause
-    const whereConditions = [`userId = @userId`];
-    const params = {userId};
+    const whereConditions = [];
+    const params = {};
+
+    // Access scope
+    if (storeId) {
+      whereConditions.push(`storeId = @storeId`);
+      params.storeId = storeId;
+    } else if (permittedStoreIds !== null) {
+      // Non-admin: restrict to assigned stores
+      if (permittedStoreIds.length === 0) {
+        return {products: [], total: 0, page, limit, totalPages: 0};
+      }
+      whereConditions.push(`storeId IN UNNEST(@permittedStoreIds)`);
+      params.permittedStoreIds = permittedStoreIds;
+    }
+    // else: admin (null) — no store restriction
 
     if (search) {
       whereConditions.push(
@@ -273,82 +243,75 @@ export class ProductRepository {
       params.search = `%${search}%`;
     }
 
-    if (vendors && vendors.length > 0) {
+    if (vendors.length > 0) {
       whereConditions.push(`vendor IN UNNEST(@vendors)`);
       params.vendors = vendors;
     }
 
-    if (stores && stores.length > 0) {
+    if (stores.length > 0) {
       whereConditions.push(`storeId IN UNNEST(@stores)`);
       params.stores = stores;
     }
 
-    // Count total matching products
+    const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
+
     const countQuery = `
       SELECT COUNT(DISTINCT document_id) as count
       FROM \`${dataset}.products_latest_view\`
-      WHERE ${whereConditions.join(' AND ')}
+      ${whereClause}
     `;
-
     const countResult = await queryBigQuery(countQuery, params);
     const total = countResult.length > 0 ? countResult[0].count : 0;
-
-    // Fetch paginated results
-    const dataQuery = `
-      SELECT *
-      FROM \`${dataset}.products_latest_view\`
-      WHERE ${whereConditions.join(' AND ')}
-      ORDER BY createdAt DESC
-      LIMIT @limit OFFSET @offset
-    `;
 
     params.limit = limit;
     params.offset = offset;
 
+    const dataQuery = `
+      SELECT *
+      FROM \`${dataset}.products_latest_view\`
+      ${whereClause}
+      ORDER BY createdAt DESC
+      LIMIT @limit OFFSET @offset
+    `;
     const products = await queryBigQuery(dataQuery, params);
 
-    return {
-      products,
-      total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit)
-    };
+    return {products, total, page, limit, totalPages: Math.ceil(total / limit)};
   }
 
   /**
-   * Get filter options (distinct vendors and stores)
-   * @param {string} userId - User ID
-   * @returns {Promise<{vendors: Array, stores: Array}>}
+   * Get filter options (distinct vendors and stores).
+   * permittedStoreIds = null → admin (all), string[] → non-admin (assigned stores only)
    */
-  async getFilterOptions(userId) {
+  async getFilterOptions(permittedStoreIds) {
     const dataset = bigQueryConfig.datasetId;
 
-    // Get distinct vendors
+    // Build scope clause
+    let scopeClause = '';
+    const params = {};
+    if (permittedStoreIds !== null) {
+      if (permittedStoreIds.length === 0) return {vendors: [], stores: []};
+      scopeClause = 'AND storeId IN UNNEST(@permittedStoreIds)';
+      params.permittedStoreIds = permittedStoreIds;
+    }
+
     const vendorQuery = `
       SELECT DISTINCT vendor
       FROM \`${dataset}.products_latest_view\`
-      WHERE userId = @userId AND vendor IS NOT NULL
+      WHERE vendor IS NOT NULL ${scopeClause}
       ORDER BY vendor
     `;
-
-    const vendors = await queryBigQuery(vendorQuery, {userId});
+    const vendors = await queryBigQuery(vendorQuery, params);
     const vendorList = vendors.map(v => v.vendor).filter(Boolean);
 
-    // Get distinct stores
     const storeQuery = `
       SELECT DISTINCT storeId, storeName
       FROM \`${dataset}.products_latest_view\`
-      WHERE userId = @userId
+      WHERE TRUE ${scopeClause}
       ORDER BY storeName
     `;
-
-    const stores = await queryBigQuery(storeQuery, {userId});
+    const stores = await queryBigQuery(storeQuery, params);
     const storeList = stores.map(s => ({storeId: s.storeId, storeName: s.storeName}));
 
-    return {
-      vendors: vendorList,
-      stores: storeList
-    };
+    return {vendors: vendorList, stores: storeList};
   }
 }

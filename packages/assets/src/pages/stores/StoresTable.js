@@ -22,7 +22,7 @@ function formatBalance(balance) {
 /**
  * Stores list with name, domain, niche, status, balance and edit action
  */
-export default function StoresTable({stores, loading, activeSearch, nicheFilter, balances = {}, balancesLoading, onEditClick, onDeleteClick, groups = []}) {
+export default function StoresTable({stores, loading, activeSearch, nicheFilter, balances = {}, balancesLoading, onEditClick, onDeleteClick}) {
   if (loading) {
     return (
       <div style={{padding: '16px'}}>
@@ -68,7 +68,7 @@ export default function StoresTable({stores, loading, activeSearch, nicheFilter,
                   Niche: {store.niche}
                 </Text>
               )}
-              {(() => { const group = groups.find(g => g.id === store.groupId); return group ? <Badge>{group.name}</Badge> : null; })()}
+
               {store.partnerClientId && (
                 <Text variant="bodySm" tone="subdued">
                   Client ID: {store.partnerClientId.slice(0, 8)}...

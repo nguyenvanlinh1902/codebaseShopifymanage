@@ -1,8 +1,11 @@
 import {StoreRepository} from '../repositories/storeRepository.js';
+import {AdminUserRepository} from '../repositories/adminUserRepository.js';
 import {runShopifyQL} from '../helpers/shopifyql-runner.js';
 import shopifyConfig from '../config/shopify.js';
+import {extractStoreIds, hasStoreAccess} from '../utils/store-access.js';
 
 const storeRepo = new StoreRepository();
+const adminUserRepo = new AdminUserRepository();
 
 const ALLOWED_SINCE = ['-1d', '-7d', '-30d', '-90d', '-365d', 'startOfMonth(0m)', 'startOfYear(0y)'];
 const DEFAULT_SINCE = '-30d';
@@ -24,6 +27,14 @@ export async function getOrderAnalytics(req, res) {
     const store = await storeRepo.getById(storeId);
     if (!store || !store.accessToken) {
       return res.status(404).json({success: false, error: 'Store not found or no access token'});
+    }
+
+    // Permission check for non-admin users
+    if (req.userRole !== 'admin') {
+      const userRecord = await adminUserRepo.getById(req.userId);
+      if (!hasStoreAccess(userRecord?.assignedStores, storeId)) {
+        return res.status(403).json({success: false, error: 'Access denied to this store'});
+      }
     }
 
     // ShopifyQL uses 'sales' dataset (not 'orders')

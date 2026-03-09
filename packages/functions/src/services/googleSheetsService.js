@@ -369,7 +369,9 @@ export class GoogleSheetsService {
       'Shipping Country Code',
       'Shipping Phone',
       'Custom name',
-      'Design'
+      'Design',
+      'Product Link',
+      'Variant Image'
     ];
   }
 
@@ -378,7 +380,7 @@ export class GoogleSheetsService {
    */
   async ensureHeaders(spreadsheetId, sheetName) {
     try {
-      const data = await this.readSheet(spreadsheetId, `${sheetName}!A1:AB1`);
+      const data = await this.readSheet(spreadsheetId, `${sheetName}!A1:AD1`);
       if (!data || data.length === 0 || data[0][0] !== 'STT') {
         await this.writeSheet(spreadsheetId, `${sheetName}!A1`, [
           GoogleSheetsService.ORDER_HEADERS

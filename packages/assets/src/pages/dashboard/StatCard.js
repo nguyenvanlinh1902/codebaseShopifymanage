@@ -39,7 +39,7 @@ export default function StatCard({title, value, icon, color, done, label, loadin
               <SkeletonBodyText lines={1} />
             </>
           ) : (
-            <>
+            <InlineStack gap="200" align="space-between" blockAlign="center" wrap={false}>
               <Text variant="heading2xl" as="p">
                 {typeof value === 'number' ? value.toLocaleString() : value}
               </Text>
@@ -54,7 +54,7 @@ export default function StatCard({title, value, icon, color, done, label, loadin
                   {label || (done ? 'Configured' : 'Not configured')}
                 </Text>
               </InlineStack>
-            </>
+            </InlineStack>
           )}
         </BlockStack>
       </Card>

@@ -8,7 +8,8 @@ const ALL_FEATURES = [
   {label: 'Stores', value: 'stores'},
   {label: 'Google Sheets', value: 'sheets'},
   {label: 'Products', value: 'products'},
-  {label: 'Orders + Order Search', value: 'orders'},
+  {label: 'Orders', value: 'orders'},
+  {label: 'Order Search', value: 'order-search'},
   {label: 'Tracking', value: 'tracking'},
   {label: 'Analytics (Revenue)', value: 'analytics'},
   {label: 'Disputes', value: 'dispute'},
@@ -24,9 +25,13 @@ export default function UserFeatureAssignment({selectedFeatures, onChange}) {
     <BlockStack gap="200">
       <InlineStack align="space-between" blockAlign="center">
         <Text variant="headingSm">Allowed Features</Text>
-        <Button variant="plain" onClick={toggleAll}>{allSelected ? 'Deselect All' : 'Select All'}</Button>
+        <Button variant="plain" onClick={toggleAll}>
+          {allSelected ? 'Deselect All' : 'Select All'}
+        </Button>
       </InlineStack>
-      <Text variant="bodySm" tone="subdued">Empty = Dashboard only · Select features to grant access</Text>
+      <Text variant="bodySm" tone="subdued">
+        Empty = Dashboard only · Select features to grant access
+      </Text>
       <ChoiceList
         allowMultiple
         title=""

@@ -4,6 +4,7 @@
  */
 
 import {ImportHistoryRepository} from '../repositories/importHistoryRepository.js';
+import {AdminUserRepository} from '../repositories/adminUserRepository.js';
 import {getOrCreateTopic, publishMessage} from '../helpers/pubsubHelper.js';
 import {
   validateUploadInput,
@@ -12,6 +13,7 @@ import {
   parseAndValidateCsvFiles,
   getCsvTemplate
 } from './product-import/csv-upload-handler.js';
+import {extractStoreIds} from '../utils/store-access.js';
 
 // Re-export all route handlers
 export {
@@ -31,6 +33,7 @@ export {processProductQueue} from './product-import/process-product-queue.js';
 
 const PRODUCT_IMPORT_TOPIC = 'product-import';
 const importHistoryRepo = new ImportHistoryRepository();
+const adminUserRepo = new AdminUserRepository();
 
 /**
  * Upload CSV and initiate product import
@@ -39,7 +42,8 @@ const importHistoryRepo = new ImportHistoryRepository();
  */
 export async function uploadAndImport(req, res) {
   try {
-    const {userId, storeId, storeIds, csvData, fileName, csvFiles} = req.body;
+    const {storeId, storeIds, csvData, fileName, csvFiles} = req.body;
+    const userId = req.userId;
 
     const targetStoreIds = storeIds || (storeId ? [storeId] : []);
 
@@ -49,6 +53,16 @@ export async function uploadAndImport(req, res) {
 
     if (inputError) {
       return res.status(400).json({success: false, error: inputError});
+    }
+
+    // Permission check: non-admin can only import to their assigned stores
+    if (req.userRole !== 'admin') {
+      const userRecord = await adminUserRepo.getById(userId);
+      const assignedIds = extractStoreIds(userRecord?.assignedStores);
+      const unauthorized = targetStoreIds.filter(id => !assignedIds.includes(id));
+      if (unauthorized.length > 0) {
+        return res.status(403).json({success: false, error: 'Access denied to one or more stores'});
+      }
     }
 
     // Task 2: Get all store information

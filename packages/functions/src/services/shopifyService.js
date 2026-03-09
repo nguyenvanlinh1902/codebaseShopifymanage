@@ -739,6 +739,61 @@ export class ShopifyService {
   }
 
   /**
+   * Batch fetch variant product info for order line items enrichment.
+   * Returns Map<variantId (string), { productUrl, variantImageUrl }>
+   * Uses nodes query in chunks of 250. Falls back to product.featuredImage if variant has no image.
+   * Returns empty strings for deleted products (product_id=null) or API errors.
+   *
+   * @param {string[]} variantIds - Array of numeric variant IDs (as strings)
+   * @param {string} shopDomain - Store myshopify domain (e.g. store.myshopify.com)
+   */
+  async getLineItemsProductInfo(variantIds, shopDomain) {
+    const result = new Map();
+    if (!variantIds || variantIds.length === 0) return result;
+
+    const query = `
+      query GetVariantInfo($ids: [ID!]!) {
+        nodes(ids: $ids) {
+          ... on ProductVariant {
+            id
+            image { url }
+            product {
+              handle
+              featuredImage { url }
+            }
+          }
+        }
+      }
+    `;
+
+    const CHUNK_SIZE = 250;
+    for (let i = 0; i < variantIds.length; i += CHUNK_SIZE) {
+      const chunk = variantIds.slice(i, i + CHUNK_SIZE);
+      const gids = chunk.map(id => ShopifyService.toGid('ProductVariant', id));
+
+      try {
+        const gqlResult = await this.shopify.graphql(query, {ids: gids});
+        const nodes = gqlResult?.nodes || [];
+
+        for (const node of nodes) {
+          if (!node || !node.id) continue;
+          const numericId = ShopifyService.fromGid(node.id).toString();
+          const handle = node.product?.handle;
+          const productUrl = handle && shopDomain
+            ? `https://${shopDomain}/products/${handle}`
+            : '';
+          const variantImageUrl = node.image?.url || node.product?.featuredImage?.url || '';
+          result.set(numericId, {productUrl, variantImageUrl});
+        }
+      } catch (err) {
+        console.error(`[ShopifyService] getLineItemsProductInfo chunk ${i / CHUNK_SIZE + 1} failed: ${err.message}`);
+      }
+    }
+
+    return result;
+  }
+
+  /**
    * Get orders from Shopify
    * @param {Object} params - Query parameters (status, limit, since_id, etc.)
    */

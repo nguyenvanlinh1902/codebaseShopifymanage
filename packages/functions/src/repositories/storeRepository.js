@@ -61,6 +61,18 @@ export class StoreRepository {
   }
 
   /**
+   * Get multiple stores by an array of IDs (batch fetch)
+   */
+  async getByIds(ids) {
+    if (!ids || ids.length === 0) return [];
+    const docRefs = ids.map(id => this.collection.doc(id));
+    const docs = await this.db.getAll(...docRefs);
+    return docs
+      .filter(doc => doc.exists)
+      .map(doc => ({id: doc.id, ...doc.data()}));
+  }
+
+  /**
    * Get all stores for a user
    */
   async getByUserId(userId) {
@@ -122,8 +134,11 @@ export class StoreRepository {
     const dataset = bigQueryConfig.datasetId;
     const offset = (page - 1) * limit;
 
+    // userId=null means admin (no user filter)
+    const userClause = userId ? 'WHERE userId = @userId' : 'WHERE TRUE';
     let nicheClause = '';
-    const params = {userId, limit, offset};
+    const params = {limit, offset};
+    if (userId) params.userId = userId;
     if (niches.length > 0) {
       nicheClause = ' AND niche IN UNNEST(@niches)';
       params.niches = niches;
@@ -132,7 +147,7 @@ export class StoreRepository {
     const countQuery = `
       SELECT COUNT(*) AS total
       FROM \`${dataset}.shopify_stores_latest_view\`
-      WHERE userId = @userId${nicheClause}
+      ${userClause}${nicheClause}
     `;
     const countRows = await queryBigQuery(countQuery, params);
     const total = countRows[0]?.total || 0;
@@ -141,7 +156,7 @@ export class StoreRepository {
       SELECT document_id, userId, shopDomain, name, niche, email,
              currency, timezone, status, createdAt, updatedAt
       FROM \`${dataset}.shopify_stores_latest_view\`
-      WHERE userId = @userId${nicheClause}
+      ${userClause}${nicheClause}
       ORDER BY createdAt DESC
       LIMIT @limit OFFSET @offset
     `;
@@ -156,15 +171,19 @@ export class StoreRepository {
   }
 
   /**
-   * Search stores by name or shopDomain using BigQuery (CONTAINS text)
+   * Search stores by name or shopDomain using BigQuery (CONTAINS text).
+   * userId=null means admin — no user filter applied.
    */
   async searchStores(userId, {search, page = 1, limit = 10, niches = []} = {}) {
     const dataset = bigQueryConfig.datasetId;
     const offset = (page - 1) * limit;
     const searchTerm = `%${search}%`;
 
+    // userId=null means admin (no user filter)
+    const userClause = userId ? 'AND userId = @userId' : '';
     let nicheClause = '';
-    const params = {userId, search: searchTerm, limit, offset};
+    const params = {search: searchTerm, limit, offset};
+    if (userId) params.userId = userId;
     if (niches.length > 0) {
       nicheClause = ' AND niche IN UNNEST(@niches)';
       params.niches = niches;
@@ -173,9 +192,8 @@ export class StoreRepository {
     const countQuery = `
       SELECT COUNT(*) AS total
       FROM \`${dataset}.shopify_stores_latest_view\`
-      WHERE userId = @userId
-        AND (LOWER(name) LIKE LOWER(@search) OR LOWER(shopDomain) LIKE LOWER(@search))
-        ${nicheClause}
+      WHERE (LOWER(name) LIKE LOWER(@search) OR LOWER(shopDomain) LIKE LOWER(@search))
+        ${userClause}${nicheClause}
     `;
     const countRows = await queryBigQuery(countQuery, params);
     const total = countRows[0]?.total || 0;
@@ -184,9 +202,8 @@ export class StoreRepository {
       SELECT document_id, userId, shopDomain, name, niche, email,
              currency, timezone, status, createdAt, updatedAt
       FROM \`${dataset}.shopify_stores_latest_view\`
-      WHERE userId = @userId
-        AND (LOWER(name) LIKE LOWER(@search) OR LOWER(shopDomain) LIKE LOWER(@search))
-        ${nicheClause}
+      WHERE (LOWER(name) LIKE LOWER(@search) OR LOWER(shopDomain) LIKE LOWER(@search))
+        ${userClause}${nicheClause}
       ORDER BY createdAt DESC
       LIMIT @limit OFFSET @offset
     `;

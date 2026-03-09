@@ -39,7 +39,7 @@ const NAV_FEATURE_MAP = {
   '/analytics': 'analytics',
   '/balance': 'finance',
   '/campaign-ads': 'finance',
-  '/order-search': 'orders',
+  '/order-search': 'order-search',
   '/disputes': 'dispute',
   '/themes': 'themes',
   '/setup': 'setup'

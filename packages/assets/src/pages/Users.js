@@ -15,7 +15,7 @@ import {
 import {PlusIcon} from '@shopify/polaris-icons';
 import {useApi} from '../hooks/useApi';
 import {useAuth} from '../context/AuthContext';
-import {useStores} from '../context/store-context';
+import {usePermittedStores} from '../hooks/usePermittedStores';
 import UserManagementModal from './users/user-management-modal';
 
 const ROLE_TONES = {admin: 'info', manager: 'attention', staff: 'new'};
@@ -24,7 +24,7 @@ export default function Users() {
   const {user: currentUser} = useAuth();
   const {loading, error, clearError, get, post, put, del} = useApi();
   const [users, setUsers] = useState([]);
-  const {stores} = useStores();
+  const {stores} = usePermittedStores();
   const [modalUser, setModalUser] = useState(undefined); // undefined = closed, null = create, object = edit
   const [actionLoading, setActionLoading] = useState('');
 
@@ -67,17 +67,29 @@ export default function Users() {
   const rows = users.map(u => [
     u.username,
     u.displayName,
-    <Badge tone={ROLE_TONES[u.role] || 'new'} key={u.id + '-role'}>{u.role}</Badge>,
+    <Badge tone={ROLE_TONES[u.role] || 'new'} key={u.id + '-role'}>
+      {u.role}
+    </Badge>,
     <Badge tone={u.status === 'active' ? 'success' : 'critical'} key={u.id + '-status'}>
       {u.status || 'active'}
     </Badge>,
     u.role !== 'admin' ? (
-      <Text variant="bodySm" key={u.id + '-stores'}>{(u.assignedStores || []).length} store(s)</Text>
+      <Text variant="bodySm" key={u.id + '-stores'}>
+        {(u.assignedStores || []).length > 0
+          ? (u.assignedStores || [])
+              .map(s => (typeof s === 'string' ? s : s.shopDomain))
+              .join(', ')
+          : '—'}
+      </Text>
     ) : (
-      <Text variant="bodySm" tone="subdued" key={u.id + '-stores'}>All</Text>
+      <Text variant="bodySm" tone="subdued" key={u.id + '-stores'}>
+        All
+      </Text>
     ),
     <InlineStack gap="200" key={u.id + '-actions'}>
-      <Button size="slim" onClick={() => setModalUser(u)}>Edit</Button>
+      <Button size="slim" onClick={() => setModalUser(u)}>
+        Edit
+      </Button>
       {u.id !== currentUser?.id && u.status === 'inactive' && (
         <Button
           size="slim"
@@ -108,7 +120,9 @@ export default function Users() {
     >
       <BlockStack gap="400">
         {error && (
-          <Banner tone="critical" onDismiss={clearError}>{error}</Banner>
+          <Banner tone="critical" onDismiss={clearError}>
+            {error}
+          </Banner>
         )}
 
         <Card padding="0">

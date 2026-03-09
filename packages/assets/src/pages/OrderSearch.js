@@ -1,20 +1,39 @@
 import React, {useState, useEffect, useRef} from 'react';
-import {Page, Layout, Select, InlineStack, TextField, Card, DataTable, Badge, Link, Button, Text, SkeletonBodyText, EmptyState} from '@shopify/polaris';
+import {
+  Page,
+  Layout,
+  Select,
+  TextField,
+  Card,
+  DataTable,
+  Badge,
+  Link,
+  Button,
+  Text,
+  SkeletonBodyText,
+  EmptyState
+} from '@shopify/polaris';
 import {SearchIcon} from '@shopify/polaris-icons';
 import {api} from '../helpers/api';
-import {useAuth} from '../context/AuthContext';
-import {useStores} from '../context/store-context';
+import {usePermittedStores} from '../hooks/usePermittedStores';
 
-const FULFILLMENT_TONE = {FULFILLED: 'success', UNFULFILLED: 'attention', PARTIALLY_FULFILLED: 'info', IN_PROGRESS: 'info'};
-const FINANCIAL_TONE = {PAID: 'success', PENDING: 'attention', REFUNDED: 'info', PARTIALLY_REFUNDED: 'warning', VOIDED: 'critical'};
+const FULFILLMENT_TONE = {
+  FULFILLED: 'success',
+  UNFULFILLED: 'attention',
+  PARTIALLY_FULFILLED: 'info',
+  IN_PROGRESS: 'info'
+};
+const FINANCIAL_TONE = {
+  PAID: 'success',
+  PENDING: 'attention',
+  REFUNDED: 'info',
+  PARTIALLY_REFUNDED: 'warning',
+  VOIDED: 'critical'
+};
 
 export default function OrderSearch() {
-  const {user} = useAuth();
-  const isAdmin = user?.role === 'admin';
-  const {stores: allStores, groups} = useStores();
-  const stores = isAdmin ? allStores : allStores.filter(s => (user?.assignedStores || []).includes(s.id));
+  const {stores} = usePermittedStores();
   const [selectedStoreId, setSelectedStoreId] = useState('');
-  const [groupFilter, setGroupFilter] = useState('');
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -23,10 +42,8 @@ export default function OrderSearch() {
   const debounceRef = useRef(null);
 
   useEffect(() => {
-    const filtered = groupFilter ? stores.filter(s => s.groupId === groupFilter) : stores;
-    if (filtered.length > 0) setSelectedStoreId(filtered[0].id);
-    else if (stores.length > 0 && !selectedStoreId) setSelectedStoreId(stores[0].id);
-  }, [stores, groupFilter]);
+    if (stores.length > 0 && !selectedStoreId) setSelectedStoreId(stores[0].id);
+  }, [stores]);
 
   // Debounced search
   useEffect(() => {
@@ -37,7 +54,9 @@ export default function OrderSearch() {
     }
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => searchOrders(selectedStoreId, query.trim()), 300);
-    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
   }, [query, selectedStoreId]);
 
   const searchOrders = async (storeId, q, cursor = null) => {
@@ -48,40 +67,45 @@ export default function OrderSearch() {
       const res = await api(`/api/analytics/order-search?${params}`);
       const result = await res.json();
       if (result.success) {
-        setResults(prev => cursor ? [...prev, ...result.data.orders] : result.data.orders);
+        setResults(prev => (cursor ? [...prev, ...result.data.orders] : result.data.orders));
         setPageInfo(result.data.pageInfo || {hasNextPage: false, endCursor: null});
       }
-    } catch { /* non-critical */ }
-    finally { cursor ? setLoadingMore(false) : setLoading(false); }
+    } catch {
+      /* non-critical */
+    } finally {
+      cursor ? setLoadingMore(false) : setLoading(false);
+    }
   };
 
-  const visibleStores = groupFilter ? stores.filter(s => s.groupId === groupFilter) : stores;
-  const storeOptions = visibleStores.map(s => ({label: s.name || s.shopDomain, value: s.id}));
-  const groupOptions = [{label: 'All groups', value: ''}, ...groups.map(g => ({label: g.name, value: g.id}))];
+  const storeOptions = stores.map(s => ({label: s.name || s.shopDomain, value: s.id}));
 
   const rows = results.map(o => [
-    <Link key={o.id} url={o.adminUrl} external>{o.name}</Link>,
+    <Link key={o.id} url={o.adminUrl} external>
+      {o.name}
+    </Link>,
     new Date(o.createdAt).toLocaleDateString(),
     o.customer?.name || 'N/A',
     `${o.currency} ${o.total}`,
-    <Badge key={`f-${o.id}`} tone={FULFILLMENT_TONE[o.fulfillmentStatus] || 'new'}>{o.fulfillmentStatus}</Badge>,
-    <Badge key={`p-${o.id}`} tone={FINANCIAL_TONE[o.financialStatus] || 'new'}>{o.financialStatus}</Badge>
+    <Badge key={`f-${o.id}`} tone={FULFILLMENT_TONE[o.fulfillmentStatus] || 'new'}>
+      {o.fulfillmentStatus}
+    </Badge>,
+    <Badge key={`p-${o.id}`} tone={FINANCIAL_TONE[o.financialStatus] || 'new'}>
+      {o.financialStatus}
+    </Badge>
   ]);
 
   return (
     <Page title="Order Search" subtitle="Search orders across your Shopify stores">
       <Layout>
         <Layout.Section>
-          <InlineStack align="start" gap="400">
-            {groups.length > 0 && (
-              <div style={{minWidth: 200}}>
-                <Select label="Group" options={groupOptions} value={groupFilter} onChange={setGroupFilter} />
-              </div>
-            )}
-            <div style={{minWidth: 280}}>
-              <Select label="Store" options={storeOptions} value={selectedStoreId} onChange={setSelectedStoreId} />
-            </div>
-          </InlineStack>
+          <div style={{minWidth: 280}}>
+            <Select
+              label="Store"
+              options={storeOptions}
+              value={selectedStoreId}
+              onChange={setSelectedStoreId}
+            />
+          </div>
         </Layout.Section>
         <Layout.Section>
           <TextField
@@ -90,7 +114,11 @@ export default function OrderSearch() {
             placeholder="Search by order number, customer name, or email..."
             value={query}
             onChange={setQuery}
-            prefix={<span style={{display: 'flex'}}><SearchIcon /></span>}
+            prefix={
+              <span style={{display: 'flex'}}>
+                <SearchIcon />
+              </span>
+            }
             clearButton
             onClearButtonClick={() => setQuery('')}
             autoComplete="off"
@@ -109,7 +137,12 @@ export default function OrderSearch() {
                 />
                 {pageInfo.hasNextPage && (
                   <div style={{padding: '16px', textAlign: 'center'}}>
-                    <Button loading={loadingMore} onClick={() => searchOrders(selectedStoreId, query.trim(), pageInfo.endCursor)}>
+                    <Button
+                      loading={loadingMore}
+                      onClick={() =>
+                        searchOrders(selectedStoreId, query.trim(), pageInfo.endCursor)
+                      }
+                    >
                       Load more
                     </Button>
                   </div>

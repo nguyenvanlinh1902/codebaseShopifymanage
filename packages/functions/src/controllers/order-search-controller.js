@@ -1,7 +1,10 @@
 import {StoreRepository} from '../repositories/storeRepository.js';
+import {AdminUserRepository} from '../repositories/adminUserRepository.js';
 import shopifyConfig from '../config/shopify.js';
+import {hasStoreAccess} from '../utils/store-access.js';
 
 const storeRepo = new StoreRepository();
+const adminUserRepo = new AdminUserRepository();
 
 const SEARCH_ORDERS_QUERY = `
 query SearchOrders($query: String!, $first: Int!, $after: String) {
@@ -33,12 +36,23 @@ export async function searchOrders(req, res) {
       return res.status(400).json({success: false, error: 'storeId is required'});
     }
     if (!query || !query.trim()) {
-      return res.json({success: true, data: {orders: [], pageInfo: {hasNextPage: false, endCursor: null}}});
+      return res.json({
+        success: true,
+        data: {orders: [], pageInfo: {hasNextPage: false, endCursor: null}}
+      });
     }
 
     const store = await storeRepo.getById(storeId);
     if (!store || !store.accessToken) {
       return res.status(404).json({success: false, error: 'Store not found or no access token'});
+    }
+
+    // Permission check for non-admin users
+    if (req.userRole !== 'admin') {
+      const userRecord = await adminUserRepo.getById(req.userId);
+      if (!hasStoreAccess(userRecord?.assignedStores, storeId)) {
+        return res.status(403).json({success: false, error: 'Access denied to this store'});
+      }
     }
 
     // Sanitize query — escape quotes to prevent GraphQL injection
@@ -67,7 +81,9 @@ export async function searchOrders(req, res) {
     const json = await response.json();
     if (json?.errors) {
       console.error('[OrderSearch] GraphQL errors:', JSON.stringify(json.errors));
-      return res.status(422).json({success: false, error: json.errors[0]?.message || 'GraphQL error'});
+      return res
+        .status(422)
+        .json({success: false, error: json.errors[0]?.message || 'GraphQL error'});
     }
 
     const ordersData = json?.data?.orders;
@@ -83,7 +99,8 @@ export async function searchOrders(req, res) {
         fulfillmentStatus: node.displayFulfillmentStatus || 'UNFULFILLED',
         financialStatus: node.displayFinancialStatus || 'PENDING',
         customer: {
-          name: [node.customer?.firstName, node.customer?.lastName].filter(Boolean).join(' ') || 'N/A',
+          name:
+            [node.customer?.firstName, node.customer?.lastName].filter(Boolean).join(' ') || 'N/A',
           email: node.customer?.email || ''
         },
         adminUrl: `https://${store.shopDomain}.myshopify.com/admin/orders/${numericId}`

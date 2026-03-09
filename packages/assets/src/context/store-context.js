@@ -12,19 +12,15 @@ export function StoreProvider({children}) {
   const [loading, setLoading] = useState(true);
 
   const fetchAll = useCallback(async () => {
-    try {
-      setLoading(true);
-      const [storesRes, groupsRes] = await Promise.all([
-        api('/api/stores?limit=200').then(r => r.json()),
-        api('/api/store-groups').then(r => r.json())
-      ]);
-      if (storesRes.success) setStores(storesRes.data || []);
-      if (groupsRes.success) setGroups(groupsRes.data || []);
-    } catch {
-      // silent — components handle empty state
-    } finally {
-      setLoading(false);
-    }
+    setLoading(true);
+    // Fetch independently so a groups failure doesn't wipe out stores
+    const [storesRes, groupsRes] = await Promise.allSettled([
+      api('/api/stores?limit=200').then(r => r.json()).catch(() => null),
+      api('/api/store-groups').then(r => r.json()).catch(() => null)
+    ]);
+    if (storesRes.value?.success) setStores(storesRes.value.data || []);
+    if (groupsRes.value?.success) setGroups(groupsRes.value.data || []);
+    setLoading(false);
   }, []);
 
   useEffect(() => {

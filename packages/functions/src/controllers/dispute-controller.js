@@ -1,7 +1,10 @@
 import {StoreRepository} from '../repositories/storeRepository.js';
+import {AdminUserRepository} from '../repositories/adminUserRepository.js';
 import shopifyConfig from '../config/shopify.js';
+import {extractStoreIds, hasStoreAccess} from '../utils/store-access.js';
 
 const storeRepo = new StoreRepository();
+const adminUserRepo = new AdminUserRepository();
 
 const VALID_STATUSES = ['needs_response', 'under_review', 'won', 'lost', 'accepted', 'charge_refunded'];
 
@@ -13,6 +16,8 @@ const VALID_STATUSES = ['needs_response', 'under_review', 'won', 'lost', 'accept
 export async function getDisputes(req, res) {
   try {
     const {storeId, status} = req.query;
+    const userId = req.userId;
+    const isAdmin = req.userRole === 'admin';
     let activeStores;
 
     if (storeId) {
@@ -20,10 +25,24 @@ export async function getDisputes(req, res) {
       if (!store || !store.accessToken) {
         return res.status(404).json({success: false, error: 'Store not found'});
       }
+      // Access check for non-admin
+      if (!isAdmin) {
+        const userRecord = await adminUserRepo.getById(userId);
+        if (!hasStoreAccess(userRecord?.assignedStores, storeId)) {
+          return res.status(403).json({success: false, error: 'Access denied to this store'});
+        }
+      }
       activeStores = [store];
     } else {
-      const allStores = await storeRepo.getAll();
-      activeStores = allStores.filter(s => s.accessToken);
+      let stores;
+      if (isAdmin) {
+        stores = await storeRepo.getAll();
+      } else {
+        const userRecord = await adminUserRepo.getById(userId);
+        const assignedIds = extractStoreIds(userRecord?.assignedStores);
+        stores = assignedIds.length > 0 ? await storeRepo.getByIds(assignedIds) : [];
+      }
+      activeStores = stores.filter(s => s.accessToken);
     }
 
     // Parse status filter
@@ -72,11 +91,11 @@ async function fetchStoreDisputes(store, statusFilter = []) {
       statusFilter.map(s => fetchDisputesPage(baseUrl, headers, s))
     );
     const allDisputes = results.flat();
-    return mapDisputes(allDisputes, store);
+    return await mapDisputes(allDisputes, store);
   }
 
   const allDisputes = await fetchDisputesPage(baseUrl, headers);
-  return mapDisputes(allDisputes, store);
+  return await mapDisputes(allDisputes, store);
 }
 
 async function fetchDisputesPage(baseUrl, headers, status = null) {
@@ -98,24 +117,54 @@ async function fetchDisputesPage(baseUrl, headers, status = null) {
   return json.disputes || [];
 }
 
-function mapDisputes(disputes, store) {
-  return disputes.map(d => ({
-    store: store.name || store.shopDomain,
-    storeId: store.id,
-    shopDomain: store.shopDomain,
-    disputeId: d.id,
-    orderId: d.order_id,
-    orderName: d.order_id ? `#${d.order_id}` : 'N/A',
-    initiatedAt: d.initiated_at,
-    evidenceDueBy: d.evidence_due_by,
-    evidenceSentOn: d.evidence_sent_on,
-    finalizedOn: d.finalized_on,
-    reason: d.reason || 'Unknown',
-    networkReasonCode: d.network_reason_code || null,
-    status: d.status || 'unknown',
-    amount: d.amount || '0.00',
-    currency: d.currency || 'USD',
-    type: d.type || 'unknown',
-    adminUrl: `https://admin.shopify.com/store/${store.shopDomain}/orders?chargeback_status=${d.status || 'needs_response'}&status=any`
-  }));
+async function mapDisputes(disputes, store) {
+  const baseUrl = `https://${store.shopDomain}.myshopify.com/admin/api/${shopifyConfig.apiVersion}`;
+  const headers = {
+    'X-Shopify-Access-Token': store.accessToken,
+    'Content-Type': 'application/json'
+  };
+
+  // Fetch order details (number + email) for disputes that have order_id
+  const orderIds = [...new Set(disputes.filter(d => d.order_id).map(d => d.order_id))];
+  const orderMap = {};
+  await Promise.all(
+    orderIds.map(async orderId => {
+      try {
+        const res = await fetch(`${baseUrl}/orders/${orderId}.json?fields=id,name,email`, {
+          method: 'GET',
+          headers
+        });
+        if (res.ok) {
+          const json = await res.json();
+          orderMap[orderId] = {name: json.order?.name, email: json.order?.email};
+        }
+      } catch (err) {
+        console.error(`[Disputes] Failed to fetch order ${orderId}:`, err.message);
+      }
+    })
+  );
+
+  return disputes.map(d => {
+    const order = orderMap[d.order_id] || {};
+    return {
+      store: store.name || store.shopDomain,
+      storeId: store.id,
+      shopDomain: store.shopDomain,
+      disputeId: d.id,
+      orderId: d.order_id,
+      orderName: order.name || (d.order_id ? `#${d.order_id}` : 'N/A'),
+      email: order.email || '',
+      initiatedAt: d.initiated_at,
+      evidenceDueBy: d.evidence_due_by,
+      evidenceSentOn: d.evidence_sent_on,
+      finalizedOn: d.finalized_on,
+      reason: d.reason || 'Unknown',
+      networkReasonCode: d.network_reason_code || null,
+      status: d.status || 'unknown',
+      amount: d.amount || '0.00',
+      currency: d.currency || 'USD',
+      type: d.type || 'unknown',
+      adminUrl: `https://admin.shopify.com/store/${store.shopDomain}/orders?chargeback_status=${d.status || 'needs_response'}&status=any`
+    };
+  });
 }

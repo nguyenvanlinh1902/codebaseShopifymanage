@@ -4,12 +4,16 @@
  */
 
 import {ShopifyService} from '../../services/shopifyService.js';
+import {AdminUserRepository} from '../../repositories/adminUserRepository.js';
 import {
   buildFilesToProcess,
   parseAndValidateCsvFiles,
   validateAndFetchStores
 } from './csv-upload-handler.js';
 import {callWithRetry, sleep, RATE_LIMIT_DELAY} from './retry-helpers.js';
+import {extractStoreIds} from '../../utils/store-access.js';
+
+const adminUserRepo = new AdminUserRepository();
 
 /**
  * Direct import: parse CSV and process products immediately (no PubSub).
@@ -28,6 +32,16 @@ export async function directImport(req, res) {
 
     if (targetStoreIds.length === 0) {
       return res.status(400).json({success: false, error: 'No store selected'});
+    }
+
+    // Permission check: non-admin can only import to their assigned stores
+    if (req.userRole !== 'admin') {
+      const userRecord = await adminUserRepo.getById(req.userId);
+      const assignedIds = extractStoreIds(userRecord?.assignedStores);
+      const unauthorized = targetStoreIds.filter(id => !assignedIds.includes(id));
+      if (unauthorized.length > 0) {
+        return res.status(403).json({success: false, error: 'Access denied to one or more stores'});
+      }
     }
 
     // Parse CSV files

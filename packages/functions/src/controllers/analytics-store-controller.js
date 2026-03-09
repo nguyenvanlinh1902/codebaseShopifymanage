@@ -2,6 +2,7 @@ import {StoreRepository} from '../repositories/storeRepository.js';
 import {OrderRepository} from '../repositories/orderRepository.js';
 import {AdminUserRepository} from '../repositories/adminUserRepository.js';
 import {SheetRepository} from '../repositories/sheetRepository.js';
+import {hasStoreAccess} from '../utils/store-access.js';
 
 const storeRepo = new StoreRepository();
 const orderRepo = new OrderRepository();
@@ -25,8 +26,7 @@ export async function getStoreAnalytics(req, res) {
     // Access check for non-admin
     if (!isAdmin) {
       const user = await adminUserRepo.getById(userId);
-      const assigned = user?.assignedStores || [];
-      if (assigned.length > 0 && !assigned.includes(storeId)) {
+      if (!hasStoreAccess(user?.assignedStores, storeId)) {
         return res.status(403).json({success: false, error: 'Access denied to this store'});
       }
     }

@@ -4,6 +4,8 @@ import {OrderSyncRepository} from '../repositories/orderSyncRepository.js';
 import {OrderRepository} from '../repositories/orderRepository.js';
 import {ImportHistoryRepository} from '../repositories/importHistoryRepository.js';
 import {TrackingHistoryRepository} from '../repositories/trackingHistoryRepository.js';
+import {AdminUserRepository} from '../repositories/adminUserRepository.js';
+import {extractStoreIds} from '../utils/store-access.js';
 
 const storeRepo = new StoreRepository();
 const sheetRepo = new SheetRepository();
@@ -11,6 +13,7 @@ const orderSyncRepo = new OrderSyncRepository();
 const orderRepo = new OrderRepository();
 const importHistoryRepo = new ImportHistoryRepository();
 const trackingHistoryRepo = new TrackingHistoryRepository();
+const adminUserRepo = new AdminUserRepository();
 
 /**
  * Get aggregated dashboard stats for multi-store management
@@ -19,12 +22,16 @@ export async function getDashboardStats(req, res) {
   try {
     const userId = req.userId;
     const isAdmin = req.userRole === 'admin';
-
-    // Fetch stores and sheets in parallel — admin sees all, others see assigned stores
-    const [stores, sheets] = await Promise.all([
-      isAdmin ? storeRepo.getAll() : storeRepo.getByUser(userId),
-      sheetRepo.getAll()
-    ]);
+    // Fetch stores: admin sees all, non-admin sees only assigned stores
+    let stores;
+    if (isAdmin) {
+      stores = await storeRepo.getAll();
+    } else {
+      const userRecord = await adminUserRepo.getById(userId);
+      const assignedIds = extractStoreIds(userRecord?.assignedStores);
+      stores = assignedIds.length > 0 ? await storeRepo.getByIds(assignedIds) : [];
+    }
+    const sheets = await sheetRepo.getAll();
 
     // Fetch per-store data in parallel
     const storeDetails = await Promise.all(

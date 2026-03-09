@@ -164,7 +164,7 @@ function StandaloneFrame() {
         <Route path="/balance" element={isAdmin ? <Balance /> : <NotFound />} />
         <Route path="/campaign-ads" element={isAdmin ? <CampaignAds /> : <NotFound />} />
         <Route path="/disputes" element={<FeatureGuard feature="dispute"><Disputes /></FeatureGuard>} />
-        <Route path="/order-search" element={<FeatureGuard feature="orders"><OrderSearch /></FeatureGuard>} />
+        <Route path="/order-search" element={<FeatureGuard feature="order-search"><OrderSearch /></FeatureGuard>} />
         <Route path="/setup" element={<FeatureGuard feature="setup"><SetupStore /></FeatureGuard>} />
         <Route path="/users" element={isAdmin ? <Users /> : <NotFound />} />
         <Route path="/dev/webhooks" element={isAdmin ? <DevWebhooks /> : <NotFound />} />

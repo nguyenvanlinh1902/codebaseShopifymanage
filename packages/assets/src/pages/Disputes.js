@@ -6,16 +6,16 @@ import {
   IndexTable,
   Badge,
   Text,
-  Link,
   SkeletonBodyText,
-  EmptyState,
+  BlockStack,
+  Icon,
   Select,
   InlineStack,
-  Banner
+  TextField
 } from '@shopify/polaris';
+import {AlertDiamondIcon} from '@shopify/polaris-icons';
 import {api} from '../helpers/api';
-import {useAuth} from '../context/AuthContext';
-import {useStores} from '../context/store-context';
+import {usePermittedStores} from '../hooks/usePermittedStores';
 import {formatDate, formatDateTime} from '../helpers/format-date';
 
 const STATUS_TONES = {
@@ -44,89 +44,88 @@ function statusLabel(status) {
 const ALL_STORES_VALUE = '__all__';
 
 export default function Disputes() {
-  const {user} = useAuth();
-  const isAdmin = user?.role === 'admin';
-  const {stores: allStores, groups} = useStores();
-  const stores = isAdmin
-    ? allStores
-    : allStores.filter(s => (user?.assignedStores || []).includes(s.id));
-
+  const {stores, user} = usePermittedStores();
   const timezone = user?.timezone || '';
   const [disputes, setDisputes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedStoreId, setSelectedStoreId] = useState('');
-  const [groupFilter, setGroupFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
-
-  const visibleStores = useMemo(
-    () => (groupFilter ? stores.filter(s => s.groupId === groupFilter) : stores),
-    [groupFilter, stores]
-  );
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
 
   const storeOptions = [
-    ...(visibleStores.length > 1
-      ? [{label: `All stores (${visibleStores.length})`, value: ALL_STORES_VALUE}]
+    ...(stores.length > 1
+      ? [{label: `All stores (${stores.length})`, value: ALL_STORES_VALUE}]
       : []),
-    ...visibleStores.map(s => ({label: s.name || s.shopDomain, value: s.id}))
+    ...stores.map(s => ({label: s.name || s.shopDomain, value: s.id}))
   ];
 
-  const groupOptions = [
-    {label: 'All groups', value: ''},
-    ...groups.map(g => ({label: g.name, value: g.id}))
-  ];
-
-  // Auto-select when group or stores list changes
+  // Auto-select when stores list changes
   useEffect(() => {
-    if (visibleStores.length > 1) {
+    if (stores.length > 1) {
       setSelectedStoreId(ALL_STORES_VALUE);
-    } else if (visibleStores.length === 1) {
-      setSelectedStoreId(visibleStores[0].id);
+    } else if (stores.length === 1) {
+      setSelectedStoreId(stores[0].id);
     } else {
       setSelectedStoreId('');
     }
-  }, [visibleStores]);
+  }, [stores]);
 
-  const fetchDisputes = useCallback(async storeId => {
-    setLoading(true);
-    setDisputes([]);
-    try {
-      const query = new URLSearchParams();
-      if (storeId && storeId !== ALL_STORES_VALUE) query.set('storeId', storeId);
-      if (statusFilter) query.set('status', statusFilter);
-      const qs = query.toString();
-      const res = await api(`/api/analytics/disputes${qs ? `?${qs}` : ''}`);
-      const result = await res.json();
-      if (result.success) {
-        setDisputes(result.data || []);
+  const fetchDisputes = useCallback(
+    async storeId => {
+      setLoading(true);
+      setDisputes([]);
+      try {
+        const query = new URLSearchParams();
+        if (storeId && storeId !== ALL_STORES_VALUE) query.set('storeId', storeId);
+        if (statusFilter) query.set('status', statusFilter);
+        const qs = query.toString();
+        const res = await api(`/api/analytics/disputes${qs ? `?${qs}` : ''}`);
+        const result = await res.json();
+        if (result.success) {
+          setDisputes(result.data || []);
+        }
+      } catch (err) {
+        console.error('[Disputes] fetch error:', err);
+      } finally {
+        setLoading(false);
       }
-    } catch (err) {
-      console.error('[Disputes] fetch error:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, [statusFilter]);
+    },
+    [statusFilter]
+  );
 
   // Fetch when store selection changes
   useEffect(() => {
-    if (!selectedStoreId || visibleStores.length === 0) return;
+    if (!selectedStoreId || stores.length === 0) return;
     fetchDisputes(selectedStoreId);
-  }, [selectedStoreId, statusFilter, fetchDisputes, visibleStores.length]);
+  }, [selectedStoreId, statusFilter, fetchDisputes, stores.length]);
 
-  // Filter by group (client-side, since API returns all or single store)
+  // Filter by date (client-side)
   const filtered = useMemo(() => {
-    if (!groupFilter || selectedStoreId !== ALL_STORES_VALUE) return disputes;
-    const idsInGroup = visibleStores.map(s => s.id);
-    return disputes.filter(d => idsInGroup.includes(d.storeId));
-  }, [disputes, groupFilter, selectedStoreId, visibleStores]);
+    let result = disputes;
+    if (dateFrom) {
+      const from = new Date(dateFrom);
+      result = result.filter(d => d.initiatedAt && new Date(d.initiatedAt) >= from);
+    }
+    if (dateTo) {
+      const to = new Date(dateTo);
+      to.setHours(23, 59, 59, 999);
+      result = result.filter(d => d.initiatedAt && new Date(d.initiatedAt) <= to);
+    }
+    return result;
+  }, [disputes, dateFrom, dateTo]);
 
   const resourceName = {singular: 'dispute', plural: 'disputes'};
 
   const rowMarkup = filtered.map((d, idx) => (
     <IndexTable.Row id={`${d.disputeId}-${idx}`} key={`${d.disputeId}-${idx}`} position={idx}>
       <IndexTable.Cell>
-        <Text variant="bodyMd" fontWeight="semibold">{d.store}</Text>
+        <Text variant="bodyMd" fontWeight="semibold">
+          {d.store}
+        </Text>
       </IndexTable.Cell>
       <IndexTable.Cell>{d.orderName}</IndexTable.Cell>
+      <IndexTable.Cell>{d.email || '—'}</IndexTable.Cell>
       <IndexTable.Cell>
         <Badge tone={STATUS_TONES[d.status] || 'new'}>{statusLabel(d.status)}</Badge>
       </IndexTable.Cell>
@@ -140,9 +139,6 @@ export default function Disputes() {
           {d.evidenceDueBy ? formatDate(d.evidenceDueBy, timezone) : 'N/A'}
         </Text>
       </IndexTable.Cell>
-      <IndexTable.Cell>
-        {d.adminUrl && <Link url={d.adminUrl} external>View in Shopify</Link>}
-      </IndexTable.Cell>
     </IndexTable.Row>
   ));
 
@@ -150,31 +146,65 @@ export default function Disputes() {
     <Page title="Disputes" subtitle="Shopify Payments disputes across all stores">
       <Layout>
         <Layout.Section>
-          <InlineStack align="start" gap="400">
-            {groups.length > 0 && (
-              <div style={{minWidth: 200}}>
-                <Select label="Group" options={groupOptions} value={groupFilter} onChange={setGroupFilter} />
+          <Card>
+            <InlineStack align="start" gap="400" wrap>
+              <div style={{minWidth: 240}}>
+                <Select
+                  label="Store"
+                  options={storeOptions}
+                  value={selectedStoreId}
+                  onChange={setSelectedStoreId}
+                />
               </div>
-            )}
-            <div style={{minWidth: 280}}>
-              <Select label="Store" options={storeOptions} value={selectedStoreId} onChange={setSelectedStoreId} />
-            </div>
-            <div style={{minWidth: 180}}>
-              <Select label="Status" options={STATUS_OPTIONS} value={statusFilter} onChange={setStatusFilter} />
-            </div>
-          </InlineStack>
+              <div style={{minWidth: 160}}>
+                <Select
+                  label="Status"
+                  options={STATUS_OPTIONS}
+                  value={statusFilter}
+                  onChange={setStatusFilter}
+                />
+              </div>
+              <div style={{minWidth: 140}}>
+                <TextField
+                  label="From"
+                  type="date"
+                  value={dateFrom}
+                  onChange={setDateFrom}
+                  autoComplete="off"
+                />
+              </div>
+              <div style={{minWidth: 140}}>
+                <TextField
+                  label="To"
+                  type="date"
+                  value={dateTo}
+                  onChange={setDateTo}
+                  autoComplete="off"
+                />
+              </div>
+            </InlineStack>
+          </Card>
         </Layout.Section>
 
         <Layout.Section>
           {loading ? (
-            <Card><SkeletonBodyText lines={8} /></Card>
+            <Card>
+              <SkeletonBodyText lines={8} />
+            </Card>
           ) : filtered.length === 0 ? (
             <Card>
-              <EmptyState heading="No disputes found" image="">
-                <Banner tone="info">
-                  <p>No Shopify Payments disputes for the selected store. This is a good sign!</p>
-                </Banner>
-              </EmptyState>
+              <BlockStack align="center" inlineAlign="center" gap="200">
+                <div style={{padding: '32px 0 4px'}}>
+                  <Icon source={AlertDiamondIcon} tone="subdued" />
+                </div>
+                <Text variant="headingSm" as="p">
+                  No disputes found
+                </Text>
+                <Text variant="bodySm" tone="subdued">
+                  No Shopify Payments disputes for the selected filters.
+                </Text>
+                <div style={{paddingBottom: 24}} />
+              </BlockStack>
             </Card>
           ) : (
             <Card padding="0">
@@ -184,12 +214,12 @@ export default function Disputes() {
                 headings={[
                   {title: 'Store'},
                   {title: 'Order'},
+                  {title: 'Email'},
                   {title: 'Status'},
                   {title: 'Reason'},
                   {title: 'Amount'},
                   {title: 'Initiated'},
-                  {title: 'Evidence Due'},
-                  {title: 'Action'}
+                  {title: 'Evidence Due'}
                 ]}
                 selectable={false}
               >

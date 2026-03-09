@@ -12,14 +12,13 @@ const importHistoryRepo = new ImportHistoryRepository();
 export async function getImportHistory(req, res) {
   try {
     const {storeId} = req.query;
-    const userId = req.query.userId || 'default-user';
-
-    const isStandalone = true;
+    const userId = req.userId;
+    const isAdmin = req.userRole === 'admin';
 
     let imports;
     if (storeId) {
       imports = await importHistoryRepo.getByStore(storeId);
-    } else if (isStandalone) {
+    } else if (isAdmin) {
       imports = await importHistoryRepo.getAll(100);
     } else {
       imports = await importHistoryRepo.getByUser(userId);
@@ -132,9 +131,10 @@ export async function getImportStatus(req, res) {
  */
 export async function getSuccessfulImports(req, res) {
   try {
-    const userId = req.query.userId || 'default-user';
+    const userId = req.userId;
+    const isAdmin = req.userRole === 'admin';
 
-    const successfulImports = (userId === 'default-user')
+    const successfulImports = isAdmin
       ? await importHistoryRepo.getAllRecentSuccessful(20)
       : await importHistoryRepo.getRecentSuccessful(userId, 20);
 

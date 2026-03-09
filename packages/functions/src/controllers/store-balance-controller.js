@@ -1,5 +1,9 @@
 import {StoreRepository} from '../repositories/storeRepository.js';
+import {AdminUserRepository} from '../repositories/adminUserRepository.js';
 import shopifyConfig from '../config/shopify.js';
+import {extractStoreIds} from '../utils/store-access.js';
+
+const adminUserRepo = new AdminUserRepository();
 
 const storeRepo = new StoreRepository();
 
@@ -103,10 +107,17 @@ export async function getStoreBalance(req, res) {
  */
 export async function getAllBalances(req, res) {
   try {
-    const allStores = await storeRepo.getAll();
-    const activeStores = allStores.filter(
-      s => s.status === 'active' && s.accessToken && s.shopDomain
-    );
+    const userId = req.userId;
+    const isAdmin = req.userRole === 'admin';
+    let allStores;
+    if (isAdmin) {
+      allStores = await storeRepo.getAll();
+    } else {
+      const userRecord = await adminUserRepo.getById(userId);
+      const assignedIds = extractStoreIds(userRecord?.assignedStores);
+      allStores = assignedIds.length > 0 ? await storeRepo.getByIds(assignedIds) : [];
+    }
+    const activeStores = allStores.filter(s => s.accessToken && s.shopDomain);
 
     const results = await Promise.all(
       activeStores.map(async store => {

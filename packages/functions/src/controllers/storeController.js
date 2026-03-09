@@ -1,8 +1,11 @@
 import {StoreRepository} from '../repositories/storeRepository.js';
 import {OrderSyncRepository} from '../repositories/orderSyncRepository.js';
+import {AdminUserRepository} from '../repositories/adminUserRepository.js';
+import {extractStoreIds} from '../utils/store-access.js';
 
 const storeRepo = new StoreRepository();
 const orderSyncRepo = new OrderSyncRepository();
+const adminUserRepo = new AdminUserRepository();
 
 /**
  * Store Controller
@@ -21,17 +24,24 @@ export async function getStores(req, res) {
     const isAdmin = req.userRole === 'admin';
 
     const pageNum = Math.max(1, parseInt(page) || 1);
-    const limitNum = Math.min(50, Math.max(1, parseInt(limit) || 10));
+    const limitNum = Math.min(500, Math.max(1, parseInt(limit) || 10));
     const niches = niche ? niche.split(',').filter(Boolean) : [];
 
     let stores;
     let total;
 
+    console.log(`[Stores] userId=${userId} role=${req.userRole} isAdmin=${isAdmin} page=${pageNum} limit=${limitNum} search="${search}" niches=${niches.length}`);
+
     if (isAdmin && !search && niches.length === 0) {
       // Admin: return ALL stores
-      const result = await storeRepo.getAllPaginated({page: pageNum, limit: limitNum, groupId: groupId || null});
+      const result = await storeRepo.getAllPaginated({
+        page: pageNum,
+        limit: limitNum,
+        groupId: groupId || null
+      });
       stores = result.stores;
       total = result.total;
+      console.log(`[Stores] admin getAllPaginated → ${stores.length}/${total} stores`);
     } else if (search && search.trim()) {
       // Search via BigQuery (supports CONTAINS text + niche filter)
       const result = await storeRepo.searchStores(isAdmin ? null : userId, {
@@ -51,8 +61,22 @@ export async function getStores(req, res) {
       });
       stores = result.stores;
       total = result.total;
+    } else if (!isAdmin) {
+      // Non-admin: fetch only stores explicitly assigned to this user
+      const userRecord = await adminUserRepo.getById(userId);
+      const assignedIds = extractStoreIds(userRecord?.assignedStores);
+      console.log(`[Stores] non-admin userId=${userId} assignedIds=${JSON.stringify(assignedIds)}`);
+      if (assignedIds.length === 0) {
+        stores = [];
+        total = 0;
+      } else {
+        stores = await storeRepo.getByIds(assignedIds);
+        if (groupId) stores = stores.filter(s => s.groupId === groupId);
+        total = stores.length;
+        console.log(`[Stores] non-admin found ${stores.length} stores`);
+      }
     } else {
-      // Normal listing via Firestore
+      // Admin: normal paginated listing (with optional groupId)
       const result = await storeRepo.getByUserIdPaginated(userId, {
         page: pageNum,
         limit: limitNum,

@@ -4,11 +4,13 @@ import {OrderSyncQueueRepository} from '../repositories/orderSyncQueueRepository
 import {OrderSyncJobRepository} from '../repositories/orderSyncJobRepository.js';
 import {StoreRepository} from '../repositories/storeRepository.js';
 import {SheetRepository} from '../repositories/sheetRepository.js';
+import {AdminUserRepository} from '../repositories/adminUserRepository.js';
 import {ShopifyService} from '../services/shopifyService.js';
 import {GoogleSheetsService} from '../services/googleSheetsService.js';
 import {GoogleAuthRepository} from '../repositories/googleAuthRepository.js';
 import crypto from 'crypto';
 import shopifyConfig from '../config/shopify.js';
+import {extractStoreIds, hasStoreAccess} from '../utils/store-access.js';
 
 const orderSyncRepo = new OrderSyncRepository();
 const orderRepo = new OrderRepository();
@@ -16,6 +18,7 @@ const orderSyncQueueRepo = new OrderSyncQueueRepository();
 const orderSyncJobRepo = new OrderSyncJobRepository();
 const storeRepo = new StoreRepository();
 const sheetRepo = new SheetRepository();
+const adminUserRepo = new AdminUserRepository();
 const authRepo = new GoogleAuthRepository();
 
 /**
@@ -24,7 +27,7 @@ const authRepo = new GoogleAuthRepository();
 export async function setupSync(req, res) {
   try {
     const {storeId, sheetId, sheetName, targetSheetId} = req.body;
-    const userId = req.body.userId || 'default-user';
+    const userId = req.userId;
 
     // Validate input
     if (!storeId || !sheetId) {
@@ -42,6 +45,14 @@ export async function setupSync(req, res) {
 
     if (!store) {
       return res.status(404).json({success: false, error: 'Store not found'});
+    }
+
+    // Permission check for non-admin
+    if (req.userRole !== 'admin') {
+      const userRecord = await adminUserRepo.getById(userId);
+      if (!hasStoreAccess(userRecord?.assignedStores, storeId)) {
+        return res.status(403).json({success: false, error: 'Access denied to this store'});
+      }
     }
 
     if (!sheet) {
@@ -361,8 +372,21 @@ async function fetchNextPage(syncJobId) {
       `[OrderSync] fetchNextPage: fetched ${orders.length} orders (page ${nextPage}, hasNextPage: ${hasNextPage})`
     );
 
+    // Fetch product links and variant images for all line items in this page
+    let productInfoMap;
+    try {
+      const variantIds = orders
+        .flatMap(o => (o.line_items || []).map(i => i.variant_id?.toString()))
+        .filter(Boolean);
+      if (variantIds.length > 0) {
+        productInfoMap = await shopifyService.getLineItemsProductInfo(variantIds, store.shopDomain);
+      }
+    } catch (err) {
+      console.error(`[OrderSync] fetchNextPage: failed to fetch product info: ${err.message}`);
+    }
+
     // Filter duplicates
-    const formattedOrders = orders.map(formatOrderRowsForSheet);
+    const formattedOrders = orders.map(o => formatOrderRowsForSheet(o, productInfoMap));
     const newOrders = [];
     for (const order of formattedOrders) {
       const alreadySynced = await orderSyncRepo.isOrderSynced(job.storeId, order.orderId);
@@ -419,6 +443,13 @@ export async function getOrderSyncQueueStats(req, res) {
       return res.status(400).json({success: false, error: 'storeId is required'});
     }
 
+    if (req.userRole !== 'admin') {
+      const userRecord = await adminUserRepo.getById(req.userId);
+      if (!hasStoreAccess(userRecord?.assignedStores, storeId)) {
+        return res.status(403).json({success: false, error: 'Access denied to this store'});
+      }
+    }
+
     const queueStats = await orderSyncQueueRepo.getQueueStats();
     const activeJob = await orderSyncJobRepo.getActiveJob(storeId);
     let jobStats = null;
@@ -449,6 +480,13 @@ export async function resyncFailedOrders(req, res) {
 
     if (!storeId) {
       return res.status(400).json({success: false, error: 'storeId is required'});
+    }
+
+    if (req.userRole !== 'admin') {
+      const userRecord = await adminUserRepo.getById(req.userId);
+      if (!hasStoreAccess(userRecord?.assignedStores, storeId)) {
+        return res.status(403).json({success: false, error: 'Access denied to this store'});
+      }
     }
 
     // Get sync configuration
@@ -526,6 +564,13 @@ export async function getSyncStats(req, res) {
       return res.status(400).json({success: false, error: 'storeId is required'});
     }
 
+    if (req.userRole !== 'admin') {
+      const userRecord = await adminUserRepo.getById(req.userId);
+      if (!hasStoreAccess(userRecord?.assignedStores, storeId)) {
+        return res.status(403).json({success: false, error: 'Access denied to this store'});
+      }
+    }
+
     const stats = await orderRepo.getSyncStats(storeId);
 
     return res.json({
@@ -547,13 +592,28 @@ export async function getSyncStats(req, res) {
 export async function getSyncConfigs(req, res) {
   try {
     const {storeId} = req.query;
+    const isAdmin = req.userRole === 'admin';
 
     let configs;
     if (storeId) {
+      // Permission check for specific store
+      if (!isAdmin) {
+        const userRecord = await adminUserRepo.getById(req.userId);
+        if (!hasStoreAccess(userRecord?.assignedStores, storeId)) {
+          return res.status(403).json({success: false, error: 'Access denied to this store'});
+        }
+      }
       configs = await orderSyncRepo.getSyncJobsByStore(storeId);
     } else {
-      // Get all configs across all stores
-      const stores = await storeRepo.getAll();
+      // Get configs only for accessible stores
+      let stores;
+      if (isAdmin) {
+        stores = await storeRepo.getAll();
+      } else {
+        const userRecord = await adminUserRepo.getById(req.userId);
+        const assignedIds = extractStoreIds(userRecord?.assignedStores);
+        stores = assignedIds.length > 0 ? await storeRepo.getByIds(assignedIds) : [];
+      }
       configs = [];
       for (const store of stores) {
         const storeConfigs = await orderSyncRepo.getSyncJobsByStore(store.id);
@@ -619,8 +679,23 @@ export async function handleOrderWebhook(req, res) {
       return res.status(200).json({message: 'Already synced'});
     }
 
+    // Fetch product links and variant images for line items
+    let productInfoMap;
+    try {
+      const shopifyService = new ShopifyService({
+        shopDomain: store.shopDomain,
+        accessToken: store.accessToken
+      });
+      const variantIds = (order.line_items || [])
+        .map(i => i.variant_id?.toString())
+        .filter(Boolean);
+      productInfoMap = await shopifyService.getLineItemsProductInfo(variantIds, store.shopDomain);
+    } catch (err) {
+      console.error('[WEBHOOK] Failed to fetch product info:', err.message);
+    }
+
     // Format order for sheet (per-line-item rows)
-    const formattedOrder = formatOrderRowsForSheet(order);
+    const formattedOrder = formatOrderRowsForSheet(order, productInfoMap);
 
     // Save to Firestore first (backup)
     try {
@@ -686,9 +761,12 @@ export async function handleOrderWebhook(req, res) {
  *   Payment Method | Total | Tax | Fee (PP/ST & Shopify) | Note |
  *   Shipping Address | Shipping Name | Shipping Address 1 | Shipping Address 2 |
  *   Shipping City | Shipping Zip | Shipping State | Shipping Country Code |
- *   Shipping Phone | Custom name | Design
+ *   Shipping Phone | Custom name | Design | Product Link | Variant Image
+ *
+ * @param {Object} order - Shopify order object
+ * @param {Map<string, {productUrl: string, variantImageUrl: string}>} [productInfoMap] - Optional enrichment map keyed by variant ID
  */
-function formatOrderRowsForSheet(order) {
+function formatOrderRowsForSheet(order, productInfoMap) {
   const addr = order.shipping_address || {};
   const lineItems = order.line_items || [];
   const orderNumber = order.name || '';
@@ -706,6 +784,9 @@ function formatOrderRowsForSheet(order) {
     const nameProp = props.find(p => /name/i.test(p.name));
     const designProp = props.find(p => /design/i.test(p.name));
     const isFirst = index === 0;
+
+    const variantId = item.variant_id?.toString() || '';
+    const productInfo = productInfoMap?.get(variantId) || {};
 
     return [
       '', // STT (auto-filled)
@@ -735,7 +816,9 @@ function formatOrderRowsForSheet(order) {
       addr.country_code || '', // Shipping Country Code
       addr.phone || '', // Shipping Phone
       nameProp ? `${nameProp.name}: ${nameProp.value}` : '', // Custom name
-      designProp ? `${designProp.name}: ${designProp.value}` : '' // Design
+      designProp ? `${designProp.name}: ${designProp.value}` : '', // Design
+      productInfo.productUrl || '', // Product Link
+      productInfo.variantImageUrl || '' // Variant Image
     ];
   };
 

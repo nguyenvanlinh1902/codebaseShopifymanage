@@ -2,11 +2,14 @@ import {StoreRepository} from '../repositories/storeRepository.js';
 import {OrderRepository} from '../repositories/orderRepository.js';
 import {ImportHistoryRepository} from '../repositories/importHistoryRepository.js';
 import {TrackingHistoryRepository} from '../repositories/trackingHistoryRepository.js';
+import {AdminUserRepository} from '../repositories/adminUserRepository.js';
+import {extractStoreIds} from '../utils/store-access.js';
 
 const storeRepo = new StoreRepository();
 const orderRepo = new OrderRepository();
 const importHistoryRepo = new ImportHistoryRepository();
 const trackingHistoryRepo = new TrackingHistoryRepository();
+const adminUserRepo = new AdminUserRepository();
 
 /**
  * Get analytics data: order counts, order status breakdown, import stats per store
@@ -16,7 +19,14 @@ export async function getAnalytics(req, res) {
     const userId = req.userId;
     const isAdmin = req.userRole === 'admin';
 
-    const stores = isAdmin ? await storeRepo.getAll() : await storeRepo.getByUser(userId);
+    let stores;
+    if (isAdmin) {
+      stores = await storeRepo.getAll();
+    } else {
+      const userRecord = await adminUserRepo.getById(userId);
+      const assignedIds = extractStoreIds(userRecord?.assignedStores);
+      stores = assignedIds.length > 0 ? await storeRepo.getByIds(assignedIds) : [];
+    }
 
     // Fetch per-store order stats and import history in parallel
     const [storeOrderStats, productImports, trackingImports] = await Promise.all([

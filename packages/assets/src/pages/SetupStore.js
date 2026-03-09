@@ -1,7 +1,7 @@
 import React, {useState, useEffect} from 'react';
 import {Page, Layout, Banner} from '@shopify/polaris';
 import {api} from '../helpers/api';
-import {useStores} from '../context/store-context';
+import {usePermittedStores} from '../hooks/usePermittedStores';
 import MetafieldDefinitionsTable from './setup-store/MetafieldDefinitionsTable';
 import ThemeSelection from './setup-store/ThemeSelection';
 import StoreSelection from './setup-store/StoreSelection';
@@ -10,7 +10,7 @@ import ApplyResults from './setup-store/ApplyResults';
 
 export default function SetupStore() {
   // Stores from shared context
-  const {stores, loading: storesLoading} = useStores();
+  const {stores, loading: storesLoading} = usePermittedStores();
   const [selectedStoreIds, setSelectedStoreIds] = useState([]);
 
   // Predefined definitions

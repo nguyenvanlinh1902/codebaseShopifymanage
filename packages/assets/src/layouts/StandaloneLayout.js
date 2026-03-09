@@ -34,9 +34,10 @@ const NAV_FEATURE_MAP = {
   '/orders': 'orders',
   '/tracking': 'tracking',
   '/analytics': 'analytics',
-  '/balance': 'analytics',
-  '/campaign-ads': 'analytics',
+  '/balance': 'finance',
+  '/campaign-ads': 'finance',
   '/order-search': 'orders',
+  '/disputes': 'dispute',
   '/themes': 'themes',
   '/setup': 'setup'
 };
@@ -59,10 +60,10 @@ function fmtDate(iso) {
 /**
  * Notification bell dropdown — renders as fixed overlay on top bar.
  */
-function NotificationBell({storeAlerts, totalAlerts, totalEvents}) {
+function NotificationBell({storeAlerts, disputes, totalAlerts, totalEvents, totalDisputes}) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
-  const badgeCount = totalAlerts + totalEvents;
+  const badgeCount = totalAlerts + totalEvents + totalDisputes;
 
   // Close on outside click
   useEffect(() => {
@@ -157,7 +158,7 @@ function NotificationBell({storeAlerts, totalAlerts, totalEvents}) {
 
           {/* Content */}
           <Scrollable style={{maxHeight: 480}}>
-            {allCritical.length === 0 && allRegular.length === 0 ? (
+            {allCritical.length === 0 && allRegular.length === 0 && disputes.length === 0 ? (
               <div style={{padding: 32, textAlign: 'center'}}>
                 <Text tone="subdued">No notifications</Text>
               </div>
@@ -203,6 +204,54 @@ function NotificationBell({storeAlerts, totalAlerts, totalEvents}) {
                             </Link>
                           </div>
                         )}
+                      </div>
+                    ))}
+                  </>
+                )}
+
+                {/* Disputes */}
+                {disputes.length > 0 && (
+                  <>
+                    <div
+                      style={{
+                        padding: '10px 16px',
+                        background: 'var(--p-color-bg-surface-warning-subdued, #FFF8E6)',
+                        ...row
+                      }}
+                    >
+                      <div style={{display: 'flex', alignItems: 'center', gap: 8}}>
+                        <Badge tone="warning" size="small">Dispute</Badge>
+                        <Text variant="headingSm">Disputes</Text>
+                      </div>
+                      <Badge tone="warning">{disputes.length}</Badge>
+                    </div>
+                    {disputes.map((d, i) => (
+                      <div
+                        key={`d-${i}`}
+                        style={{
+                          padding: '10px 16px',
+                          borderBottom: '1px solid var(--p-color-border-secondary, #E1E3E5)'
+                        }}
+                      >
+                        <div style={row}>
+                          <Text variant="bodySm" fontWeight="semibold">{d.store}</Text>
+                          <Text variant="bodySm" tone="subdued">{fmtDate(d.initiatedAt)}</Text>
+                        </div>
+                        <div style={{marginTop: 4}}>
+                          <Text variant="bodySm">
+                            Order {d.orderName} · {d.reason} · {d.currency} {d.amount}
+                          </Text>
+                        </div>
+                        <div style={{marginTop: 2}}>
+                          <Text variant="bodySm" tone="critical">
+                            Due: {d.evidenceDueBy ? new Date(d.evidenceDueBy).toLocaleDateString() : 'N/A'}
+                          </Text>
+                          {d.adminUrl && (
+                            <span style={{marginLeft: 8}}>
+                              <Link url={d.adminUrl} external>View</Link>
+                            </span>
+                          )}
+                        </div>
                       </div>
                     ))}
                   </>
@@ -255,7 +304,7 @@ export default function StandaloneLayout({children}) {
   const location = useLocation();
   const {logout, user} = useAuth();
   const isAdmin = user?.role === 'admin';
-  const {storeAlerts, totalAlerts, totalEvents} = useStoreAlerts();
+  const {storeAlerts, disputes, totalAlerts, totalEvents, totalDisputes} = useStoreAlerts();
   const [userMenuActive, setUserMenuActive] = useState(false);
 
   const toggleUserMenu = useCallback(() => setUserMenuActive(v => !v), []);
@@ -292,7 +341,10 @@ export default function StandaloneLayout({children}) {
   ];
 
   const devNavItems = isAdmin
-    ? [{label: 'Webhook Checker', icon: CodeIcon, url: '/dev/webhooks'}]
+    ? [
+        {label: 'Webhook Checker', icon: CodeIcon, url: '/dev/webhooks'},
+        {label: 'Setup Guide', icon: SettingsIcon, url: '/dev/guide'}
+      ]
     : [];
 
   const userMenuMarkup = (
@@ -322,8 +374,10 @@ export default function StandaloneLayout({children}) {
     <Frame topBar={topBarMarkup} navigation={navigationMarkup}>
       <NotificationBell
         storeAlerts={storeAlerts}
+        disputes={disputes}
         totalAlerts={totalAlerts}
         totalEvents={totalEvents}
+        totalDisputes={totalDisputes}
       />
       {children}
     </Frame>

@@ -2,6 +2,7 @@ import React, {useState, useEffect} from 'react';
 import {Page, Layout, Select, InlineStack} from '@shopify/polaris';
 import {api} from '../helpers/api';
 import {useAuth} from '../context/AuthContext';
+import {useStores} from '../context/store-context';
 import AnalyticsOrderStats from './analytics/analytics-order-stats';
 import AnalyticsOrderChart from './analytics/analytics-order-chart';
 
@@ -17,18 +18,13 @@ const TIME_OPTIONS = [
 export default function Analytics() {
   const {user} = useAuth();
   const isAdmin = user?.role === 'admin';
-  const [stores, setStores] = useState([]);
+  const {stores: allStores, groups} = useStores();
+  const stores = isAdmin ? allStores : allStores.filter(s => (user?.assignedStores || []).includes(s.id));
   const [selectedStoreId, setSelectedStoreId] = useState('');
   const [analyticsData, setAnalyticsData] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [groups, setGroups] = useState([]);
   const [groupFilter, setGroupFilter] = useState('');
   const [timePeriod, setTimePeriod] = useState('-30d');
-
-  useEffect(() => {
-    fetchStores();
-    api('/api/store-groups').then(r => r.json()).then(d => { if (d.success) setGroups(d.data); }).catch(() => {});
-  }, []);
 
   useEffect(() => {
     if (selectedStoreId) fetchAnalytics(selectedStoreId, timePeriod);
@@ -39,18 +35,6 @@ export default function Analytics() {
     if (filtered.length > 0) setSelectedStoreId(filtered[0].id);
     else if (stores.length > 0 && !selectedStoreId) setSelectedStoreId(stores[0].id);
   }, [stores, groupFilter]);
-
-  const fetchStores = async () => {
-    try {
-      const res = await api('/api/stores?limit=100');
-      const result = await res.json();
-      if (result.success) {
-        const all = result.data || [];
-        const visible = isAdmin ? all : all.filter(s => (user?.assignedStores || []).includes(s.id));
-        setStores(visible);
-      }
-    } catch { /* non-critical */ }
-  };
 
   const fetchAnalytics = async (storeId, since) => {
     setLoading(true);

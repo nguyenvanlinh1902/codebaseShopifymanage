@@ -13,6 +13,7 @@ import {
 import {ImportIcon} from '@shopify/polaris-icons';
 import {api} from '../helpers/api';
 import {useAuth} from '../context/AuthContext';
+import {useStores} from '../context/store-context';
 import useImportProgressAllStores from '../hooks/useImportProgressAllStores';
 import ImportProgressCard from './embed-products/ImportProgressCard';
 import UploadCsvModal from './products/UploadCsvModal';
@@ -25,8 +26,8 @@ import ReimportModal from './products/ReimportModal';
  */
 export default function Products() {
   const {user} = useAuth();
+  const {stores} = useStores();
   const [selectedTab, setSelectedTab] = useState(0);
-  const [stores, setStores] = useState([]);
   const [selectedStore, setSelectedStore] = useState('');
   const [selectedStores, setSelectedStores] = useState([]);
   const [files, setFiles] = useState([]);
@@ -96,30 +97,17 @@ export default function Products() {
   const [totalProducts, setTotalProducts] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
 
+  const prevStoreRef = React.useRef(selectedStore);
   useEffect(() => {
-    fetchStores();
-    fetchProducts();
-  }, []);
-
-  useEffect(() => {
+    if (prevStoreRef.current !== selectedStore) {
+      prevStoreRef.current = selectedStore;
+      if (currentPage !== 1) {
+        setCurrentPage(1);
+        return; // will re-trigger with page=1
+      }
+    }
     fetchProducts();
   }, [selectedStore, currentPage, itemsPerPage]);
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [selectedStore]);
-
-  const fetchStores = async () => {
-    try {
-      const response = await api('/api/stores');
-      const result = await response.json();
-      if (result.success) {
-        setStores(result.data || []);
-      }
-    } catch (err) {
-      console.error('Error fetching stores:', err);
-    }
-  };
 
   const fetchProducts = async () => {
     try {

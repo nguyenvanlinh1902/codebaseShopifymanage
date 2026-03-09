@@ -3,6 +3,7 @@ import {
   Page, Layout, Card, Tabs, Banner, Select, InlineStack, BlockStack, Text, Box, Badge
 } from '@shopify/polaris';
 import {api} from '../helpers/api';
+import {useStores} from '../context/store-context';
 import GoogleSheetImportTab from './tracking/GoogleSheetImportTab';
 import ExcelUploadTab from './tracking/ExcelUploadTab';
 import ImportHistoryTable from './tracking/ImportHistoryTable';
@@ -16,11 +17,9 @@ export default function Tracking() {
   const [selectedTab, setSelectedTab] = useState(0);
 
   // Stores & groups
-  const [stores, setStores] = useState([]);
-  const [groups, setGroups] = useState([]);
+  const {stores, groups, loading} = useStores();
   const [groupFilter, setGroupFilter] = useState('');
   const [selectedStore, setSelectedStore] = useState('');
-  const [loading, setLoading] = useState(true);
 
   // History
   const [importHistory, setImportHistory] = useState([]);
@@ -49,7 +48,10 @@ export default function Tracking() {
     {id: 'excel-upload', content: 'Excel Upload'}
   ];
 
-  useEffect(() => { fetchData(); }, []);
+  // Auto-select first store when stores load
+  useEffect(() => {
+    if (stores.length > 0 && !selectedStore) setSelectedStore(stores[0].id);
+  }, [stores]);
   useEffect(() => { if (selectedStore) fetchImportHistory(); }, [selectedStore]);
   useEffect(() => { if (selectedTab === 0) fetchSheets(); }, [selectedTab]);
   useEffect(() => {
@@ -64,24 +66,6 @@ export default function Tracking() {
     const id = setInterval(fetchImportHistory, 3000);
     return () => clearInterval(id);
   }, [importHistory]);
-
-  const fetchData = async () => {
-    try {
-      setLoading(true);
-      const [storesRes, groupsRes] = await Promise.all([
-        api('/api/stores?limit=100'),
-        api('/api/store-groups')
-      ]);
-      const storesData = await storesRes.json();
-      const groupsData = await groupsRes.json();
-      if (storesData.success) {
-        setStores(storesData.data || []);
-        if (storesData.data?.length > 0) setSelectedStore(storesData.data[0].id);
-      }
-      if (groupsData.success) setGroups(groupsData.data || []);
-    } catch { setError('Failed to load stores'); }
-    finally { setLoading(false); }
-  };
 
   const fetchSheets = async () => {
     try {

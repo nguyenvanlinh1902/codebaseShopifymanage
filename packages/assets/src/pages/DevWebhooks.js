@@ -26,6 +26,7 @@ import {
   PlusIcon
 } from '@shopify/polaris-icons';
 import {api} from '../helpers/api';
+import {useStores} from '../context/store-context';
 
 const WEBHOOK_TOPICS = [
   {label: 'orders/create', value: 'orders/create'},
@@ -338,25 +339,8 @@ function StoreWebhookRow({store}) {
 }
 
 export default function DevWebhooks() {
-  const [stores, setStores] = useState([]);
-  const [loadingStores, setLoadingStores] = useState(true);
+  const {stores, loading: loadingStores} = useStores();
   const [error, setError] = useState(null);
-
-  useEffect(() => {
-    const fetchStores = async () => {
-      try {
-        const res = await api('/api/stores?limit=200');
-        const json = await res.json();
-        if (json.success) setStores(json.data || []);
-        else setError(json.error || 'Failed to load stores');
-      } catch (err) {
-        setError(err.message);
-      } finally {
-        setLoadingStores(false);
-      }
-    };
-    fetchStores();
-  }, []);
 
   return (
     <Page

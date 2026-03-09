@@ -5,6 +5,7 @@ import * as analyticsStoreController from '../controllers/analytics-store-contro
 import * as storeAlertsController from '../controllers/store-alerts-controller.js';
 import * as orderAnalyticsController from '../controllers/order-analytics-controller.js';
 import * as orderSearchController from '../controllers/order-search-controller.js';
+import * as disputeController from '../controllers/dispute-controller.js';
 
 const router = new Router();
 
@@ -15,5 +16,6 @@ router.get('/campaign-ads', shopifyqlCampaignController.getCampaignAds);
 router.get('/campaign-ads/all-stores', shopifyqlCampaignController.getCampaignAdsAllStores);
 router.get('/order-analytics', orderAnalyticsController.getOrderAnalytics);
 router.get('/order-search', orderSearchController.searchOrders);
+router.get('/disputes', disputeController.getDisputes);
 
 export default router;

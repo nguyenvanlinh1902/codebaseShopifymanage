@@ -1,0 +1,295 @@
+import React, {useState, useEffect, useMemo} from 'react';
+import {
+  Card, BlockStack, InlineStack, Text, SkeletonBodyText, Badge, Divider,
+  Popover, ActionList, Button, TextField
+} from '@shopify/polaris';
+import {CashDollarIcon, TargetIcon, ChartVerticalFilledIcon, CalendarIcon} from '@shopify/polaris-icons';
+import {api} from '../../helpers/api';
+import AnalyticsStatCard from '../analytics/analytics-stat-card';
+
+const PERIOD_OPTIONS = [
+  {label: 'Today', value: 'today'},
+  {label: 'Last 7 days', value: '7d'},
+  {label: 'Last 30 days', value: '30d'},
+  {label: 'This Month', value: 'month'},
+  {label: 'Last 90 days', value: '90d'},
+  {label: 'This Year', value: 'year'},
+  {label: 'Custom', value: 'custom'}
+];
+
+function fmt(v) {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency', currency: 'USD', maximumFractionDigits: 0
+  }).format(v || 0);
+}
+
+function toDateStr(d) {
+  return d.toISOString().split('T')[0];
+}
+
+function daysAgo(n) {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return toDateStr(d);
+}
+
+function getDateRange(period, customFrom, customTo) {
+  const today = toDateStr(new Date());
+  const now = new Date();
+  const monthStart = today.slice(0, 8) + '01';
+  const prevMonthStart = toDateStr(new Date(now.getFullYear(), now.getMonth() - 1, 1));
+  const yearStart = now.getFullYear() + '-01-01';
+  const prevYearStart = (now.getFullYear() - 1) + '-01-01';
+
+  const ranges = {
+    today: {from: today, to: today, prevFrom: daysAgo(1), prevTo: daysAgo(1), label: 'vs yesterday'},
+    '7d': {from: daysAgo(7), to: today, prevFrom: daysAgo(14), prevTo: daysAgo(8), label: 'vs prev 7d'},
+    '30d': {from: daysAgo(30), to: today, prevFrom: daysAgo(60), prevTo: daysAgo(31), label: 'vs prev 30d'},
+    month: {from: monthStart, to: today, prevFrom: prevMonthStart, prevTo: daysAgo(now.getDate()), label: 'vs last month'},
+    '90d': {from: daysAgo(90), to: today, prevFrom: daysAgo(180), prevTo: daysAgo(91), label: 'vs prev 90d'},
+    year: {from: yearStart, to: today, prevFrom: prevYearStart, prevTo: (now.getFullYear() - 1) + today.slice(4), label: 'vs last year'},
+    custom: {from: customFrom, to: customTo, prevFrom: null, prevTo: null, label: ''}
+  };
+  return ranges[period] || ranges.month;
+}
+
+function sumDays(days, from, to) {
+  return days.filter(d => d.day >= from && d.day <= to).reduce((s, d) => s + d.value, 0);
+}
+
+function pctChange(cur, prev) {
+  if (!prev) return null;
+  return Math.round(((cur - prev) / prev) * 100);
+}
+
+// Reusable Popover filter button
+function PopoverFilter({label, options, value, onChange, icon}) {
+  const [open, setOpen] = useState(false);
+  const selected = options.find(o => o.value === value);
+  return (
+    <Popover
+      active={open}
+      onClose={() => setOpen(false)}
+      activator={
+        <Button onClick={() => setOpen(v => !v)} disclosure icon={icon} size="slim">
+          {selected?.label || label}
+        </Button>
+      }
+    >
+      <ActionList
+        items={options.map(o => ({
+          content: o.label,
+          active: o.value === value,
+          onAction: () => {
+            onChange(o.value);
+            setOpen(false);
+          }
+        }))}
+      />
+    </Popover>
+  );
+}
+
+// Period filter with custom date range inside the Popover
+function PeriodPopoverFilter({period, customFrom, customTo, onPeriodChange, onCustomFromChange, onCustomToChange}) {
+  const [open, setOpen] = useState(false);
+  const selected = PERIOD_OPTIONS.find(o => o.value === period);
+
+  const buttonLabel = period === 'custom' && customFrom && customTo
+    ? `${customFrom} → ${customTo}`
+    : selected?.label || 'Period';
+
+  return (
+    <Popover
+      active={open}
+      onClose={() => setOpen(false)}
+      activator={
+        <Button onClick={() => setOpen(v => !v)} disclosure icon={CalendarIcon} size="slim">
+          {buttonLabel}
+        </Button>
+      }
+    >
+      <ActionList
+        items={PERIOD_OPTIONS.filter(o => o.value !== 'custom').map(o => ({
+          content: o.label,
+          active: o.value === period,
+          onAction: () => {
+            onPeriodChange(o.value);
+            setOpen(false);
+          }
+        }))}
+      />
+      <div style={{padding: '12px 16px', borderTop: '1px solid var(--p-color-border-secondary, #E1E3E5)'}}>
+        <BlockStack gap="200">
+          <Text variant="bodySm" fontWeight="semibold">Custom Range</Text>
+          <InlineStack gap="200">
+            <div style={{width: 140}}>
+              <TextField
+                label="From" type="date" value={customFrom}
+                onChange={v => { onCustomFromChange(v); onPeriodChange('custom'); }}
+                autoComplete="off" labelHidden
+              />
+            </div>
+            <div style={{width: 140}}>
+              <TextField
+                label="To" type="date" value={customTo}
+                onChange={v => { onCustomToChange(v); onPeriodChange('custom'); }}
+                autoComplete="off" labelHidden
+              />
+            </div>
+          </InlineStack>
+        </BlockStack>
+      </div>
+    </Popover>
+  );
+}
+
+export default function DashboardFinanceSummary() {
+  const [rawStores, setRawStores] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [period, setPeriod] = useState('month');
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
+  const [storeFilter, setStoreFilter] = useState('all');
+  const [groupFilter, setGroupFilter] = useState('all');
+
+  useEffect(() => {
+    api('/api/dashboard/finance-summary')
+      .then(r => r.json())
+      .then(d => {
+        if (d.success) setRawStores(d.data.stores);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const {storeOptions, groupOptions} = useMemo(() => {
+    if (!rawStores) return {storeOptions: [], groupOptions: []};
+    const groups = [...new Set(rawStores.map(s => s.groupId).filter(Boolean))];
+    return {
+      storeOptions: [
+        {label: 'All Stores', value: 'all'},
+        ...rawStores.map(s => ({label: s.name, value: s.storeId}))
+      ],
+      groupOptions: [
+        {label: 'All Groups', value: 'all'},
+        ...groups.map(g => ({label: g, value: g}))
+      ]
+    };
+  }, [rawStores]);
+
+  const computed = useMemo(() => {
+    if (!rawStores) return null;
+    if (period === 'custom' && (!customFrom || !customTo)) return null;
+    const range = getDateRange(period, customFrom, customTo);
+
+    let filtered = rawStores;
+    if (groupFilter !== 'all') filtered = filtered.filter(s => s.groupId === groupFilter);
+    if (storeFilter !== 'all') filtered = filtered.filter(s => s.storeId === storeFilter);
+
+    const stores = filtered.map(s => ({
+      ...s,
+      revenue: sumDays(s.revenueDays, range.from, range.to),
+      revenuePrev: range.prevFrom ? sumDays(s.revenueDays, range.prevFrom, range.prevTo) : null,
+      adSpend: sumDays(s.adSpendDays, range.from, range.to),
+      adSpendPrev: range.prevFrom ? sumDays(s.adSpendDays, range.prevFrom, range.prevTo) : null
+    }));
+
+    const totals = stores.reduce(
+      (a, s) => {
+        a.revenue += s.revenue;
+        a.revenuePrev += s.revenuePrev || 0;
+        a.adSpend += s.adSpend;
+        a.adSpendPrev += s.adSpendPrev || 0;
+        a.balance += s.balance?.amount || 0;
+        return a;
+      },
+      {revenue: 0, revenuePrev: 0, adSpend: 0, adSpendPrev: 0, balance: 0}
+    );
+    return {stores, totals, label: range.label};
+  }, [rawStores, period, customFrom, customTo, storeFilter, groupFilter]);
+
+  if (loading) return <SkeletonBodyText lines={4} />;
+  if (!rawStores) return null;
+
+  const revPct = computed ? pctChange(computed.totals.revenue, computed.totals.revenuePrev) : null;
+  const adsPct = computed ? pctChange(computed.totals.adSpend, computed.totals.adSpendPrev) : null;
+
+  return (
+    <BlockStack gap="400">
+      <InlineStack gap="300" align="space-between" blockAlign="center" wrap>
+        <Text variant="headingMd">Finance Overview</Text>
+        <InlineStack gap="200" blockAlign="center" wrap>
+          {groupOptions.length > 1 && (
+            <PopoverFilter label="Group" options={groupOptions} value={groupFilter} onChange={setGroupFilter} />
+          )}
+          {storeOptions.length > 2 && (
+            <PopoverFilter label="Store" options={storeOptions} value={storeFilter} onChange={setStoreFilter} />
+          )}
+          <PeriodPopoverFilter
+            period={period}
+            customFrom={customFrom}
+            customTo={customTo}
+            onPeriodChange={setPeriod}
+            onCustomFromChange={setCustomFrom}
+            onCustomToChange={setCustomTo}
+          />
+        </InlineStack>
+      </InlineStack>
+
+      {computed && (
+        <>
+          <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px'}}>
+            <AnalyticsStatCard
+              title="Revenue"
+              value={fmt(computed.totals.revenue)}
+              icon={ChartVerticalFilledIcon}
+              color="#22c55e"
+              subtitle={
+                revPct !== null && computed.label
+                  ? `${revPct > 0 ? '+' : ''}${revPct}% ${computed.label}`
+                  : undefined
+              }
+            />
+            <AnalyticsStatCard
+              title="Ad Spend"
+              value={fmt(computed.totals.adSpend)}
+              icon={TargetIcon}
+              color="#ef4444"
+              subtitle={
+                adsPct !== null && computed.label
+                  ? `${adsPct > 0 ? '+' : ''}${adsPct}% ${computed.label}`
+                  : undefined
+              }
+            />
+            <AnalyticsStatCard
+              title="Shopify Balance"
+              value={fmt(computed.totals.balance)}
+              icon={CashDollarIcon}
+              color="#6366f1"
+            />
+          </div>
+
+          <Card>
+            <BlockStack gap="200">
+              <Text variant="headingSm">Per Store</Text>
+              <Divider />
+              {computed.stores.map(s => (
+                <div key={s.storeId} style={{padding: '8px 0'}}>
+                  <InlineStack align="space-between" blockAlign="center">
+                    <Text variant="bodySm" fontWeight="semibold">{s.name}</Text>
+                    <InlineStack gap="300">
+                      <Badge tone="success">{fmt(s.revenue)}</Badge>
+                      <Badge tone="critical">{fmt(s.adSpend)} ads</Badge>
+                      <Badge>{fmt(s.balance?.amount)} bal</Badge>
+                    </InlineStack>
+                  </InlineStack>
+                </div>
+              ))}
+            </BlockStack>
+          </Card>
+        </>
+      )}
+    </BlockStack>
+  );
+}

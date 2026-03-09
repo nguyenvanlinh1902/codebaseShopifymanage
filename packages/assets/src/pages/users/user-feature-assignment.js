@@ -3,13 +3,15 @@ import {ChoiceList, BlockStack, Text, InlineStack, Button} from '@shopify/polari
 import PropTypes from 'prop-types';
 
 // Dashboard is always accessible — not included here
+// Finance (Balance, Campaign Ads) is admin-only — not assignable
 const ALL_FEATURES = [
   {label: 'Stores', value: 'stores'},
   {label: 'Google Sheets', value: 'sheets'},
   {label: 'Products', value: 'products'},
-  {label: 'Orders', value: 'orders'},
+  {label: 'Orders + Order Search', value: 'orders'},
   {label: 'Tracking', value: 'tracking'},
-  {label: 'Analytics', value: 'analytics'},
+  {label: 'Analytics (Revenue)', value: 'analytics'},
+  {label: 'Disputes', value: 'dispute'},
   {label: 'Themes', value: 'themes'},
   {label: 'Setup Store', value: 'setup'}
 ];

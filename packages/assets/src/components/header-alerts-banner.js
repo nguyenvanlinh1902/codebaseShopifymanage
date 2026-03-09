@@ -2,15 +2,16 @@ import {useState, useEffect} from 'react';
 import {api} from '../helpers/api';
 
 /**
- * Hook that fetches full alert data for all stores.
- * Returns store alerts with full details (messages, actions, events).
+ * Hook that fetches full alert data for all stores + disputes.
+ * Returns store alerts with full details (messages, actions, events, disputes).
  */
 export function useStoreAlerts() {
   const [storeAlerts, setStoreAlerts] = useState([]);
+  const [disputes, setDisputes] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchAlerts();
+    Promise.all([fetchAlerts(), fetchDisputes()]).finally(() => setLoading(false));
   }, []);
 
   const fetchAlerts = async () => {
@@ -39,17 +40,25 @@ export function useStoreAlerts() {
       setStoreAlerts(parsed);
     } catch {
       // silent
-    } finally {
-      setLoading(false);
     }
   };
 
-  // Total counts for badge
+  const fetchDisputes = async () => {
+    try {
+      const res = await api('/api/analytics/disputes');
+      const result = await res.json();
+      if (result.success) setDisputes(result.data || []);
+    } catch {
+      // silent
+    }
+  };
+
   const totalAlerts = storeAlerts.reduce(
     (sum, s) => sum + s.alerts.length + s.events.filter(e => e.critical).length,
     0
   );
   const totalEvents = storeAlerts.reduce((sum, s) => sum + s.events.length, 0);
+  const totalDisputes = disputes.length;
 
-  return {storeAlerts, totalAlerts, totalEvents, loading};
+  return {storeAlerts, disputes, totalAlerts, totalEvents, totalDisputes, loading};
 }

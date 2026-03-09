@@ -1,6 +1,7 @@
 import React, {useState, useEffect} from 'react';
 import {Page, Layout, Banner} from '@shopify/polaris';
 import {api} from '../helpers/api';
+import {useStores} from '../context/store-context';
 import MetafieldDefinitionsTable from './setup-store/MetafieldDefinitionsTable';
 import ThemeSelection from './setup-store/ThemeSelection';
 import StoreSelection from './setup-store/StoreSelection';
@@ -8,9 +9,8 @@ import CheckResults from './setup-store/CheckResults';
 import ApplyResults from './setup-store/ApplyResults';
 
 export default function SetupStore() {
-  // Stores
-  const [stores, setStores] = useState([]);
-  const [storesLoading, setStoresLoading] = useState(true);
+  // Stores from shared context
+  const {stores, loading: storesLoading} = useStores();
   const [selectedStoreIds, setSelectedStoreIds] = useState([]);
 
   // Predefined definitions
@@ -34,25 +34,9 @@ export default function SetupStore() {
   const [errorMsg, setErrorMsg] = useState('');
 
   useEffect(() => {
-    loadStores();
     loadDefinitions();
     loadSavedThemes();
   }, []);
-
-  const loadStores = async () => {
-    try {
-      setStoresLoading(true);
-      const res = await api('/api/stores?limit=50');
-      const data = await res.json();
-      if (data.success) {
-        setStores(data.data || []);
-      }
-    } catch (err) {
-      setErrorMsg('Failed to load stores');
-    } finally {
-      setStoresLoading(false);
-    }
-  };
 
   const loadDefinitions = async () => {
     try {

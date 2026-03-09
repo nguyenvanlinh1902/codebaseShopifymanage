@@ -14,13 +14,14 @@ import {
   BlockStack
 } from '@shopify/polaris';
 import {api} from '../helpers/api';
+import {useStores} from '../context/store-context';
 
 /**
  * Orders Sync Page - Setup which Google Sheet to sync orders to.
  * Webhooks are auto-registered on app install.
  */
 export default function Orders() {
-  const [stores, setStores] = useState([]);
+  const {stores} = useStores();
   const [sheets, setSheets] = useState([]);
   const [selectedStore, setSelectedStore] = useState('');
   const [selectedSheet, setSelectedSheet] = useState('');
@@ -52,10 +53,9 @@ export default function Orders() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [storesRes, sheetsRes] = await Promise.all([api('/api/stores'), api('/api/sheets')]);
-      const [storesData, sheetsData] = await Promise.all([storesRes.json(), sheetsRes.json()]);
+      const sheetsRes = await api('/api/sheets');
+      const sheetsData = await sheetsRes.json();
 
-      if (storesData.success) setStores(storesData.data);
       if (sheetsData.success) setSheets(sheetsData.data);
 
       await fetchAllSyncConfigs();

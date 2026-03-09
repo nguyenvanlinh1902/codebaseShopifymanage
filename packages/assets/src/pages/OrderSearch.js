@@ -3,6 +3,7 @@ import {Page, Layout, Select, InlineStack, TextField, Card, DataTable, Badge, Li
 import {SearchIcon} from '@shopify/polaris-icons';
 import {api} from '../helpers/api';
 import {useAuth} from '../context/AuthContext';
+import {useStores} from '../context/store-context';
 
 const FULFILLMENT_TONE = {FULFILLED: 'success', UNFULFILLED: 'attention', PARTIALLY_FULFILLED: 'info', IN_PROGRESS: 'info'};
 const FINANCIAL_TONE = {PAID: 'success', PENDING: 'attention', REFUNDED: 'info', PARTIALLY_REFUNDED: 'warning', VOIDED: 'critical'};
@@ -10,9 +11,9 @@ const FINANCIAL_TONE = {PAID: 'success', PENDING: 'attention', REFUNDED: 'info',
 export default function OrderSearch() {
   const {user} = useAuth();
   const isAdmin = user?.role === 'admin';
-  const [stores, setStores] = useState([]);
+  const {stores: allStores, groups} = useStores();
+  const stores = isAdmin ? allStores : allStores.filter(s => (user?.assignedStores || []).includes(s.id));
   const [selectedStoreId, setSelectedStoreId] = useState('');
-  const [groups, setGroups] = useState([]);
   const [groupFilter, setGroupFilter] = useState('');
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
@@ -20,11 +21,6 @@ export default function OrderSearch() {
   const [pageInfo, setPageInfo] = useState({hasNextPage: false, endCursor: null});
   const [loadingMore, setLoadingMore] = useState(false);
   const debounceRef = useRef(null);
-
-  useEffect(() => {
-    fetchStores();
-    api('/api/store-groups').then(r => r.json()).then(d => { if (d.success) setGroups(d.data); }).catch(() => {});
-  }, []);
 
   useEffect(() => {
     const filtered = groupFilter ? stores.filter(s => s.groupId === groupFilter) : stores;
@@ -43,17 +39,6 @@ export default function OrderSearch() {
     debounceRef.current = setTimeout(() => searchOrders(selectedStoreId, query.trim()), 300);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [query, selectedStoreId]);
-
-  const fetchStores = async () => {
-    try {
-      const res = await api('/api/stores?limit=100');
-      const result = await res.json();
-      if (result.success) {
-        const all = result.data || [];
-        setStores(isAdmin ? all : all.filter(s => (user?.assignedStores || []).includes(s.id)));
-      }
-    } catch { /* non-critical */ }
-  };
 
   const searchOrders = async (storeId, q, cursor = null) => {
     cursor ? setLoadingMore(true) : setLoading(true);

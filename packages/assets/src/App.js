@@ -13,6 +13,7 @@ import StandaloneLayout from './layouts/StandaloneLayout';
 
 // Context (standalone only)
 import {AuthProvider, useAuth} from './context/AuthContext';
+import {StoreProvider} from './context/store-context';
 
 // Pages - Embedded
 import EmbedDashboard from './pages/EmbedDashboard';
@@ -35,6 +36,7 @@ import SetupStore from './pages/SetupStore';
 import Stores from './pages/Stores';
 import Users from './pages/Users';
 import DevWebhooks from './pages/DevWebhooks';
+import Guide from './pages/Guide';
 import OrderSearch from './pages/OrderSearch';
 import NotFound from './pages/NotFound';
 import LoginPage from './pages/LoginPage';
@@ -147,6 +149,7 @@ function StandaloneFrame() {
   const isAdmin = user?.role === 'admin';
 
   return (
+    <StoreProvider>
     <StandaloneLayout>
       <Routes>
         <Route path="/" element={<Dashboard />} />
@@ -157,14 +160,16 @@ function StandaloneFrame() {
         <Route path="/tracking" element={<FeatureGuard feature="tracking"><Tracking /></FeatureGuard>} />
         <Route path="/themes" element={<FeatureGuard feature="themes"><Themes /></FeatureGuard>} />
         <Route path="/analytics" element={<FeatureGuard feature="analytics"><Analytics /></FeatureGuard>} />
-        <Route path="/balance" element={<FeatureGuard feature="analytics"><Balance /></FeatureGuard>} />
-        <Route path="/campaign-ads" element={<FeatureGuard feature="analytics"><CampaignAds /></FeatureGuard>} />
+        <Route path="/balance" element={isAdmin ? <Balance /> : <NotFound />} />
+        <Route path="/campaign-ads" element={isAdmin ? <CampaignAds /> : <NotFound />} />
         <Route path="/order-search" element={<FeatureGuard feature="orders"><OrderSearch /></FeatureGuard>} />
         <Route path="/setup" element={<FeatureGuard feature="setup"><SetupStore /></FeatureGuard>} />
         <Route path="/users" element={isAdmin ? <Users /> : <NotFound />} />
         <Route path="/dev/webhooks" element={isAdmin ? <DevWebhooks /> : <NotFound />} />
+        <Route path="/dev/guide" element={isAdmin ? <Guide /> : <NotFound />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </StandaloneLayout>
+    </StoreProvider>
   );
 }

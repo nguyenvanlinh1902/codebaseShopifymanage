@@ -14,6 +14,7 @@ import {
 } from '@shopify/polaris';
 import {api} from '../helpers/api';
 import {useAuth} from '../context/AuthContext';
+import {useStores} from '../context/store-context';
 import StoresFilterBar from './stores/StoresFilterBar';
 import StoresTable from './stores/StoresTable';
 import StoresPagination from './stores/StoresPagination';
@@ -31,7 +32,7 @@ export default function Stores() {
   const isAdmin = user?.role === 'admin';
   const [stores, setStores] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [groups, setGroups] = useState([]);
+  const {groups, refetch: refetchStoreContext} = useStores();
   const [groupFilter, setGroupFilter] = useState('');
   const [groupManagerOpen, setGroupManagerOpen] = useState(false);
   const [pagination, setPagination] = useState({page: 1, total: 0, totalPages: 0});
@@ -126,9 +127,6 @@ export default function Stores() {
     nichesFetchedRef.current = true;
     fetchNiches();
     fetchBalances();
-    api('/api/store-groups').then(r => r.json()).then(d => {
-      if (d.success) setGroups(d.data);
-    }).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -488,8 +486,6 @@ export default function Stores() {
       <StoreGroupManager
         open={groupManagerOpen}
         onClose={() => setGroupManagerOpen(false)}
-        groups={groups}
-        onGroupsChange={setGroups}
       />
     </Page>
   );

@@ -13,7 +13,6 @@ import {
 import {ChevronDownIcon, ChevronUpIcon} from '@shopify/polaris-icons';
 
 export default function GuideCard({
-  step,
   title,
   description,
   icon,
@@ -50,7 +49,7 @@ export default function GuideCard({
             <BlockStack gap="050">
               <InlineStack gap="200" blockAlign="center">
                 <Text variant="headingSm" as="h3">
-                  Step {step}: {title}
+                  {title}
                 </Text>
                 {done === true && <Badge tone="success">{doneText}</Badge>}
                 {done === false && <Badge tone="attention">{pendingText}</Badge>}

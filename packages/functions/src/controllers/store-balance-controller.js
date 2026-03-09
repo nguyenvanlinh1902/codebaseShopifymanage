@@ -27,7 +27,6 @@ async function fetchAccountBalance(shopDomain, accessToken) {
     return null;
   }
   const data = await res.json();
-  console.log(`[Balance] REST ${shopDomain}:`, JSON.stringify(data));
   return data?.balance || null;
 }
 
@@ -61,8 +60,6 @@ async function fetchStoreBalance(shopDomain, accessToken) {
       fetchPayouts(shopDomain, accessToken)
     ]);
 
-    console.log(`[Balance] ${shopDomain}: REST balance =`, JSON.stringify(balanceArray));
-
     if (!balanceArray || balanceArray.length === 0) {
       return {balance: null, payouts, reason: 'Shopify Payments not enabled or no balance data'};
     }
@@ -94,9 +91,7 @@ export async function getStoreBalance(req, res) {
     }
 
     const result = await fetchStoreBalance(store.shopDomain, store.accessToken);
-    const response = {success: true, store: store.shopDomain, ...result};
-    console.log(`[Balance] getStoreBalance response for ${store.shopDomain}:`, JSON.stringify(response));
-    return res.json(response);
+    return res.json({success: true, store: store.shopDomain, ...result});
   } catch (error) {
     return res.status(500).json({success: false, error: error.message});
   }
@@ -112,8 +107,6 @@ export async function getAllBalances(req, res) {
     const activeStores = allStores.filter(
       s => s.status === 'active' && s.accessToken && s.shopDomain
     );
-
-    console.log(`[Balance] Fetching balances for ${activeStores.length} active stores`);
 
     const results = await Promise.all(
       activeStores.map(async store => {

@@ -14,6 +14,7 @@ import {
 import {useGoogleAuth} from '../hooks/useGoogleAuth';
 import {useGooglePicker} from '../hooks/useGooglePicker';
 import {api} from '../helpers/api';
+import {useStores} from '../context/store-context';
 import AccountsContent from './sheets/AccountsContent';
 import SheetsContent from './sheets/SheetsContent';
 import DeleteConfirmationModal from './sheets/DeleteConfirmationModal';
@@ -90,7 +91,7 @@ export default function Sheets() {
   const [disconnecting, setDisconnecting] = useState(false);
 
   // Store picker modal state (for add sheet action)
-  const [stores, setStores] = useState([]);
+  const {stores} = useStores();
   const [storePickerOpen, setStorePickerOpen] = useState(false);
   const [storePickerStoreId, setStorePickerStoreId] = useState('');
   const [pendingPickerEmail, setPendingPickerEmail] = useState(null);
@@ -100,43 +101,28 @@ export default function Sheets() {
   const lastSheetsFetchKeyRef = useRef(null);
   const lastAccountsFetchKeyRef = useRef(null);
 
-  // Fetch stores on mount
-  const storesFetchedRef = useRef(false);
+  // Auto-select first store for picker
   useEffect(() => {
-    if (storesFetchedRef.current) return;
-    storesFetchedRef.current = true;
-    (async () => {
-      try {
-        const res = await api('/api/stores?limit=50');
-        const result = await res.json();
-        if (result.success && result.data?.length > 0) {
-          setStores(result.data);
-          setStorePickerStoreId(result.data[0].id);
-        }
-      } catch (err) {
-        console.error('Error fetching stores:', err);
-      }
-    })();
-  }, []);
+    if (stores.length > 0 && !storePickerStoreId) setStorePickerStoreId(stores[0].id);
+  }, [stores]);
 
   // Track authenticated state to refetch data when user connects
   const wasAuthenticated = useRef(authenticated);
   useEffect(() => {
     if (authenticated && !wasAuthenticated.current) {
       setSuccessMessage('Google account connected successfully!');
-      fetchSheets(1, activeSheetSearch);
-      fetchAccounts(1, activeAccountSearch);
+      refreshData({resetPage: true});
     }
     wasAuthenticated.current = authenticated;
   }, [authenticated]);
 
   // Handle redirect from OAuth callback
+  const handledRedirectRef = useRef(false);
   useEffect(() => {
-    if (location.state?.authSuccess) {
+    if (location.state?.authSuccess && !handledRedirectRef.current) {
+      handledRedirectRef.current = true;
       setSuccessMessage('Google account connected successfully!');
       checkAuth();
-      fetchAccounts(1, activeAccountSearch);
-      fetchSheets(1, activeSheetSearch);
       window.history.replaceState({}, document.title);
     }
   }, [location.state]);

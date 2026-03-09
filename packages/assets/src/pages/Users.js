@@ -15,6 +15,7 @@ import {
 import {PlusIcon} from '@shopify/polaris-icons';
 import {useApi} from '../hooks/useApi';
 import {useAuth} from '../context/AuthContext';
+import {useStores} from '../context/store-context';
 import UserManagementModal from './users/user-management-modal';
 
 const ROLE_TONES = {admin: 'info', manager: 'attention', staff: 'new'};
@@ -23,7 +24,7 @@ export default function Users() {
   const {user: currentUser} = useAuth();
   const {loading, error, clearError, get, post, put, del} = useApi();
   const [users, setUsers] = useState([]);
-  const [stores, setStores] = useState([]);
+  const {stores} = useStores();
   const [modalUser, setModalUser] = useState(undefined); // undefined = closed, null = create, object = edit
   const [actionLoading, setActionLoading] = useState('');
 
@@ -34,9 +35,7 @@ export default function Users() {
 
   useEffect(() => {
     fetchUsers();
-    // Load stores for the assignment modal — non-critical, ignore failures
-    get('/api/stores?limit=100').then(data => setStores(data || [])).catch(() => {});
-  }, [fetchUsers, get]);
+  }, [fetchUsers]);
 
   const handleSave = async form => {
     const isEdit = !!modalUser;

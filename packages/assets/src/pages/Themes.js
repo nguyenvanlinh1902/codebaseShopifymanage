@@ -1,6 +1,7 @@
 import React, {useState, useEffect, useCallback} from 'react';
 import {Page, Layout, Card, Banner, Modal, BlockStack, Tabs} from '@shopify/polaris';
 import {api} from '../helpers/api';
+import {useStores} from '../context/store-context';
 import ImportSection from './themes/ImportSection';
 import ImportResults from './themes/ImportResults';
 import ThemeListSection from './themes/ThemeListSection';
@@ -13,9 +14,8 @@ export default function Themes() {
   const [selectedTab, setSelectedTab] = useState(0);
   const [importModalOpen, setImportModalOpen] = useState(false);
 
-  // Stores
-  const [stores, setStores] = useState([]);
-  const [storesLoading, setStoresLoading] = useState(true);
+  // Stores from shared context
+  const {stores, loading: storesLoading} = useStores();
 
   // Tab 1: Theme List
   const [selectedStoreId, setSelectedStoreId] = useState('');
@@ -43,7 +43,10 @@ export default function Themes() {
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
-  useEffect(() => { loadStores(); }, []);
+  // Auto-select first store when stores load
+  useEffect(() => {
+    if (stores.length > 0 && !selectedStoreId) setSelectedStoreId(stores[0].id);
+  }, [stores]);
 
   useEffect(() => {
     setThemes([]);
@@ -51,19 +54,6 @@ export default function Themes() {
     setSuccessMsg('');
     if (selectedStoreId && selectedTab === 0) loadThemes();
   }, [selectedStoreId]);
-
-  const loadStores = async () => {
-    try {
-      setStoresLoading(true);
-      const res = await api('/api/stores?limit=50');
-      const data = await res.json();
-      if (data.success) {
-        setStores(data.data || []);
-        if (data.data?.length > 0) setSelectedStoreId(data.data[0].id);
-      }
-    } catch { setErrorMsg('Failed to load stores'); }
-    finally { setStoresLoading(false); }
-  };
 
   const loadThemes = useCallback(async () => {
     if (!selectedStoreId) return;

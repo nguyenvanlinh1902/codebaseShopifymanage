@@ -129,11 +129,14 @@ export async function validateAndFetchStores(targetStoreIds) {
     return {stores: null, error: `Store(s) not active: ${names}. Please reinstall the app.`};
   }
 
-  // Check for missing or invalid accessToken
-  const noTokenStores = stores.filter(s => !s.accessToken || !s.accessToken.startsWith('shpat_'));
+  // Check for missing accessToken (don't enforce shpat_ prefix — legacy tokens are still valid)
+  const noTokenStores = stores.filter(s => !s.accessToken);
   if (noTokenStores.length > 0) {
     const names = noTokenStores.map(s => s.name || s.shopDomain).join(', ');
-    return {stores: null, error: `Store(s) missing valid access token: ${names}. Please reinstall the app.`};
+    return {
+      stores: null,
+      error: `Store(s) missing access token: ${names}. Please reinstall the app.`
+    };
   }
 
   return {stores, error: null};

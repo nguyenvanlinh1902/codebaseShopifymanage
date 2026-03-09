@@ -18,9 +18,9 @@ export async function processProductImport(messageData) {
   const data = messageData.message.json;
   const {importId, storeId, userId, storeName, shopDomain, accessToken, totalProducts} = data;
 
-  // Validate accessToken before starting
-  if (!accessToken || !accessToken.startsWith('shpat_')) {
-    const errMsg = `Invalid access token for ${storeName} (${shopDomain}). Please reinstall the app.`;
+  // Validate accessToken before starting (don't enforce shpat_ prefix — legacy tokens are still valid)
+  if (!accessToken) {
+    const errMsg = `Missing access token for ${storeName} (${shopDomain}). Please reinstall the app.`;
     console.error(`Import ${importId} aborted: ${errMsg}`);
     await importHistoryRepo.markFailed(importId, errMsg);
     return;

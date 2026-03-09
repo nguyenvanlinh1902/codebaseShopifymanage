@@ -17,4 +17,7 @@ router.post('/webhooks/register', multiAppAuthController.registerWebhook);
 // Store OAuth scopes
 router.get('/scopes', multiAppAuthController.getStoreScopes);
 
+// Token validity check
+router.get('/check-token', multiAppAuthController.checkToken);
+
 export default router;

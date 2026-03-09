@@ -570,6 +570,58 @@ export async function fixAllWebhooks(req, res) {
 }
 
 /**
+ * GET /api/authMultip/check-token?shop=xxx
+ * Verify if the stored accessToken is valid by calling Shopify shop.json
+ */
+export async function checkToken(req, res) {
+  try {
+    const {shop} = req.query;
+    if (!shop) return res.status(400).json({success: false, error: 'Missing shop param'});
+
+    const shopDomain = normalizeShopDomain(shop);
+    const store = await storeRepo.getByShopDomain(shopDomain);
+
+    if (!store) {
+      return res.json({success: true, valid: false, reason: 'Store not found in database'});
+    }
+    if (!store.accessToken) {
+      return res.json({success: true, valid: false, reason: 'No access token stored', tokenPrefix: null});
+    }
+
+    // Test the token by calling Shopify shop.json
+    const shopBase = `https://${shopDomain}.myshopify.com`;
+    const response = await fetch(`${shopBase}/admin/api/${shopifyConfig.apiVersion}/shop.json`, {
+      headers: {'X-Shopify-Access-Token': store.accessToken}
+    });
+
+    const tokenPrefix = store.accessToken.substring(0, 8) + '...';
+
+    if (response.ok) {
+      const data = await response.json();
+      return res.json({
+        success: true,
+        valid: true,
+        shopName: data.shop?.name,
+        tokenPrefix,
+        installedVia: store.installedVia || 'unknown'
+      });
+    } else {
+      const errText = await response.text();
+      return res.json({
+        success: true,
+        valid: false,
+        reason: `Shopify API error ${response.status}: ${errText.substring(0, 100)}`,
+        tokenPrefix,
+        installedVia: store.installedVia || 'unknown'
+      });
+    }
+  } catch (error) {
+    console.error('Check token error:', error);
+    return res.status(500).json({success: false, error: error.message});
+  }
+}
+
+/**
  * GET /api/authMultip/scopes?shop=xxx
  * Get granted OAuth scopes for a store from Shopify
  */

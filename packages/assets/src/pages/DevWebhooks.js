@@ -23,7 +23,8 @@ import {
   StatusActiveIcon,
   ChevronDownIcon,
   ChevronUpIcon,
-  PlusIcon
+  PlusIcon,
+  KeyIcon
 } from '@shopify/polaris-icons';
 import {api} from '../helpers/api';
 import {useStores} from '../context/store-context';
@@ -49,6 +50,10 @@ function StoreWebhookRow({store}) {
   const [scopes, setScopes] = useState(null);
   const [error, setError] = useState(null);
 
+  // Token check state
+  const [checkingToken, setCheckingToken] = useState(false);
+  const [tokenResult, setTokenResult] = useState(null);
+
   // Register webhook form
   const [showRegister, setShowRegister] = useState(false);
   const [webhookUrl, setWebhookUrl] = useState('');
@@ -57,6 +62,24 @@ function StoreWebhookRow({store}) {
 
   // Scopes toggle
   const [showScopes, setShowScopes] = useState(false);
+
+  const checkToken = useCallback(async () => {
+    setCheckingToken(true);
+    setTokenResult(null);
+    try {
+      const res = await api(`/api/authMultip/check-token?shop=${encodeURIComponent(store.shopDomain)}`);
+      const json = await res.json();
+      if (json.success) {
+        setTokenResult(json);
+      } else {
+        setTokenResult({valid: false, reason: json.error || 'Request failed'});
+      }
+    } catch (err) {
+      setTokenResult({valid: false, reason: err.message});
+    } finally {
+      setCheckingToken(false);
+    }
+  }, [store.shopDomain]);
 
   const check = useCallback(async () => {
     setChecking(true);
@@ -154,6 +177,9 @@ function StoreWebhookRow({store}) {
                 Fix
               </Button>
             )}
+            <Button size="slim" icon={KeyIcon} onClick={checkToken} loading={checkingToken}>
+              Check Token
+            </Button>
             <Button size="slim" icon={StatusActiveIcon} onClick={check} loading={checking}>
               {result ? 'Re-check' : 'Check'}
             </Button>
@@ -161,6 +187,20 @@ function StoreWebhookRow({store}) {
         </InlineStack>
 
         {error && <Banner tone="critical">{error}</Banner>}
+
+        {/* Token check result */}
+        {tokenResult && (
+          <Banner
+            tone={tokenResult.valid ? 'success' : 'critical'}
+            onDismiss={() => setTokenResult(null)}
+          >
+            {tokenResult.valid
+              ? `Token valid ✓ — ${tokenResult.shopName || ''} (${tokenResult.tokenPrefix}) via ${tokenResult.installedVia}`
+              : `Token invalid: ${tokenResult.reason}${tokenResult.tokenPrefix ? ` (${tokenResult.tokenPrefix})` : ''}`
+            }
+          </Banner>
+        )}
+
         {checking && <SkeletonBodyText lines={3} />}
 
         {/* Results */}

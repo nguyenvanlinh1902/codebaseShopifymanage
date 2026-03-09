@@ -8,7 +8,8 @@ import {
   Select,
   InlineStack,
   Text,
-  Badge
+  Badge,
+  Tooltip
 } from '@shopify/polaris';
 import {ImportIcon} from '@shopify/polaris-icons';
 import {api} from '../helpers/api';
@@ -419,19 +420,25 @@ export default function Products() {
                               <Text variant="bodyMd" fontWeight="semibold">
                                 {imp.fileName || 'Unknown file'}
                               </Text>
-                              <Badge
-                                tone={
-                                  imp.status === 'completed'
-                                    ? 'success'
-                                    : imp.status === 'failed'
-                                    ? 'critical'
-                                    : imp.status === 'processing'
-                                    ? 'attention'
-                                    : 'info'
-                                }
-                              >
-                                {imp.status}
-                              </Badge>
+                              {imp.status === 'failed' && imp.error ? (
+                                <Tooltip content={imp.error} preferredPosition="above">
+                                  <Badge tone="critical">{imp.status}</Badge>
+                                </Tooltip>
+                              ) : (
+                                <Badge
+                                  tone={
+                                    imp.status === 'completed'
+                                      ? 'success'
+                                      : imp.status === 'failed'
+                                      ? 'critical'
+                                      : imp.status === 'processing'
+                                      ? 'attention'
+                                      : 'info'
+                                  }
+                                >
+                                  {imp.status}
+                                </Badge>
+                              )}
                             </InlineStack>
                             <InlineStack gap="400">
                               <Text variant="bodySm" tone="subdued">

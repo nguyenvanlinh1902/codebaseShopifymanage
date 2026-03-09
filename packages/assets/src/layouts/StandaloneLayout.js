@@ -17,7 +17,8 @@ import {
   CodeIcon,
   CashDollarIcon,
   TargetIcon,
-  NotificationIcon
+  NotificationIcon,
+  SearchIcon
 } from '@shopify/polaris-icons';
 import {useAuth} from '../context/AuthContext';
 import {useStoreAlerts} from '../components/header-alerts-banner';
@@ -35,6 +36,7 @@ const NAV_FEATURE_MAP = {
   '/analytics': 'analytics',
   '/balance': 'analytics',
   '/campaign-ads': 'analytics',
+  '/order-search': 'orders',
   '/themes': 'themes',
   '/setup': 'setup'
 };
@@ -264,6 +266,7 @@ export default function StandaloneLayout({children}) {
     {label: 'Google Sheets (Beta)', icon: NoteIcon, url: '/sheets'},
     {label: 'Products', icon: ProductIcon, url: '/products'},
     {label: 'Orders', icon: OrderIcon, url: '/orders'},
+    {label: 'Order Search', icon: SearchIcon, url: '/order-search'},
     {label: 'Tracking', icon: DeliveryIcon, url: '/tracking'},
     {label: 'Analytics', icon: ChartVerticalFilledIcon, url: '/analytics'},
     {label: 'Balance', icon: CashDollarIcon, url: '/balance'},

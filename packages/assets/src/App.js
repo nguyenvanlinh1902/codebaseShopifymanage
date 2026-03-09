@@ -35,6 +35,7 @@ import SetupStore from './pages/SetupStore';
 import Stores from './pages/Stores';
 import Users from './pages/Users';
 import DevWebhooks from './pages/DevWebhooks';
+import OrderSearch from './pages/OrderSearch';
 import NotFound from './pages/NotFound';
 import LoginPage from './pages/LoginPage';
 import SetupAdminPage from './pages/SetupAdminPage';
@@ -158,6 +159,7 @@ function StandaloneFrame() {
         <Route path="/analytics" element={<FeatureGuard feature="analytics"><Analytics /></FeatureGuard>} />
         <Route path="/balance" element={<FeatureGuard feature="analytics"><Balance /></FeatureGuard>} />
         <Route path="/campaign-ads" element={<FeatureGuard feature="analytics"><CampaignAds /></FeatureGuard>} />
+        <Route path="/order-search" element={<FeatureGuard feature="orders"><OrderSearch /></FeatureGuard>} />
         <Route path="/setup" element={<FeatureGuard feature="setup"><SetupStore /></FeatureGuard>} />
         <Route path="/users" element={isAdmin ? <Users /> : <NotFound />} />
         <Route path="/dev/webhooks" element={isAdmin ? <DevWebhooks /> : <NotFound />} />

@@ -1,0 +1,178 @@
+import React, {useState, useEffect} from 'react';
+import {
+  Modal,
+  BlockStack,
+  Text,
+  Tabs,
+  TextField,
+  InlineStack,
+  Badge,
+  Spinner,
+  Card
+} from '@shopify/polaris';
+import {api} from '../../helpers/api';
+
+const POLICY_TYPES = [
+  {type: 'REFUND_POLICY', label: 'Refund Policy'},
+  {type: 'PRIVACY_POLICY', label: 'Privacy Policy'},
+  {type: 'TERMS_OF_SERVICE', label: 'Terms of Service'},
+  {type: 'SHIPPING_POLICY', label: 'Shipping Policy'},
+  {type: 'SUBSCRIPTION_POLICY', label: 'Subscription Policy'}
+];
+
+const EMPTY_CONTENT = Object.fromEntries(POLICY_TYPES.map(p => [p.type, '']));
+
+/**
+ * PolicySetup modal — opens when user clicks "Setup Policies" after selecting stores.
+ * Auto-loads current policies from selected stores on open.
+ */
+export default function PolicySetup({open, onClose, selectedStoreIds, onSuccess}) {
+  const [selectedTab, setSelectedTab] = useState(0);
+  const [policyContent, setPolicyContent] = useState(EMPTY_CONTENT);
+  const [loading, setLoading] = useState(false);
+  const [applying, setApplying] = useState(false);
+  const [applyResults, setApplyResults] = useState([]);
+
+  const tabs = POLICY_TYPES.map(p => ({
+    id: p.type,
+    content: p.label,
+    panelID: `${p.type}-panel`
+  }));
+
+  const currentType = POLICY_TYPES[selectedTab].type;
+  const currentLabel = POLICY_TYPES[selectedTab].label;
+
+  // Auto-load current policies when modal opens
+  useEffect(() => {
+    if (!open || selectedStoreIds.length === 0) return;
+
+    let cancelled = false;
+    setLoading(true);
+    setApplyResults([]);
+    setPolicyContent(EMPTY_CONTENT);
+
+    api('/api/setup/check-policies', {
+      method: 'POST',
+      body: JSON.stringify({storeIds: selectedStoreIds})
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (cancelled || !data.success) return;
+        // Pre-populate from first store that has policies
+        const firstStore = (data.data || []).find(s => !s.error && s.policies?.length > 0);
+        if (firstStore) {
+          setPolicyContent(prev => {
+            const updated = {...prev};
+            firstStore.policies.forEach(p => {
+              if (p.body) updated[p.type] = p.body;
+            });
+            return updated;
+          });
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, selectedStoreIds]);
+
+  const handleApply = async () => {
+    const policies = POLICY_TYPES.filter(p => policyContent[p.type]?.trim()).map(p => ({
+      type: p.type,
+      body: policyContent[p.type]
+    }));
+    if (policies.length === 0) return;
+
+    try {
+      setApplying(true);
+      setApplyResults([]);
+      const res = await api('/api/setup/apply-policies', {
+        method: 'POST',
+        body: JSON.stringify({storeIds: selectedStoreIds, policies})
+      });
+      const data = await res.json();
+      if (data.success) {
+        setApplyResults(data.data || []);
+        const totalUpdated = (data.data || []).reduce((sum, s) => sum + s.updated.length, 0);
+        if (onSuccess) onSuccess(`Policies applied: ${totalUpdated} updated across ${data.data.length} store(s).`);
+      }
+    } catch {
+      // errors shown in applyResults
+    } finally {
+      setApplying(false);
+    }
+  };
+
+  const filledCount = POLICY_TYPES.filter(p => policyContent[p.type]?.trim()).length;
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={`Setup Policies — ${selectedStoreIds.length} store(s)`}
+      primaryAction={{
+        content: applying ? 'Applying...' : `Apply Policies (${filledCount})`,
+        onAction: handleApply,
+        disabled: filledCount === 0 || applying || loading,
+        loading: applying
+      }}
+      secondaryActions={[{content: 'Close', onAction: onClose}]}
+      large
+    >
+      <Modal.Section>
+        {loading ? (
+          <InlineStack align="center">
+            <Spinner size="small" />
+            <Text tone="subdued">Loading current policies...</Text>
+          </InlineStack>
+        ) : (
+          <BlockStack gap="400">
+            <Text variant="bodySm" tone="subdued">
+              Current policies have been loaded from the first selected store. Edit and click Apply to push to all selected stores.
+            </Text>
+
+            <Tabs tabs={tabs} selected={selectedTab} onSelect={setSelectedTab}>
+              <BlockStack gap="300">
+                <TextField
+                  label={currentLabel}
+                  value={policyContent[currentType]}
+                  onChange={val => setPolicyContent(prev => ({...prev, [currentType]: val}))}
+                  multiline={14}
+                  placeholder={`Enter ${currentLabel} content (HTML supported)...`}
+                  autoComplete="off"
+                />
+                {policyContent[currentType]?.trim() && (
+                  <Badge tone="success">Content set</Badge>
+                )}
+              </BlockStack>
+            </Tabs>
+
+            {/* Apply results */}
+            {applyResults.length > 0 && (
+              <BlockStack gap="200">
+                <Text variant="headingSm" as="h3">Results</Text>
+                {applyResults.map(store => (
+                  <Card key={store.storeId}>
+                    <InlineStack gap="200" blockAlign="center">
+                      <Text variant="bodyMd" fontWeight="semibold">{store.storeName}</Text>
+                      {store.updated.length > 0 && (
+                        <Badge tone="success">{store.updated.length} updated</Badge>
+                      )}
+                      {store.errors.length > 0 && (
+                        <Badge tone="critical">{store.errors.length} failed</Badge>
+                      )}
+                    </InlineStack>
+                  </Card>
+                ))}
+              </BlockStack>
+            )}
+          </BlockStack>
+        )}
+      </Modal.Section>
+    </Modal>
+  );
+}

@@ -130,6 +130,94 @@ export async function checkStores(req, res) {
 }
 
 /**
+ * POST /api/setup/check-policies
+ * Fetch current policies for selected stores
+ * Body: { storeIds: string[] }
+ */
+export async function checkPolicies(req, res) {
+  try {
+    const {storeIds} = req.body;
+    if (!Array.isArray(storeIds) || storeIds.length === 0) {
+      return res.status(400).json({success: false, error: 'storeIds array is required'});
+    }
+
+    const results = await Promise.all(
+      storeIds.map(async storeId => {
+        try {
+          const {store, shopifyService} = await getStoreAndService(storeId);
+          const policies = await shopifyService.getShopPolicies();
+          return {storeId, storeName: store.name || store.shopDomain, shopDomain: store.shopDomain, policies};
+        } catch (err) {
+          return {storeId, storeName: storeId, shopDomain: '', error: err.message, policies: []};
+        }
+      })
+    );
+
+    return res.json({success: true, data: results});
+  } catch (error) {
+    console.error('Check policies error:', error);
+    return res.status(500).json({success: false, error: error.message});
+  }
+}
+
+/**
+ * POST /api/setup/apply-policies
+ * Apply policy templates to selected stores
+ * Body: { storeIds: string[], policies: [{type, body}] }
+ */
+export async function applyPolicies(req, res) {
+  try {
+    const {storeIds, policies} = req.body;
+    if (!Array.isArray(storeIds) || storeIds.length === 0) {
+      return res.status(400).json({success: false, error: 'storeIds array is required'});
+    }
+    if (!Array.isArray(policies) || policies.length === 0) {
+      return res.status(400).json({success: false, error: 'policies array is required'});
+    }
+
+    const results = await Promise.all(
+      storeIds.map(async storeId => {
+        const {store, shopifyService} = await getStoreAndService(storeId).catch(err => {
+          throw Object.assign(err, {storeId});
+        });
+        const storeResult = {
+          storeId,
+          storeName: store.name || store.shopDomain,
+          shopDomain: store.shopDomain,
+          updated: [],
+          errors: []
+        };
+
+        for (const {type, body} of policies) {
+          if (!body || !body.trim()) continue;
+          try {
+            await shopifyService.updateShopPolicy(type, body);
+            storeResult.updated.push(type);
+          } catch (err) {
+            storeResult.errors.push({type, error: err.message});
+          }
+        }
+
+        return storeResult;
+      }).map(p =>
+        p.catch(err => ({
+          storeId: err.storeId || 'unknown',
+          storeName: err.storeId || 'unknown',
+          shopDomain: '',
+          updated: [],
+          errors: [{type: 'store', error: err.message}]
+        }))
+      )
+    );
+
+    return res.json({success: true, data: results});
+  } catch (error) {
+    console.error('Apply policies error:', error);
+    return res.status(500).json({success: false, error: error.message});
+  }
+}
+
+/**
  * POST /api/setup/apply
  * Create missing metafield definitions on selected stores
  * Body: { storeIds: string[] }

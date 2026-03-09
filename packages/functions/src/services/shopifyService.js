@@ -1133,6 +1133,68 @@ export class ShopifyService {
   }
 
   /**
+   * Get all shop policies via REST API (more reliable than GraphQL shopPolicies query).
+   * Returns normalized array with type field matching GraphQL enum values for shopPolicyUpdate.
+   */
+  async getShopPolicies() {
+    try {
+      const policies = await this.shopify.policy.list();
+      // Map REST handle → GraphQL ShopPolicyType enum used by shopPolicyUpdate mutation
+      const HANDLE_TO_TYPE = {
+        'refund-policy': 'REFUND_POLICY',
+        'privacy-policy': 'PRIVACY_POLICY',
+        'terms-of-service': 'TERMS_OF_SERVICE',
+        'shipping-policy': 'SHIPPING_POLICY',
+        'subscription-policy': 'SUBSCRIPTION_POLICY'
+      };
+      return policies.map(p => ({
+        id: p.id,
+        type: HANDLE_TO_TYPE[p.handle] || p.handle.toUpperCase().replace(/-/g, '_'),
+        title: p.title,
+        body: p.body || '',
+        url: p.url
+      }));
+    } catch (error) {
+      console.error('Error getting shop policies:', error);
+      throw new Error(`Failed to get shop policies: ${error.message}`);
+    }
+  }
+
+  /**
+   * Update a single shop policy via GraphQL shopPolicyUpdate mutation
+   * @param {string} type - Policy type: REFUND_POLICY | PRIVACY_POLICY | TERMS_OF_SERVICE | SHIPPING_POLICY | SUBSCRIPTION_POLICY
+   * @param {string} body - HTML content of the policy
+   */
+  async updateShopPolicy(type, body) {
+    try {
+      const mutation = `
+        mutation shopPolicyUpdate($shopPolicy: ShopPolicyInput!) {
+          shopPolicyUpdate(shopPolicy: $shopPolicy) {
+            shopPolicy {
+              id
+              type
+              title
+            }
+            userErrors {
+              field
+              message
+            }
+          }
+        }
+      `;
+      const result = await this.shopify.graphql(mutation, {shopPolicy: {type, body}});
+      const {shopPolicy, userErrors} = result.shopPolicyUpdate;
+      if (userErrors && userErrors.length > 0) {
+        throw new Error(userErrors.map(e => e.message).join(', '));
+      }
+      return shopPolicy;
+    } catch (error) {
+      console.error(`Error updating shop policy ${type}:`, error);
+      throw new Error(`Failed to update ${type}: ${error.message}`);
+    }
+  }
+
+  /**
    * Normalize shop domain input
    * Handles common user input mistakes
    */

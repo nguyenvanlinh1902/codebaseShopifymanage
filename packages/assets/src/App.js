@@ -31,6 +31,7 @@ import Tracking from './pages/Tracking';
 import Analytics from './pages/Analytics';
 import Balance from './pages/Balance';
 import CampaignAds from './pages/CampaignAds';
+import Disputes from './pages/Disputes';
 import Themes from './pages/Themes';
 import SetupStore from './pages/SetupStore';
 import Stores from './pages/Stores';
@@ -162,6 +163,7 @@ function StandaloneFrame() {
         <Route path="/analytics" element={<FeatureGuard feature="analytics"><Analytics /></FeatureGuard>} />
         <Route path="/balance" element={isAdmin ? <Balance /> : <NotFound />} />
         <Route path="/campaign-ads" element={isAdmin ? <CampaignAds /> : <NotFound />} />
+        <Route path="/disputes" element={<FeatureGuard feature="dispute"><Disputes /></FeatureGuard>} />
         <Route path="/order-search" element={<FeatureGuard feature="orders"><OrderSearch /></FeatureGuard>} />
         <Route path="/setup" element={<FeatureGuard feature="setup"><SetupStore /></FeatureGuard>} />
         <Route path="/users" element={isAdmin ? <Users /> : <NotFound />} />

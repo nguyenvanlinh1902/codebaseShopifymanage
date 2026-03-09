@@ -3,7 +3,7 @@ import {
   Card, BlockStack, InlineStack, Text, SkeletonBodyText, Badge, Divider,
   Popover, ActionList, Button, TextField
 } from '@shopify/polaris';
-import {CashDollarIcon, TargetIcon, ChartVerticalFilledIcon, CalendarIcon} from '@shopify/polaris-icons';
+import {CashDollarIcon, TargetIcon, ChartVerticalFilledIcon, CalendarIcon, CartIcon} from '@shopify/polaris-icons';
 import {api} from '../../helpers/api';
 import AnalyticsStatCard from '../analytics/analytics-stat-card';
 
@@ -53,8 +53,8 @@ function getDateRange(period, customFrom, customTo) {
   return ranges[period] || ranges.month;
 }
 
-function sumDays(days, from, to) {
-  return days.filter(d => d.day >= from && d.day <= to).reduce((s, d) => s + d.value, 0);
+function sumDays(days, from, to, field = 'value') {
+  return days.filter(d => d.day >= from && d.day <= to).reduce((s, d) => s + (d[field] || 0), 0);
 }
 
 function pctChange(cur, prev) {
@@ -191,6 +191,8 @@ export default function DashboardFinanceSummary() {
       ...s,
       revenue: sumDays(s.revenueDays, range.from, range.to),
       revenuePrev: range.prevFrom ? sumDays(s.revenueDays, range.prevFrom, range.prevTo) : null,
+      totalSales: sumDays(s.revenueDays, range.from, range.to, 'totalSales'),
+      totalSalesPrev: range.prevFrom ? sumDays(s.revenueDays, range.prevFrom, range.prevTo, 'totalSales') : null,
       adSpend: sumDays(s.adSpendDays, range.from, range.to),
       adSpendPrev: range.prevFrom ? sumDays(s.adSpendDays, range.prevFrom, range.prevTo) : null
     }));
@@ -199,12 +201,14 @@ export default function DashboardFinanceSummary() {
       (a, s) => {
         a.revenue += s.revenue;
         a.revenuePrev += s.revenuePrev || 0;
+        a.totalSales += s.totalSales;
+        a.totalSalesPrev += s.totalSalesPrev || 0;
         a.adSpend += s.adSpend;
         a.adSpendPrev += s.adSpendPrev || 0;
-        a.balance += s.balance?.amount || 0;
+        a.payoutBalance += s.payoutBalance?.amount || 0;
         return a;
       },
-      {revenue: 0, revenuePrev: 0, adSpend: 0, adSpendPrev: 0, balance: 0}
+      {revenue: 0, revenuePrev: 0, totalSales: 0, totalSalesPrev: 0, adSpend: 0, adSpendPrev: 0, payoutBalance: 0}
     );
     return {stores, totals, label: range.label};
   }, [rawStores, period, customFrom, customTo, storeFilter, groupFilter]);
@@ -212,6 +216,7 @@ export default function DashboardFinanceSummary() {
   if (loading) return <SkeletonBodyText lines={4} />;
   if (!rawStores) return null;
 
+  const salesPct = computed ? pctChange(computed.totals.totalSales, computed.totals.totalSalesPrev) : null;
   const revPct = computed ? pctChange(computed.totals.revenue, computed.totals.revenuePrev) : null;
   const adsPct = computed ? pctChange(computed.totals.adSpend, computed.totals.adSpendPrev) : null;
 
@@ -241,7 +246,18 @@ export default function DashboardFinanceSummary() {
         <>
           <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px'}}>
             <AnalyticsStatCard
-              title="Revenue"
+              title="Total Sales"
+              value={fmt(computed.totals.totalSales)}
+              icon={CartIcon}
+              color="#8b5cf6"
+              subtitle={
+                salesPct !== null && computed.label
+                  ? `${salesPct > 0 ? '+' : ''}${salesPct}% ${computed.label}`
+                  : undefined
+              }
+            />
+            <AnalyticsStatCard
+              title="Net Revenue"
               value={fmt(computed.totals.revenue)}
               icon={ChartVerticalFilledIcon}
               color="#22c55e"
@@ -263,8 +279,8 @@ export default function DashboardFinanceSummary() {
               }
             />
             <AnalyticsStatCard
-              title="Shopify Balance"
-              value={fmt(computed.totals.balance)}
+              title="Payout Balance"
+              value={fmt(computed.totals.payoutBalance)}
               icon={CashDollarIcon}
               color="#6366f1"
             />
@@ -279,9 +295,10 @@ export default function DashboardFinanceSummary() {
                   <InlineStack align="space-between" blockAlign="center">
                     <Text variant="bodySm" fontWeight="semibold">{s.name}</Text>
                     <InlineStack gap="300">
-                      <Badge tone="success">{fmt(s.revenue)}</Badge>
+                      <Badge>{fmt(s.totalSales)} sales</Badge>
+                      <Badge tone="success">{fmt(s.revenue)} net</Badge>
                       <Badge tone="critical">{fmt(s.adSpend)} ads</Badge>
-                      <Badge>{fmt(s.balance?.amount)} bal</Badge>
+                      <Badge tone="info">{fmt(s.payoutBalance?.amount)} payout</Badge>
                     </InlineStack>
                   </InlineStack>
                 </div>

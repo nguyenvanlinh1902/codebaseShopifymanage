@@ -1,6 +1,6 @@
 import React from 'react';
 import {BlockStack, InlineStack, Text, Badge, SkeletonBodyText} from '@shopify/polaris';
-import {OrderIcon, CashDollarIcon, ChartVerticalFilledIcon} from '@shopify/polaris-icons';
+import {OrderIcon, CashDollarIcon, ChartVerticalFilledIcon, CartIcon} from '@shopify/polaris-icons';
 import AnalyticsStatCard from './analytics-stat-card';
 
 function formatCurrency(value) {
@@ -27,7 +27,8 @@ export default function AnalyticsOrderStats({summary, byStatus, loading}) {
     <BlockStack gap="400">
       <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px'}}>
         <AnalyticsStatCard title="Total Orders" value={summary.totalOrders || 0} icon={OrderIcon} color="#6366f1" />
-        <AnalyticsStatCard title="Total Revenue" value={formatCurrency(summary.totalRevenue)} icon={CashDollarIcon} color="#22c55e" />
+        <AnalyticsStatCard title="Total Sales" value={formatCurrency(summary.totalSales)} icon={CartIcon} color="#8b5cf6" />
+        <AnalyticsStatCard title="Net Revenue" value={formatCurrency(summary.totalRevenue)} icon={CashDollarIcon} color="#22c55e" />
         <AnalyticsStatCard title="Avg Order Value" value={formatCurrency(summary.avgOrderValue)} icon={ChartVerticalFilledIcon} color="#f59e0b" />
       </div>
 

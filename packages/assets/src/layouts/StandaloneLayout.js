@@ -18,10 +18,13 @@ import {
   CashDollarIcon,
   TargetIcon,
   NotificationIcon,
-  SearchIcon
+  SearchIcon,
+  AlertDiamondIcon
 } from '@shopify/polaris-icons';
 import {useAuth} from '../context/AuthContext';
 import {useStoreAlerts} from '../components/header-alerts-banner';
+import TimezonePicker from '../components/timezone-picker';
+import {api} from '../helpers/api';
 
 StandaloneLayout.propTypes = {
   children: PropTypes.node.isRequired
@@ -47,20 +50,17 @@ function stripHtml(html) {
   return html.replace(/<[^>]*>/g, '');
 }
 
-function fmtDate(iso) {
+function fmtDate(iso, timezone) {
   if (!iso) return '';
-  return new Date(iso).toLocaleString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit'
-  });
+  const opts = {month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'};
+  if (timezone) opts.timeZone = timezone;
+  return new Date(iso).toLocaleString('en-US', opts);
 }
 
 /**
  * Notification bell dropdown — renders as fixed overlay on top bar.
  */
-function NotificationBell({storeAlerts, disputes, totalAlerts, totalEvents, totalDisputes}) {
+function NotificationBell({storeAlerts, disputes, totalAlerts, totalEvents, totalDisputes, timezone}) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   const badgeCount = totalAlerts + totalEvents + totalDisputes;
@@ -191,7 +191,7 @@ function NotificationBell({storeAlerts, disputes, totalAlerts, totalEvents, tota
                         <div style={row}>
                           <Text variant="bodySm" fontWeight="semibold">{item.store}</Text>
                           {item.date && (
-                            <Text variant="bodySm" tone="subdued">{fmtDate(item.date)}</Text>
+                            <Text variant="bodySm" tone="subdued">{fmtDate(item.date, timezone)}</Text>
                           )}
                         </div>
                         <div style={{marginTop: 4}}>
@@ -235,7 +235,7 @@ function NotificationBell({storeAlerts, disputes, totalAlerts, totalEvents, tota
                       >
                         <div style={row}>
                           <Text variant="bodySm" fontWeight="semibold">{d.store}</Text>
-                          <Text variant="bodySm" tone="subdued">{fmtDate(d.initiatedAt)}</Text>
+                          <Text variant="bodySm" tone="subdued">{fmtDate(d.initiatedAt, timezone)}</Text>
                         </div>
                         <div style={{marginTop: 4}}>
                           <Text variant="bodySm">
@@ -281,7 +281,7 @@ function NotificationBell({storeAlerts, disputes, totalAlerts, totalEvents, tota
                         <div style={row}>
                           <Text variant="bodySm" fontWeight="semibold">{item.store}</Text>
                           {item.date && (
-                            <Text variant="bodySm" tone="subdued">{fmtDate(item.date)}</Text>
+                            <Text variant="bodySm" tone="subdued">{fmtDate(item.date, timezone)}</Text>
                           )}
                         </div>
                         <div style={{marginTop: 4}}>
@@ -302,12 +302,23 @@ function NotificationBell({storeAlerts, disputes, totalAlerts, totalEvents, tota
 
 export default function StandaloneLayout({children}) {
   const location = useLocation();
-  const {logout, user} = useAuth();
+  const {logout, user, updateUser} = useAuth();
   const isAdmin = user?.role === 'admin';
   const {storeAlerts, disputes, totalAlerts, totalEvents, totalDisputes} = useStoreAlerts();
   const [userMenuActive, setUserMenuActive] = useState(false);
 
   const toggleUserMenu = useCallback(() => setUserMenuActive(v => !v), []);
+
+  const handleTimezoneChange = useCallback(async (tz) => {
+    updateUser({timezone: tz});
+    try {
+      await api('/api/users/me/preferences', {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({timezone: tz})
+      });
+    } catch { /* silent — already saved locally */ }
+  }, [updateUser]);
 
   const allNavItems = [
     {label: 'Dashboard', icon: HomeIcon, url: '/', exactMatch: true},
@@ -320,6 +331,7 @@ export default function StandaloneLayout({children}) {
     {label: 'Analytics', icon: ChartVerticalFilledIcon, url: '/analytics'},
     {label: 'Balance', icon: CashDollarIcon, url: '/balance'},
     {label: 'Campaign Ads', icon: TargetIcon, url: '/campaign-ads'},
+    {label: 'Disputes', icon: AlertDiamondIcon, url: '/disputes'},
     {label: 'Themes', icon: ThemeIcon, url: '/themes'},
     {label: 'Setup Store', icon: SettingsIcon, url: '/setup'}
   ];
@@ -357,8 +369,12 @@ export default function StandaloneLayout({children}) {
     />
   );
 
+  const searchFieldMarkup = (
+    <TimezonePicker timezone={user?.timezone || ''} onChange={handleTimezoneChange} />
+  );
+
   const topBarMarkup = (
-    <TopBar showNavigationToggle userMenu={userMenuMarkup} />
+    <TopBar showNavigationToggle userMenu={userMenuMarkup} searchField={searchFieldMarkup} />
   );
 
   const navigationMarkup = (
@@ -378,6 +394,7 @@ export default function StandaloneLayout({children}) {
         totalAlerts={totalAlerts}
         totalEvents={totalEvents}
         totalDisputes={totalDisputes}
+        timezone={user?.timezone}
       />
       {children}
     </Frame>

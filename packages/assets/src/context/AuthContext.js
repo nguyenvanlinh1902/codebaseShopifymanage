@@ -46,6 +46,14 @@ export function AuthProvider({children}) {
     setIsAuthenticated(false);
   }, []);
 
+  const updateUser = useCallback(partial => {
+    setUser(prev => {
+      const updated = {...prev, ...partial};
+      localStorage.setItem(STORAGE_KEYS.user, JSON.stringify(updated));
+      return updated;
+    });
+  }, []);
+
   // Sync user profile on mount to pick up permission changes (role, allowedFeatures, etc.)
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -74,7 +82,7 @@ export function AuthProvider({children}) {
   }, [isAuthenticated]);
 
   return (
-    <AuthContext.Provider value={{isAuthenticated, user, syncing, login, logout}}>
+    <AuthContext.Provider value={{isAuthenticated, user, syncing, login, logout, updateUser}}>
       {children}
     </AuthContext.Provider>
   );

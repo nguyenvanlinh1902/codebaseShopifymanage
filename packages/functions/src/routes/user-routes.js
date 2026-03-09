@@ -4,6 +4,7 @@ import * as userController from '../controllers/user-controller.js';
 const router = new Router();
 
 router.get('/me', userController.getMe);
+router.put('/me/preferences', userController.updateMyPreferences);
 router.get('/', userController.listUsers);
 router.post('/', userController.createUser);
 router.put('/:id', userController.updateUser);

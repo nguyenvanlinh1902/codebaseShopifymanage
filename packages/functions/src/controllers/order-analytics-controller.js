@@ -13,7 +13,7 @@ const DEFAULT_SINCE = '-30d';
  */
 export async function getOrderAnalytics(req, res) {
   try {
-    const {storeId} = req.query;
+    const {storeId, timezone} = req.query;
     let {since = DEFAULT_SINCE} = req.query;
 
     if (!storeId) {
@@ -30,12 +30,12 @@ export async function getOrderAnalytics(req, res) {
     // Columns: net_sales, gross_sales, total_sales, orders, returns, discounts
     const [summaryResult, timeSeriesResult, statusBreakdown] = await Promise.all([
       runShopifyQL(store.shopDomain, store.accessToken,
-        `FROM sales SHOW net_sales, orders SINCE ${since} UNTIL today`
+        `FROM sales SHOW net_sales, total_sales, orders SINCE ${since} UNTIL today`
       ),
       runShopifyQL(store.shopDomain, store.accessToken,
-        `FROM sales SHOW net_sales, orders GROUP BY day SINCE ${since} UNTIL today ORDER BY day ASC`
+        `FROM sales SHOW net_sales, total_sales, orders GROUP BY day SINCE ${since} UNTIL today ORDER BY day ASC`
       ),
-      fetchOrderStatusBreakdown(store, since)
+      fetchOrderStatusBreakdown(store, since, timezone)
     ]);
 
     const summary = parseSummary(summaryResult);
@@ -54,9 +54,9 @@ export async function getOrderAnalytics(req, res) {
 /**
  * Fetch order fulfillment status breakdown via GraphQL Admin API.
  */
-async function fetchOrderStatusBreakdown(store, since) {
+async function fetchOrderStatusBreakdown(store, since, timezone) {
   try {
-    const sinceDate = resolveSinceDate(since);
+    const sinceDate = resolveSinceDate(since, timezone);
     const query = `{
       fulfilled: ordersCount(query: "fulfillment_status:shipped created_at:>=${sinceDate}") { count }
       unfulfilled: ordersCount(query: "fulfillment_status:unshipped created_at:>=${sinceDate}") { count }
@@ -86,16 +86,29 @@ async function fetchOrderStatusBreakdown(store, since) {
   }
 }
 
-function resolveSinceDate(since) {
-  const now = new Date();
-  if (since === '-1d') return new Date(now - 86400000).toISOString().split('T')[0];
-  if (since === '-7d') return new Date(now - 7 * 86400000).toISOString().split('T')[0];
-  if (since === '-30d') return new Date(now - 30 * 86400000).toISOString().split('T')[0];
-  if (since === '-90d') return new Date(now - 90 * 86400000).toISOString().split('T')[0];
-  if (since === '-365d') return new Date(now - 365 * 86400000).toISOString().split('T')[0];
-  if (since === 'startOfMonth(0m)') return new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
-  if (since === 'startOfYear(0y)') return new Date(now.getFullYear(), 0, 1).toISOString().split('T')[0];
-  return new Date(now - 30 * 86400000).toISOString().split('T')[0];
+/** Get "today" date string in the user's timezone (YYYY-MM-DD) */
+function getTodayInTimezone(timezone) {
+  if (!timezone) return new Date().toISOString().split('T')[0];
+  try {
+    const parts = new Intl.DateTimeFormat('en-CA', {timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit'}).format(new Date());
+    return parts; // en-CA gives YYYY-MM-DD format
+  } catch {
+    return new Date().toISOString().split('T')[0];
+  }
+}
+
+function resolveSinceDate(since, timezone) {
+  const todayStr = getTodayInTimezone(timezone);
+  const today = new Date(todayStr + 'T00:00:00');
+
+  if (since === '-1d') return new Date(today - 86400000).toISOString().split('T')[0];
+  if (since === '-7d') return new Date(today - 7 * 86400000).toISOString().split('T')[0];
+  if (since === '-30d') return new Date(today - 30 * 86400000).toISOString().split('T')[0];
+  if (since === '-90d') return new Date(today - 90 * 86400000).toISOString().split('T')[0];
+  if (since === '-365d') return new Date(today - 365 * 86400000).toISOString().split('T')[0];
+  if (since === 'startOfMonth(0m)') return new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
+  if (since === 'startOfYear(0y)') return new Date(today.getFullYear(), 0, 1).toISOString().split('T')[0];
+  return new Date(today - 30 * 86400000).toISOString().split('T')[0];
 }
 
 function parseSummary(result) {
@@ -109,10 +122,11 @@ function parseSummary(result) {
   // Rows are objects with column names as keys
   const row = rows[0];
   const totalRevenue = parseFloat(row.net_sales || 0);
+  const totalSales = parseFloat(row.total_sales || 0);
   const totalOrders = parseInt(row.orders || 0);
   const avgOrderValue = totalOrders > 0 ? Math.round((totalRevenue / totalOrders) * 100) / 100 : 0;
 
-  return {totalOrders, totalRevenue, avgOrderValue};
+  return {totalOrders, totalRevenue, totalSales, avgOrderValue};
 }
 
 function parseTimeSeries(result) {
@@ -126,6 +140,7 @@ function parseTimeSeries(result) {
   return rows.map(row => ({
     date: row.day || '',
     orders: parseInt(row.orders || 0),
-    revenue: parseFloat(row.net_sales || 0)
+    revenue: parseFloat(row.net_sales || 0),
+    totalSales: parseFloat(row.total_sales || 0)
   }));
 }

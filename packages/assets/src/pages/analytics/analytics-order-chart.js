@@ -1,17 +1,13 @@
 import React from 'react';
 import {Text, SkeletonBodyText, Card, BlockStack} from '@shopify/polaris';
 import {LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend} from 'recharts';
-
-function formatDate(dateStr) {
-  if (!dateStr) return '';
-  return new Date(dateStr).toLocaleDateString('en-US', {month: 'short', day: 'numeric'});
-}
+import {formatDate} from '../../helpers/format-date';
 
 function formatCurrency(value) {
   return `$${Number(value || 0).toLocaleString()}`;
 }
 
-export default function AnalyticsOrderChart({timeSeries, loading}) {
+export default function AnalyticsOrderChart({timeSeries, loading, timezone}) {
   if (loading) return <SkeletonBodyText lines={8} />;
 
   if (!timeSeries || timeSeries.length === 0) {
@@ -27,7 +23,7 @@ export default function AnalyticsOrderChart({timeSeries, loading}) {
 
   const chartData = timeSeries.map(d => ({
     ...d,
-    dateLabel: formatDate(d.date)
+    dateLabel: formatDate(d.date, timezone)
   }));
 
   return (
@@ -42,14 +38,16 @@ export default function AnalyticsOrderChart({timeSeries, loading}) {
             <YAxis yAxisId="right" orientation="right" tick={{fontSize: 12}} stroke="#22c55e" tickFormatter={formatCurrency} />
             <Tooltip
               formatter={(value, name) => {
-                if (name === 'revenue') return [formatCurrency(value), 'Revenue'];
+                if (name === 'Total Sales') return [formatCurrency(value), 'Total Sales'];
+                if (name === 'Net Revenue') return [formatCurrency(value), 'Net Revenue'];
                 return [value, 'Orders'];
               }}
               labelFormatter={label => label}
             />
             <Legend />
             <Line yAxisId="left" type="monotone" dataKey="orders" stroke="#6366f1" strokeWidth={2} dot={false} name="Orders" />
-            <Line yAxisId="right" type="monotone" dataKey="revenue" stroke="#22c55e" strokeWidth={2} dot={false} name="Revenue" />
+            <Line yAxisId="right" type="monotone" dataKey="totalSales" stroke="#8b5cf6" strokeWidth={2} dot={false} name="Total Sales" />
+            <Line yAxisId="right" type="monotone" dataKey="revenue" stroke="#22c55e" strokeWidth={2} dot={false} name="Net Revenue" />
           </LineChart>
         </ResponsiveContainer>
       </BlockStack>

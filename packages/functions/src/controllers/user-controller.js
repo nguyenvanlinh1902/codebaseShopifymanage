@@ -118,6 +118,26 @@ export async function updateUser(req, res) {
   }
 }
 
+/** PUT /api/users/me/preferences — update own preferences (timezone, etc.) */
+export async function updateMyPreferences(req, res) {
+  try {
+    const {timezone} = req.body;
+    const updates = {};
+    if (timezone !== undefined) updates.timezone = timezone;
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({success: false, error: 'No valid fields to update'});
+    }
+
+    await adminUserRepo.update(req.userId, updates);
+    const user = await adminUserRepo.getById(req.userId);
+    return res.json({success: true, data: sanitizeUser(user)});
+  } catch (error) {
+    console.error('updateMyPreferences error:', error);
+    return res.status(500).json({success: false, error: error.message});
+  }
+}
+
 /** DELETE /api/users/:id — deactivate user (admin only, cannot deactivate self) */
 export async function deactivateUser(req, res) {
   try {

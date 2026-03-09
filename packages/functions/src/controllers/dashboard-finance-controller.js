@@ -6,8 +6,10 @@ const storeRepo = new StoreRepository();
 
 /**
  * GET /api/dashboard/finance-summary
- * Admin-only. Returns daily revenue + ad spend rows for past year + balance.
+ * Admin-only. Returns daily revenue + ad spend rows for past year + payout balance.
  * Frontend aggregates by period client-side — single fetch on page load.
+ * Note: balance from Shopify Payments API = "Payout balance" (money not yet included in a payout).
+ * "Shopify Balance" (Accounts) is a US-only product with no public API.
  */
 export async function getFinanceSummary(req, res) {
   try {
@@ -16,10 +18,10 @@ export async function getFinanceSummary(req, res) {
 
     const stores = await Promise.all(
       activeStores.map(async store => {
-        const [revenueDays, adSpendDays, balance] = await Promise.all([
+        const [revenueDays, adSpendDays, payoutBalance] = await Promise.all([
           fetchDailyRevenue(store).catch(() => []),
           fetchDailyAdSpend(store).catch(() => []),
-          fetchBalance(store).catch(() => null)
+          fetchPayoutBalance(store).catch(() => ({amount: 0, currency: 'USD'}))
         ]);
         return {
           storeId: store.id,
@@ -28,7 +30,7 @@ export async function getFinanceSummary(req, res) {
           groupId: store.groupId || null,
           revenueDays,
           adSpendDays,
-          balance
+          payoutBalance
         };
       })
     );
@@ -44,11 +46,12 @@ async function fetchDailyRevenue(store) {
   const result = await runShopifyQL(
     store.shopDomain,
     store.accessToken,
-    'FROM sales SHOW net_sales GROUP BY day SINCE -365d UNTIL today'
+    'FROM sales SHOW net_sales, total_sales GROUP BY day SINCE -365d UNTIL today'
   );
   return (result?.tableData?.rows || []).map(r => ({
     day: r.day,
-    value: parseFloat(r.net_sales || 0)
+    value: parseFloat(r.net_sales || 0),
+    totalSales: parseFloat(r.total_sales || 0)
   }));
 }
 
@@ -64,7 +67,12 @@ async function fetchDailyAdSpend(store) {
   }));
 }
 
-async function fetchBalance(store) {
+/**
+ * Fetch payout balance via REST API.
+ * This returns "the account's current balance comprised of any Transaction not yet included in a Payout"
+ * = "Payout balance" on Shopify Finance page.
+ */
+async function fetchPayoutBalance(store) {
   try {
     const url = `https://${store.shopDomain}.myshopify.com/admin/api/${shopifyConfig.apiVersion}/shopify_payments/balance.json`;
     const response = await fetch(url, {

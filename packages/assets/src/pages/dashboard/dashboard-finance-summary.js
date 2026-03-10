@@ -5,6 +5,7 @@ import {
 } from '@shopify/polaris';
 import {CashDollarIcon, TargetIcon, ChartVerticalFilledIcon, CalendarIcon, CartIcon} from '@shopify/polaris-icons';
 import {api} from '../../helpers/api';
+import {usePermittedStores} from '../../hooks/usePermittedStores';
 import AnalyticsStatCard from '../analytics/analytics-stat-card';
 
 const PERIOD_OPTIONS = [
@@ -145,12 +146,14 @@ function PeriodPopoverFilter({period, customFrom, customTo, onPeriodChange, onCu
 }
 
 export default function DashboardFinanceSummary() {
+  const {groups, stores: contextStores, isAdmin} = usePermittedStores();
   const [rawStores, setRawStores] = useState(null);
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState('month');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
   const [storeFilter, setStoreFilter] = useState('all');
+  const [groupFilter, setGroupFilter] = useState('all');
 
   useEffect(() => {
     api('/api/dashboard/finance-summary')
@@ -162,13 +165,25 @@ export default function DashboardFinanceSummary() {
       .finally(() => setLoading(false));
   }, []);
 
+  // IDs of stores belonging to the selected group
+  const groupStoreIds = useMemo(() => {
+    if (groupFilter === 'all') return null;
+    return new Set(contextStores.filter(s => s.groupId === groupFilter).map(s => s.id));
+  }, [groupFilter, contextStores]);
+
   const storeOptions = useMemo(() => {
     if (!rawStores) return [];
+    const base = groupStoreIds ? rawStores.filter(s => groupStoreIds.has(s.storeId)) : rawStores;
     return [
       {label: 'All Stores', value: 'all'},
-      ...rawStores.map(s => ({label: s.name, value: s.storeId}))
+      ...base.map(s => ({label: s.name, value: s.storeId}))
     ];
-  }, [rawStores]);
+  }, [rawStores, groupStoreIds]);
+
+  const groupOptions = useMemo(() => [
+    {label: 'All Groups', value: 'all'},
+    ...groups.map(g => ({label: g.name, value: g.id}))
+  ], [groups]);
 
   const computed = useMemo(() => {
     if (!rawStores) return null;
@@ -176,6 +191,9 @@ export default function DashboardFinanceSummary() {
     const range = getDateRange(period, customFrom, customTo);
 
     let filtered = rawStores;
+    // Apply group filter first
+    if (groupStoreIds) filtered = filtered.filter(s => groupStoreIds.has(s.storeId));
+    // Then store filter
     if (storeFilter !== 'all') filtered = filtered.filter(s => s.storeId === storeFilter);
 
     const stores = filtered.map(s => ({
@@ -202,7 +220,7 @@ export default function DashboardFinanceSummary() {
       {revenue: 0, revenuePrev: 0, totalSales: 0, totalSalesPrev: 0, adSpend: 0, adSpendPrev: 0, payoutBalance: 0}
     );
     return {stores, totals, label: range.label};
-  }, [rawStores, period, customFrom, customTo, storeFilter]);
+  }, [rawStores, period, customFrom, customTo, storeFilter, groupStoreIds]);
 
   if (loading) return <SkeletonBodyText lines={4} />;
   if (!rawStores) return null;
@@ -216,6 +234,17 @@ export default function DashboardFinanceSummary() {
       <InlineStack gap="300" align="space-between" blockAlign="center" wrap>
         <Text variant="headingMd">Finance Overview</Text>
         <InlineStack gap="200" blockAlign="center" wrap>
+          {isAdmin && groups.length > 0 && (
+            <PopoverFilter
+              label="Group"
+              options={groupOptions}
+              value={groupFilter}
+              onChange={v => {
+                setGroupFilter(v);
+                setStoreFilter('all');
+              }}
+            />
+          )}
           {storeOptions.length > 2 && (
             <PopoverFilter label="Store" options={storeOptions} value={storeFilter} onChange={setStoreFilter} />
           )}

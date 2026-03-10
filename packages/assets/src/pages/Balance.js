@@ -1,18 +1,29 @@
-import React, {useState, useEffect} from 'react';
-import {Page, Layout, Select} from '@shopify/polaris';
+import React, {useState, useEffect, useMemo} from 'react';
+import {Page, Layout, Select, InlineStack} from '@shopify/polaris';
 import {api} from '../helpers/api';
 import {usePermittedStores} from '../hooks/usePermittedStores';
 import AnalyticsBalancePanel from './analytics/analytics-balance-panel';
 
 export default function Balance() {
-  const {stores} = usePermittedStores();
+  const {stores, groups, isAdmin} = usePermittedStores();
+  const [selectedGroupId, setSelectedGroupId] = useState('');
   const [selectedStoreId, setSelectedStoreId] = useState('');
   const [balanceData, setBalanceData] = useState(null);
   const [balanceLoading, setBalanceLoading] = useState(false);
 
+  const filteredStores = useMemo(
+    () => (selectedGroupId ? stores.filter(s => s.groupId === selectedGroupId) : stores),
+    [stores, selectedGroupId]
+  );
+
+  // Auto-select first store when filtered list changes
   useEffect(() => {
-    if (stores.length > 0 && !selectedStoreId) setSelectedStoreId(stores[0].id);
-  }, [stores]);
+    if (filteredStores.length > 0) {
+      setSelectedStoreId(filteredStores[0].id);
+    } else {
+      setSelectedStoreId('');
+    }
+  }, [filteredStores]);
 
   useEffect(() => {
     if (selectedStoreId) fetchBalance(selectedStoreId);
@@ -36,20 +47,37 @@ export default function Balance() {
     }
   };
 
-  const storeOptions = stores.map(s => ({label: s.name || s.shopDomain, value: s.id}));
+  const groupOptions = useMemo(
+    () => [{label: 'All groups', value: ''}, ...groups.map(g => ({label: g.name, value: g.id}))],
+    [groups]
+  );
+
+  const storeOptions = filteredStores.map(s => ({label: s.name || s.shopDomain, value: s.id}));
 
   return (
     <Page title="Balance" subtitle="Shopify Payments account balance & payouts">
       <Layout>
         <Layout.Section>
-          <div style={{minWidth: 280}}>
-            <Select
-              label="Store"
-              options={storeOptions}
-              value={selectedStoreId}
-              onChange={setSelectedStoreId}
-            />
-          </div>
+          <InlineStack gap="400" align="start">
+            {isAdmin && groups.length > 0 && (
+              <div style={{minWidth: 200}}>
+                <Select
+                  label="Group"
+                  options={groupOptions}
+                  value={selectedGroupId}
+                  onChange={setSelectedGroupId}
+                />
+              </div>
+            )}
+            <div style={{minWidth: 280}}>
+              <Select
+                label="Store"
+                options={storeOptions}
+                value={selectedStoreId}
+                onChange={setSelectedStoreId}
+              />
+            </div>
+          </InlineStack>
         </Layout.Section>
         <Layout.Section>
           <AnalyticsBalancePanel balance={balanceData} loading={balanceLoading} />

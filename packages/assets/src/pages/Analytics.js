@@ -55,34 +55,49 @@ function aggregateResults(results) {
 }
 
 export default function Analytics() {
-  const {stores, user} = usePermittedStores();
+  const {stores, groups, isAdmin, user} = usePermittedStores();
 
   const [selectedStoreId, setSelectedStoreId] = useState('');
+  const [selectedGroupId, setSelectedGroupId] = useState('');
   const [analyticsData, setAnalyticsData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [timePeriod, setTimePeriod] = useState('-30d');
   const userTimezone = user?.timezone || '';
 
+  // Filter stores by selected group
+  const filteredStores = useMemo(
+    () => (selectedGroupId ? stores.filter(s => s.groupId === selectedGroupId) : stores),
+    [stores, selectedGroupId]
+  );
+
   // Stable list of store IDs for the "All stores" fetch
-  const storeIds = useMemo(() => stores.map(s => s.id).join(','), [stores]);
+  const storeIds = useMemo(() => filteredStores.map(s => s.id).join(','), [filteredStores]);
+
+  const groupOptions = useMemo(
+    () => [
+      {label: 'All groups', value: ''},
+      ...groups.map(g => ({label: g.name, value: g.id}))
+    ],
+    [groups]
+  );
 
   const storeOptions = [
-    ...(stores.length > 1
-      ? [{label: `All stores (${stores.length})`, value: ALL_STORES_VALUE}]
+    ...(filteredStores.length > 1
+      ? [{label: `All stores (${filteredStores.length})`, value: ALL_STORES_VALUE}]
       : []),
-    ...stores.map(s => ({label: s.name || s.shopDomain, value: s.id}))
+    ...filteredStores.map(s => ({label: s.name || s.shopDomain, value: s.id}))
   ];
 
-  // Auto-select when stores list changes
+  // Auto-select when filtered stores list changes
   useEffect(() => {
-    if (stores.length > 1) {
+    if (filteredStores.length > 1) {
       setSelectedStoreId(ALL_STORES_VALUE);
-    } else if (stores.length === 1) {
-      setSelectedStoreId(stores[0].id);
+    } else if (filteredStores.length === 1) {
+      setSelectedStoreId(filteredStores[0].id);
     } else {
       setSelectedStoreId('');
     }
-  }, [stores]);
+  }, [filteredStores]);
 
   // Fetch analytics whenever selection changes
   useEffect(() => {
@@ -131,6 +146,16 @@ export default function Analytics() {
       <Layout>
         <Layout.Section>
           <InlineStack align="start" gap="400">
+            {isAdmin && groups.length > 0 && (
+              <div style={{minWidth: 200}}>
+                <Select
+                  label="Group"
+                  options={groupOptions}
+                  value={selectedGroupId}
+                  onChange={setSelectedGroupId}
+                />
+              </div>
+            )}
             <div style={{minWidth: 280}}>
               <Select
                 label="Store"

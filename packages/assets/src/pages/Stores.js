@@ -13,10 +13,10 @@ import {
 } from '@shopify/polaris';
 import {api} from '../helpers/api';
 import {useAuth} from '../context/AuthContext';
-import {usePermittedStores} from '../hooks/usePermittedStores';
 import StoresFilterBar from './stores/StoresFilterBar';
 import StoresTable from './stores/StoresTable';
 import StoresPagination from './stores/StoresPagination';
+import StoreGroupManager from './stores/store-group-manager';
 
 const PAGE_LIMIT = 10;
 
@@ -29,7 +29,7 @@ export default function Stores() {
   const isAdmin = user?.role === 'admin';
   const [stores, setStores] = useState([]);
   const [loading, setLoading] = useState(true);
-  const {refetch: refetchStoreContext} = usePermittedStores();
+  const [groupManagerOpen, setGroupManagerOpen] = useState(false);
 
   const [pagination, setPagination] = useState({page: 1, total: 0, totalPages: 0});
   const [searchValue, setSearchValue] = useState('');
@@ -267,6 +267,7 @@ export default function Stores() {
       title="Shopify Stores"
       subtitle="Stores are added automatically when merchants install the app"
       secondaryActions={[
+        ...(isAdmin ? [{content: 'Manage Groups', onAction: () => setGroupManagerOpen(true)}] : []),
         {content: 'Check Webhooks', onAction: handleCheckWebhooks, loading: webhookLoading}
       ]}
     >
@@ -370,6 +371,10 @@ export default function Stores() {
           </Text>
         </Modal.Section>
       </Modal>
+
+      {isAdmin && (
+        <StoreGroupManager open={groupManagerOpen} onClose={() => setGroupManagerOpen(false)} />
+      )}
 
       <Modal
         open={webhookModalActive}

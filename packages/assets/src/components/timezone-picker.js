@@ -4,28 +4,39 @@ import {ClockIcon} from '@shopify/polaris-icons';
 
 const COMMON_TIMEZONES = [
   {label: 'UTC', value: 'UTC'},
-  {label: 'US Eastern (ET)', value: 'America/New_York'},
-  {label: 'US Central (CT)', value: 'America/Chicago'},
-  {label: 'US Mountain (MT)', value: 'America/Denver'},
-  {label: 'US Pacific (PT)', value: 'America/Los_Angeles'},
-  {label: 'Hawaii (HST)', value: 'Pacific/Honolulu'},
-  {label: 'London (GMT/BST)', value: 'Europe/London'},
-  {label: 'Paris (CET/CEST)', value: 'Europe/Paris'},
-  {label: 'Berlin (CET/CEST)', value: 'Europe/Berlin'},
-  {label: 'Moscow (MSK)', value: 'Europe/Moscow'},
-  {label: 'Dubai (GST)', value: 'Asia/Dubai'},
-  {label: 'India (IST)', value: 'Asia/Kolkata'},
-  {label: 'Bangkok (ICT)', value: 'Asia/Bangkok'},
-  {label: 'Ho Chi Minh (ICT)', value: 'Asia/Ho_Chi_Minh'},
-  {label: 'Singapore (SGT)', value: 'Asia/Singapore'},
-  {label: 'Hong Kong (HKT)', value: 'Asia/Hong_Kong'},
-  {label: 'Tokyo (JST)', value: 'Asia/Tokyo'},
-  {label: 'Seoul (KST)', value: 'Asia/Seoul'},
-  {label: 'Sydney (AEST)', value: 'Australia/Sydney'},
-  {label: 'Auckland (NZST)', value: 'Pacific/Auckland'},
-  {label: 'São Paulo (BRT)', value: 'America/Sao_Paulo'},
-  {label: 'Toronto (ET)', value: 'America/Toronto'}
+  {label: 'US Eastern', value: 'America/New_York'},
+  {label: 'US Central', value: 'America/Chicago'},
+  {label: 'US Mountain', value: 'America/Denver'},
+  {label: 'US Pacific', value: 'America/Los_Angeles'},
+  {label: 'Hawaii', value: 'Pacific/Honolulu'},
+  {label: 'London', value: 'Europe/London'},
+  {label: 'Paris', value: 'Europe/Paris'},
+  {label: 'Berlin', value: 'Europe/Berlin'},
+  {label: 'Moscow', value: 'Europe/Moscow'},
+  {label: 'Dubai', value: 'Asia/Dubai'},
+  {label: 'India', value: 'Asia/Kolkata'},
+  {label: 'Bangkok', value: 'Asia/Bangkok'},
+  {label: 'Ho Chi Minh', value: 'Asia/Ho_Chi_Minh'},
+  {label: 'Singapore', value: 'Asia/Singapore'},
+  {label: 'Hong Kong', value: 'Asia/Hong_Kong'},
+  {label: 'Tokyo', value: 'Asia/Tokyo'},
+  {label: 'Seoul', value: 'Asia/Seoul'},
+  {label: 'Sydney', value: 'Australia/Sydney'},
+  {label: 'Auckland', value: 'Pacific/Auckland'},
+  {label: 'São Paulo', value: 'America/Sao_Paulo'},
+  {label: 'Toronto', value: 'America/Toronto'}
 ];
+
+/** Get DST-aware timezone abbreviation e.g. "EDT", "EST", "PDT" */
+function getTzAbbr(tz) {
+  if (!tz) return '';
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {timeZone: tz, timeZoneName: 'short'}).formatToParts(new Date());
+    return parts.find(p => p.type === 'timeZoneName')?.value || '';
+  } catch {
+    return '';
+  }
+}
 
 /** Get current time string in the given timezone */
 function getCurrentTime(tz) {
@@ -95,19 +106,26 @@ export default function TimezonePicker({timezone, onChange}) {
           close();
         }
       },
-      ...filtered.map(t => ({
-        content: t.label,
-        active: timezone === t.value,
-        helpText: getOffsetLabel(t.value),
-        onAction: () => {
-          onChange(t.value);
-          close();
-        }
-      }))
+      ...filtered.map(t => {
+        const abbr = getTzAbbr(t.value);
+        const offset = getOffsetLabel(t.value);
+        return {
+          content: abbr ? `${t.label} (${abbr})` : t.label,
+          active: timezone === t.value,
+          helpText: offset,
+          onAction: () => {
+            onChange(t.value);
+            close();
+          }
+        };
+      })
     ];
   }, [search, timezone, onChange, close]);
 
+  const tzAbbr = getTzAbbr(timezone);
   const offsetLabel = getOffsetLabel(timezone);
+  // Show DST-aware abbr if available, otherwise fall back to offset
+  const tzBadge = tzAbbr || offsetLabel;
 
   const activator = (
     <button
@@ -130,7 +148,7 @@ export default function TimezonePicker({timezone, onChange}) {
     >
       <Icon source={ClockIcon} tone="base" />
       <span style={{fontWeight: 500}}>{currentTime}</span>
-      {offsetLabel && <span style={{opacity: 0.8, fontSize: '12px'}}>{offsetLabel}</span>}
+      {tzBadge && <span style={{opacity: 0.8, fontSize: '12px'}}>{tzBadge}</span>}
     </button>
   );
 

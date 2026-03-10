@@ -27,7 +27,7 @@ import ReimportModal from './products/ReimportModal';
  */
 export default function Products() {
   const {user} = useAuth();
-  const {stores} = usePermittedStores();
+  const {stores, groups, isAdmin} = usePermittedStores();
   const [selectedTab, setSelectedTab] = useState(0);
   const [selectedStore, setSelectedStore] = useState('');
   const [selectedStores, setSelectedStores] = useState([]);
@@ -487,6 +487,8 @@ export default function Products() {
         stores={stores.filter(s => s.status === 'active')}
         selectedStores={selectedStores}
         onStoresChange={setSelectedStores}
+        groups={groups}
+        isAdmin={isAdmin}
       />
 
       <ReimportModal

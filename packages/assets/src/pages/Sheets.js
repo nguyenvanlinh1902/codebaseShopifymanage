@@ -429,7 +429,8 @@ export default function Sheets() {
             if (stores.length === 1) {
               await saveSheetToStore(stores[0].id, selected, email);
             } else if (stores.length > 1) {
-              // Show store picker modal
+              // Show store picker modal — reset addingSheet so modal button is clickable
+              setAddingSheet(false);
               setPendingPickerEmail(email);
               setPendingPickerData(selected);
               setStorePickerStoreId(stores[0].id);

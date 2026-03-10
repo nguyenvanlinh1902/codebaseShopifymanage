@@ -69,7 +69,6 @@ export function useGoogleAuth() {
         const handleMessage = event => {
           if (event.data?.type === 'google-auth-callback') {
             window.removeEventListener('message', handleMessage);
-            clearInterval(checkClosed);
             if (event.data.success) {
               setAuthenticated(true);
               setGoogleEmail(event.data.googleEmail || '');
@@ -81,14 +80,8 @@ export function useGoogleAuth() {
           }
         };
         window.addEventListener('message', handleMessage);
-
-        const checkClosed = setInterval(() => {
-          if (popup && popup.closed) {
-            clearInterval(checkClosed);
-            window.removeEventListener('message', handleMessage);
-            reject(new Error('Authentication window was closed'));
-          }
-        }, 500);
+        // Note: popup.closed polling removed — COOP header on Google OAuth page blocks it.
+        // Flow completes via postMessage from the OAuth callback page.
       } catch (err) {
         setError('Failed to start authorization');
         reject(err);
@@ -136,7 +129,6 @@ export function useGoogleAuth() {
         const handleMessage = event => {
           if (event.data?.type === 'google-auth-temp') {
             window.removeEventListener('message', handleMessage);
-            clearInterval(checkClosed);
             if (event.data.success) {
               resolve({
                 accessToken: event.data.accessToken,
@@ -149,14 +141,8 @@ export function useGoogleAuth() {
           }
         };
         window.addEventListener('message', handleMessage);
-
-        const checkClosed = setInterval(() => {
-          if (popup && popup.closed) {
-            clearInterval(checkClosed);
-            window.removeEventListener('message', handleMessage);
-            reject(new Error('Authentication window was closed'));
-          }
-        }, 500);
+        // Note: popup.closed polling removed — COOP header on Google OAuth page blocks it.
+        // Flow completes via postMessage from the OAuth callback page.
       } catch (err) {
         reject(err);
       }

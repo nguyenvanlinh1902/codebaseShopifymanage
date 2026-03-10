@@ -140,7 +140,15 @@ export default function Orders() {
   };
 
   const storeOptions = stores.map(store => ({label: store.name, value: store.id}));
-  const sheetOptions = sheets.map(sheet => ({label: sheet.name, value: sheet.id}));
+
+  // Sheets already assigned to an active sync config should not appear in the setup dropdown
+  const usedSheetIds = new Set(
+    syncConfigs.filter(c => c.status === 'active' && c.sheetId).map(c => c.sheetId)
+  );
+  const sheetOptions = sheets
+    .filter(sheet => !usedSheetIds.has(sheet.id))
+    .map(sheet => ({label: sheet.name, value: sheet.id}));
+
   const filterStoreOptions = [{label: 'All Stores', value: ''}, ...storeOptions];
 
   // Filter configs by store

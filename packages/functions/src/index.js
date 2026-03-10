@@ -23,6 +23,7 @@ import embedRoutes from './routes/embedRoutes.js';
 import gdprRoutes from './routes/gdprRoutes.js';
 import multiAppAuthRoutes from './routes/multi-app-auth-routes.js';
 import userRoutes from './routes/user-routes.js';
+import * as devOrderInspectorController from './controllers/dev-order-inspector-controller.js';
 // Middleware
 import {authentication} from './middleware/authentication.js';
 // Controllers
@@ -97,6 +98,7 @@ app.use('/api/themes', themeRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/setup', setupRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.get('/api/dev/orders', devOrderInspectorController.getOrderData);
 
 // ============ ERROR HANDLING ============
 app.use((req, res) => {

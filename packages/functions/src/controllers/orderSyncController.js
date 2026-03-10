@@ -673,9 +673,10 @@ export async function handleOrderWebhook(req, res) {
       return res.status(200).json({message: 'No sync config, skipping'});
     }
 
-    // Check if order was already synced (prevent duplicates)
-    const alreadySynced = await orderSyncRepo.isOrderSynced(store.id, order.id.toString());
-    if (alreadySynced) {
+    // Atomically claim this order to prevent duplicate processing from concurrent webhooks
+    const claimed = await orderSyncRepo.claimOrderSync(store.id, order.id.toString(), order.name);
+    if (!claimed) {
+      console.log(`[WEBHOOK] Order ${order.name} already claimed, skipping duplicate`);
       return res.status(200).json({message: 'Already synced'});
     }
 
@@ -724,11 +725,6 @@ export async function handleOrderWebhook(req, res) {
         formattedOrder
       );
 
-      await orderSyncRepo.trackSyncedOrder({
-        storeId: store.id,
-        shopifyOrderId: order.id.toString(),
-        orderNumber: order.name
-      });
       await orderRepo.markSyncedToSheet(store.id, formattedOrder.orderId);
       await orderSyncRepo.updateSyncJob(syncConfig.id, {
         totalOrdersSynced: (syncConfig.totalOrdersSynced || 0) + 1,
@@ -739,6 +735,8 @@ export async function handleOrderWebhook(req, res) {
       return res.status(200).json({success: true, message: 'Order synced', syncedToSheet: true});
     } catch (error) {
       console.error(`[WEBHOOK] Sheet sync failed for ${order.name}:`, error.message);
+      // Release the claim so Shopify's webhook retry can attempt again
+      await orderSyncRepo.releaseOrderClaim(store.id, order.id.toString());
       await orderRepo.incrementSyncAttempt(store.id, formattedOrder.orderId, error.message);
       return res.status(200).json({
         success: true,
@@ -778,11 +776,21 @@ function formatOrderRowsForSheet(order, productInfoMap) {
   const note = order.note || '';
 
   const buildRow = (item, index) => {
+    // All props for dedicated columns (exclude _ prefix)
     const props = (item.properties || []).filter(p => p.name && !p.name.startsWith('_'));
     const sizeProp = props.find(p => /size/i.test(p.name));
     const typeProp = props.find(p => /type/i.test(p.name));
-    const nameProp = props.find(p => /name/i.test(p.name));
     const designProp = props.find(p => /design/i.test(p.name));
+
+    // Custom name: ALL properties including _ prefixed ones, except size/type/design
+    const allProps = item.properties || [];
+    const mappedPropNames = new Set([
+      sizeProp?.name, typeProp?.name, designProp?.name
+    ].filter(Boolean));
+    const customNameValue = allProps
+      .filter(p => p.name && !mappedPropNames.has(p.name))
+      .map(p => `${p.name}: ${p.value}`)
+      .join('\n');
     const isFirst = index === 0;
 
     const variantId = item.variant_id?.toString() || '';
@@ -817,7 +825,7 @@ function formatOrderRowsForSheet(order, productInfoMap) {
       addr.province || '', // Shipping State
       addr.country_code || '', // Shipping Country Code
       addr.phone || '', // Shipping Phone
-      nameProp ? `${nameProp.name}: ${nameProp.value}` : '', // Custom name
+      customNameValue, // Custom name (all non-mapped properties)
       designProp ? `${designProp.name}: ${designProp.value}` : '' // Design
     ];
   };

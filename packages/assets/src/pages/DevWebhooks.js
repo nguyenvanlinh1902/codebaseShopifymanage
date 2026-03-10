@@ -24,7 +24,8 @@ import {
   ChevronDownIcon,
   ChevronUpIcon,
   PlusIcon,
-  KeyIcon
+  KeyIcon,
+  SearchIcon
 } from '@shopify/polaris-icons';
 import {api} from '../helpers/api';
 import {useStores} from '../context/store-context';
@@ -63,6 +64,13 @@ function StoreWebhookRow({store}) {
   // Scopes toggle
   const [showScopes, setShowScopes] = useState(false);
 
+  // Order inspector state
+  const [inspecting, setInspecting] = useState(false);
+  const [orderData, setOrderData] = useState(null);
+  const [orderError, setOrderError] = useState(null);
+  const [showOrders, setShowOrders] = useState(false);
+  const [orderNumberSearch, setOrderNumberSearch] = useState('');
+
   const checkToken = useCallback(async () => {
     setCheckingToken(true);
     setTokenResult(null);
@@ -80,6 +88,28 @@ function StoreWebhookRow({store}) {
       setCheckingToken(false);
     }
   }, [store.shopDomain]);
+
+  const inspectOrders = useCallback(async () => {
+    setInspecting(true);
+    setOrderData(null);
+    setOrderError(null);
+    try {
+      const qs = new URLSearchParams({storeId: store.id, limit: '3'});
+      if (orderNumberSearch.trim()) qs.set('orderNumber', orderNumberSearch.trim());
+      const res = await api(`/api/dev/orders?${qs}`);
+      const json = await res.json();
+      if (json.success) {
+        setOrderData(json.data);
+        setShowOrders(true);
+      } else {
+        setOrderError(json.error || 'Failed to fetch orders');
+      }
+    } catch (err) {
+      setOrderError(err.message);
+    } finally {
+      setInspecting(false);
+    }
+  }, [store.id, orderNumberSearch]);
 
   const check = useCallback(async () => {
     setChecking(true);
@@ -180,6 +210,9 @@ function StoreWebhookRow({store}) {
             <Button size="slim" icon={KeyIcon} onClick={checkToken} loading={checkingToken}>
               Check Token
             </Button>
+            <Button size="slim" icon={SearchIcon} onClick={inspectOrders} loading={inspecting}>
+              Inspect Orders
+            </Button>
             <Button size="slim" icon={StatusActiveIcon} onClick={check} loading={checking}>
               {result ? 'Re-check' : 'Check'}
             </Button>
@@ -187,6 +220,54 @@ function StoreWebhookRow({store}) {
         </InlineStack>
 
         {error && <Banner tone="critical">{error}</Banner>}
+
+        {/* Order Inspector */}
+        <BlockStack gap="200">
+          <InlineStack gap="300" blockAlign="center">
+            <div style={{flex: 1}}>
+              <TextField
+                label="Order number (optional)"
+                labelHidden
+                value={orderNumberSearch}
+                onChange={setOrderNumberSearch}
+                placeholder="Search by order # (e.g. 1001)"
+                autoComplete="off"
+                connectedRight={
+                  <Button onClick={inspectOrders} loading={inspecting} icon={SearchIcon}>
+                    Inspect
+                  </Button>
+                }
+              />
+            </div>
+          </InlineStack>
+
+          {orderError && <Banner tone="critical" onDismiss={() => setOrderError(null)}>{orderError}</Banner>}
+
+          {orderData && (
+            <BlockStack gap="100">
+              <InlineStack align="space-between" blockAlign="center">
+                <Text variant="bodySm" fontWeight="semibold">
+                  Order Data ({orderData.length} orders) — check line_items[].properties
+                </Text>
+                <Button
+                  size="slim"
+                  plain
+                  icon={showOrders ? ChevronUpIcon : ChevronDownIcon}
+                  onClick={() => setShowOrders(v => !v)}
+                >
+                  {showOrders ? 'Hide' : 'Show'}
+                </Button>
+              </InlineStack>
+              <Collapsible open={showOrders} id={`orders-${store.id}`}>
+                <Box padding="300" background="bg-surface-secondary" borderRadius="200">
+                  <pre style={{fontSize: 11, overflow: 'auto', maxHeight: 400, margin: 0, whiteSpace: 'pre-wrap'}}>
+                    {JSON.stringify(orderData, null, 2)}
+                  </pre>
+                </Box>
+              </Collapsible>
+            </BlockStack>
+          )}
+        </BlockStack>
 
         {/* Token check result */}
         {tokenResult && (

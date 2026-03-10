@@ -123,9 +123,45 @@ export class OrderSyncRepository {
   }
 
   /**
+   * Atomically claim an order for syncing using a deterministic document ID.
+   * Returns true if claimed (first to claim), false if already claimed (duplicate).
+   * Uses Firestore create() which is atomic — only one concurrent caller wins.
+   */
+  async claimOrderSync(storeId, shopifyOrderId, orderNumber) {
+    const docId = `${storeId}_${shopifyOrderId}`;
+    const docRef = this.db.collection('order_synced').doc(docId);
+    try {
+      await docRef.create({
+        id: docId,
+        storeId,
+        shopifyOrderId,
+        orderNumber,
+        syncedAt: new Date().toISOString()
+      });
+      return true;
+    } catch (err) {
+      if (err.code === 6 || err.code === 'already-exists') return false;
+      throw err;
+    }
+  }
+
+  /**
+   * Release a previously claimed order (used when sync fails, to allow retries).
+   */
+  async releaseOrderClaim(storeId, shopifyOrderId) {
+    const docId = `${storeId}_${shopifyOrderId}`;
+    await this.db.collection('order_synced').doc(docId).delete();
+  }
+
+  /**
    * Check if order was already synced
    */
   async isOrderSynced(storeId, shopifyOrderId) {
+    // Check both old-style (random doc ID) and new deterministic doc
+    const docId = `${storeId}_${shopifyOrderId}`;
+    const det = await this.db.collection('order_synced').doc(docId).get();
+    if (det.exists) return true;
+
     const snapshot = await this.db
       .collection('order_synced')
       .where('storeId', '==', storeId)

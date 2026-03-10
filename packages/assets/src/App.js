@@ -163,7 +163,7 @@ function StandaloneFrame() {
         <Route path="/themes" element={<FeatureGuard feature="themes"><Themes /></FeatureGuard>} />
         <Route path="/analytics" element={<FeatureGuard feature="analytics"><Analytics /></FeatureGuard>} />
         <Route path="/balance" element={isAdmin ? <Balance /> : <NotFound />} />
-        <Route path="/campaign-ads" element={isAdmin ? <CampaignAds /> : <NotFound />} />
+        <Route path="/campaign-ads" element={<FeatureGuard feature="finance"><CampaignAds /></FeatureGuard>} />
         <Route path="/disputes" element={<FeatureGuard feature="dispute"><Disputes /></FeatureGuard>} />
         <Route path="/order-search" element={<FeatureGuard feature="order-search"><OrderSearch /></FeatureGuard>} />
         <Route path="/setup" element={<FeatureGuard feature="setup"><SetupStore /></FeatureGuard>} />

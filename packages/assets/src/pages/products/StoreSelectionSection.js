@@ -1,6 +1,13 @@
 import React from 'react';
 import {Card, BlockStack, Text, Banner, ChoiceList, InlineStack, Button} from '@shopify/polaris';
 
+/** Shopify daily variant limit resets at midnight UTC */
+function isThrottledToday(store) {
+  if (!store.variantThrottledAt) return false;
+  const todayUtc = new Date().toISOString().slice(0, 10);
+  return store.variantThrottledAt.slice(0, 10) === todayUtc;
+}
+
 /**
  * StoreSelectionSection Component
  * Allows selection of target stores for product import
@@ -13,6 +20,8 @@ export default function StoreSelectionSection({
   onStoresChange,
   onUpload
 }) {
+  const throttledStores = stores.filter(isThrottledToday);
+
   return (
     <Card>
       <BlockStack gap="300">
@@ -34,13 +43,29 @@ export default function StoreSelectionSection({
           </Banner>
         )}
 
+        {throttledStores.length > 0 && (
+          <Banner tone="critical">
+            <Text as="p">
+              <strong>Daily variant limit reached:</strong>{' '}
+              {throttledStores.map(s => s.name || s.shopDomain).join(', ')} cannot import today.
+              Shopify resets this limit at midnight UTC.
+            </Text>
+          </Banner>
+        )}
+
         <ChoiceList
           title="Import products to these stores (multiple selection allowed)"
           allowMultiple
-          choices={stores.map(store => ({
-            label: `${store.name} (${store.shopDomain})`,
-            value: store.id
-          }))}
+          choices={stores.map(store => {
+            const throttled = isThrottledToday(store);
+            return {
+              label: throttled
+                ? `${store.name} (${store.shopDomain}) — Daily variant limit reached, retry tomorrow`
+                : `${store.name} (${store.shopDomain})`,
+              value: store.id,
+              disabled: throttled
+            };
+          })}
           selected={selectedStores}
           onChange={onStoresChange}
           disabled={uploading || files.length === 0}

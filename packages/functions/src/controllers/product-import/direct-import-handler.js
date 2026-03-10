@@ -5,6 +5,7 @@
 
 import {ShopifyService} from '../../services/shopifyService.js';
 import {AdminUserRepository} from '../../repositories/adminUserRepository.js';
+import {StoreRepository} from '../../repositories/storeRepository.js';
 import {
   buildFilesToProcess,
   parseAndValidateCsvFiles,
@@ -13,7 +14,16 @@ import {
 import {callWithRetry, sleep, RATE_LIMIT_DELAY} from './retry-helpers.js';
 import {extractStoreIds} from '../../utils/store-access.js';
 
+/** Check if a Shopify error is daily variant creation throttle */
+function isVariantThrottle(error) {
+  return (
+    error.message?.includes('Daily variant creation limit') ||
+    error.extensions?.code === 'VARIANT_THROTTLE_EXCEEDED'
+  );
+}
+
 const adminUserRepo = new AdminUserRepository();
+const storeRepo = new StoreRepository();
 
 /**
  * Direct import: parse CSV and process products immediately (no PubSub).
@@ -123,6 +133,25 @@ export async function directImport(req, res) {
           error: errDetail,
           handle: product.handle
         });
+
+        // Stop immediately on daily variant limit
+        if (isVariantThrottle(error)) {
+          const throttleMsg = `Daily variant creation limit reached for ${store.name} (${store.shopDomain}). Import stopped. Please retry tomorrow after midnight UTC.`;
+          log('error', throttleMsg);
+          await storeRepo.markVariantThrottled(store.id);
+          return res.status(429).json({
+            success: false,
+            error: throttleMsg,
+            throttleExceeded: true,
+            data: {
+              store: {name: store.name, shopDomain: store.shopDomain},
+              totalProducts: products.length,
+              successCount,
+              failedCount,
+              logs
+            }
+          });
+        }
       }
 
       await sleep(RATE_LIMIT_DELAY);

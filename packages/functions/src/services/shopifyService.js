@@ -12,7 +12,7 @@ export class ShopifyService {
         shopName: shopConfig.shopDomain,
         accessToken: shopConfig.accessToken,
         apiVersion: shopConfig.apiVersion || shopifyConfig.apiVersion || '2026-01',
-        autoLimit: {calls: 2, interval: 1000, bucketSize: 35},
+        autoLimit: { calls: 2, interval: 1000, bucketSize: 35 },
         timeout: 180000 // 3 min - products with many variants/images need more time
       });
       this.shopDomain = shopConfig.shopDomain;
@@ -79,7 +79,7 @@ export class ShopifyService {
       const optionNames = [productData.option1Name, productData.option2Name, productData.option3Name].filter(Boolean);
 
       // Build ProductSetInput
-      const input = {title: productData.title};
+      const input = { title: productData.title };
       if (productData.description) input.descriptionHtml = productData.description;
       if (productData.vendor) input.vendor = productData.vendor;
       if (productData.productType) input.productType = productData.productType;
@@ -109,7 +109,7 @@ export class ShopifyService {
         }
         input.productOptions = optionNames.map((name, i) => ({
           name,
-          values: [...valueSets[i]].map(v => ({name: v}))
+          values: [...valueSets[i]].map(v => ({ name: v }))
         }));
       }
 
@@ -125,12 +125,12 @@ export class ShopifyService {
         }
       } else if (productData.imageUrl) {
         allImageUrls.add(productData.imageUrl);
-        imagesToUpload.push({src: productData.imageUrl, alt: productData.imageAlt});
+        imagesToUpload.push({ src: productData.imageUrl, alt: productData.imageAlt });
       }
       for (const v of csvVariants) {
         if (v.variantImage && !allImageUrls.has(v.variantImage)) {
           allImageUrls.add(v.variantImage);
-          imagesToUpload.push({src: v.variantImage});
+          imagesToUpload.push({ src: v.variantImage });
         }
       }
       if (imagesToUpload.length > 0) {
@@ -144,24 +144,24 @@ export class ShopifyService {
       // Build variants with option values and image links
       input.variants = csvVariants.map(v => {
         const optVals = [];
-        if (v.option1Value && optionNames[0]) optVals.push({optionName: optionNames[0], name: v.option1Value});
-        if (v.option2Value && optionNames[1]) optVals.push({optionName: optionNames[1], name: v.option2Value});
-        if (v.option3Value && optionNames[2]) optVals.push({optionName: optionNames[2], name: v.option3Value});
-        if (optVals.length === 0) optVals.push({optionName: 'Title', name: 'Default Title'});
+        if (v.option1Value && optionNames[0]) optVals.push({ optionName: optionNames[0], name: v.option1Value });
+        if (v.option2Value && optionNames[1]) optVals.push({ optionName: optionNames[1], name: v.option2Value });
+        if (v.option3Value && optionNames[2]) optVals.push({ optionName: optionNames[2], name: v.option3Value });
+        if (optVals.length === 0) optVals.push({ optionName: 'Title', name: 'Default Title' });
 
         const variant = {
           optionValues: optVals,
           price: v.price || '0.00',
           sku: v.sku || '',
           inventoryPolicy: (v.inventoryPolicy || 'deny').toUpperCase() === 'CONTINUE' ? 'CONTINUE' : 'DENY',
-          inventoryItem: {sku: v.sku || '', tracked: (v.inventoryTracker || 'shopify') === 'shopify'},
+          inventoryItem: { sku: v.sku || '', tracked: (v.inventoryTracker || 'shopify') === 'shopify' },
           taxable: v.taxable !== undefined ? v.taxable : true
         };
         if (v.compareAtPrice) variant.compareAtPrice = v.compareAtPrice;
         if (v.barcode) variant.barcode = v.barcode;
         if (v.taxCode) variant.taxCode = v.taxCode;
         if (v.cost) variant.inventoryItem.cost = v.cost;
-        if (v.variantImage) variant.file = {originalSource: v.variantImage};
+        if (v.variantImage) variant.file = { originalSource: v.variantImage };
 
         return variant;
       });
@@ -173,7 +173,7 @@ export class ShopifyService {
         }
       }`;
 
-      const gqlResult = await this.shopify.graphql(mutation, {input});
+      const gqlResult = await this.shopify.graphql(mutation, { input });
       const payload = gqlResult.productSet;
 
       if (payload.userErrors?.length > 0) {
@@ -185,7 +185,7 @@ export class ShopifyService {
       const numericId = ShopifyService.fromGid(payload.product.id);
       console.log(`createProduct (productSet): ${numericId} with ${csvVariants.length} variants, ${imagesToUpload.length} images`);
 
-      return {id: numericId, variants: csvVariants.map(() => ({}))};
+      return { id: numericId, variants: csvVariants.map(() => ({})) };
     } catch (error) {
       console.error('Error creating product:', error);
       throw new Error(`Failed to create product: ${error.message}`);
@@ -229,9 +229,9 @@ export class ShopifyService {
 
       const gqlVariants = batch.map(v => {
         const optionValues = [];
-        if (v.option1 && oNames[0]) optionValues.push({optionName: oNames[0], name: v.option1});
-        if (v.option2 && oNames[1]) optionValues.push({optionName: oNames[1], name: v.option2});
-        if (v.option3 && oNames[2]) optionValues.push({optionName: oNames[2], name: v.option3});
+        if (v.option1 && oNames[0]) optionValues.push({ optionName: oNames[0], name: v.option1 });
+        if (v.option2 && oNames[1]) optionValues.push({ optionName: oNames[1], name: v.option2 });
+        if (v.option3 && oNames[2]) optionValues.push({ optionName: oNames[2], name: v.option3 });
 
         const input = {
           price: v.price || '0.00',
@@ -253,7 +253,7 @@ export class ShopifyService {
       });
 
       try {
-        const result = await this.shopify.graphql(mutation, {productId: gid, variants: gqlVariants});
+        const result = await this.shopify.graphql(mutation, { productId: gid, variants: gqlVariants });
         const payload = result.productVariantsBulkCreate;
 
         if (payload.userErrors && payload.userErrors.length > 0) {
@@ -307,7 +307,7 @@ export class ShopifyService {
 
     let mediaEdges = [];
     try {
-      const mediaResult = await this.shopify.graphql(mediaQuery, {id: gid});
+      const mediaResult = await this.shopify.graphql(mediaQuery, { id: gid });
       mediaEdges = mediaResult?.product?.media?.edges || [];
     } catch (err) {
       console.error(`_linkVariantImages: failed to query media: ${err.message}`);
@@ -345,7 +345,7 @@ export class ShopifyService {
       if (!variantId && csvVariant.sku) variantId = skuToVariantId[csvVariant.sku];
       if (!variantId) continue;
 
-      updates.push({id: ShopifyService.toGid('ProductVariant', variantId), mediaId: mediaGid});
+      updates.push({ id: ShopifyService.toGid('ProductVariant', variantId), mediaId: mediaGid });
     }
 
     if (updates.length === 0) return;
@@ -361,7 +361,7 @@ export class ShopifyService {
     let linkedCount = 0;
     for (let i = 0; i < updates.length; i += 250) {
       try {
-        const result = await this.shopify.graphql(mutation, {productId: gid, variants: updates.slice(i, i + 250)});
+        const result = await this.shopify.graphql(mutation, { productId: gid, variants: updates.slice(i, i + 250) });
         linkedCount += result.productVariantsBulkUpdate.productVariants?.length || 0;
       } catch (err) {
         console.error(`_linkVariantImages batch failed: ${err.message}`);
@@ -390,23 +390,23 @@ export class ShopifyService {
       }
     }`;
 
-    const result = await this.shopify.graphql(query, {id: gid});
+    const result = await this.shopify.graphql(query, { id: gid });
     if (!result.product) return null;
 
     const variants = result.product.variants.edges.map(e => ShopifyService._gqlVariantToRest(e.node));
     let pageInfo = result.product.variants.pageInfo;
 
     while (pageInfo.hasNextPage) {
-      const next = await this.shopify.graphql(query, {id: gid, after: pageInfo.endCursor});
+      const next = await this.shopify.graphql(query, { id: gid, after: pageInfo.endCursor });
       variants.push(...next.product.variants.edges.map(e => ShopifyService._gqlVariantToRest(e.node)));
       pageInfo = next.product.variants.pageInfo;
     }
 
     const images = result.product.media.edges
       .filter(e => e.node?.image?.url)
-      .map(e => ({url: e.node.image.url, src: e.node.image.url}));
+      .map(e => ({ url: e.node.image.url, src: e.node.image.url }));
 
-    return {id: ShopifyService.fromGid(result.product.id), variants, images};
+    return { id: ShopifyService.fromGid(result.product.id), variants, images };
   }
 
   static _gqlVariantToRest(node) {
@@ -434,7 +434,7 @@ export class ShopifyService {
     if (!existing) {
       const result = await this.createProduct(productData);
       const variantCount = productData.variants?.length || 1;
-      return {result, action: 'created', variantStats: {added: variantCount, updated: 0}};
+      return { result, action: 'created', variantStats: { added: variantCount, updated: 0 } };
     }
 
     // Product exists → update via GraphQL
@@ -443,7 +443,7 @@ export class ShopifyService {
     const existingProduct = await this._getProductGraphQL(numericId);
 
     // Update product-level fields via productUpdate
-    const updateInput = {id: gid};
+    const updateInput = { id: gid };
     if (productData.title) updateInput.title = productData.title;
     if (productData.description !== undefined) updateInput.descriptionHtml = productData.description;
     if (productData.vendor) updateInput.vendor = productData.vendor;
@@ -466,7 +466,7 @@ export class ShopifyService {
       for (const img of images) {
         const fn = img.src.split('/').pop().split('?')[0].toLowerCase();
         if (!existingFns.has(fn)) {
-          newMedia.push({originalSource: img.src, alt: img.alt || undefined, mediaContentType: 'IMAGE'});
+          newMedia.push({ originalSource: img.src, alt: img.alt || undefined, mediaContentType: 'IMAGE' });
         }
       }
     }
@@ -479,7 +479,7 @@ export class ShopifyService {
       if (v.variantImage) {
         const fn = v.variantImage.split('/').pop().split('?')[0].toLowerCase();
         if (!existingFns.has(fn) && !newMedia.find(m => m.originalSource === v.variantImage)) {
-          newMedia.push({originalSource: v.variantImage, mediaContentType: 'IMAGE'});
+          newMedia.push({ originalSource: v.variantImage, mediaContentType: 'IMAGE' });
         }
       }
     }
@@ -490,7 +490,7 @@ export class ShopifyService {
         userErrors { field message }
       }
     }`;
-    const updateVars = {product: updateInput};
+    const updateVars = { product: updateInput };
     if (newMedia.length > 0) updateVars.media = newMedia;
     await this.shopify.graphql(updateMutation, updateVars);
 
@@ -509,7 +509,7 @@ export class ShopifyService {
       );
 
       if (match) {
-        const upd = {id: ShopifyService.toGid('ProductVariant', match.id)};
+        const upd = { id: ShopifyService.toGid('ProductVariant', match.id) };
         if (csvVariant.price) upd.price = csvVariant.price;
         if (csvVariant.compareAtPrice) upd.compareAtPrice = csvVariant.compareAtPrice;
         if (csvVariant.sku || csvVariant.cost) {
@@ -537,7 +537,7 @@ export class ShopifyService {
       }`;
       for (let i = 0; i < variantUpdates.length; i += 250) {
         const batch = variantUpdates.slice(i, i + 250);
-        await this.shopify.graphql(bulkUpdateMut, {productId: gid, variants: batch});
+        await this.shopify.graphql(bulkUpdateMut, { productId: gid, variants: batch });
       }
     }
 
@@ -554,9 +554,9 @@ export class ShopifyService {
     await this._linkVariantImages(numericId, productData, updatedProduct.variants);
 
     return {
-      result: {id: numericId},
+      result: { id: numericId },
       action: 'updated',
-      variantStats: {added: addedCount, updated: updatedCount}
+      variantStats: { added: addedCount, updated: updatedCount }
     };
   }
 
@@ -567,7 +567,7 @@ export class ShopifyService {
   async updateProduct(productId, productData) {
     try {
       const gid = ShopifyService.toGid('Product', productId);
-      const updateInput = {id: gid};
+      const updateInput = { id: gid };
 
       if (productData.title) updateInput.title = productData.title;
       if (productData.description !== undefined) updateInput.descriptionHtml = productData.description;
@@ -596,13 +596,13 @@ export class ShopifyService {
         );
         const fn = productData.imageUrl.split('/').pop().split('?')[0].toLowerCase();
         if (!existingFns.has(fn)) {
-          newMedia = [{originalSource: productData.imageUrl, alt: productData.imageAlt || undefined, mediaContentType: 'IMAGE'}];
+          newMedia = [{ originalSource: productData.imageUrl, alt: productData.imageAlt || undefined, mediaContentType: 'IMAGE' }];
         }
 
         // Update first variant if needed
         if (needsVariantUpdate && existing?.variants?.length > 0) {
           const variantGid = ShopifyService.toGid('ProductVariant', existing.variants[0].id);
-          const vUpd = {id: variantGid};
+          const vUpd = { id: variantGid };
           if (productData.price) vUpd.price = productData.price;
           if (productData.compareAtPrice) vUpd.compareAtPrice = productData.compareAtPrice;
           if (productData.sku || productData.cost) {
@@ -619,13 +619,13 @@ export class ShopifyService {
               userErrors { field message }
             }
           }`;
-          await this.shopify.graphql(varMut, {productId: gid, variants: [vUpd]});
+          await this.shopify.graphql(varMut, { productId: gid, variants: [vUpd] });
         }
       } else if (needsVariantUpdate) {
         const existing = await this._getProductGraphQL(productId);
         if (existing?.variants?.length > 0) {
           const variantGid = ShopifyService.toGid('ProductVariant', existing.variants[0].id);
-          const vUpd = {id: variantGid};
+          const vUpd = { id: variantGid };
           if (productData.price) vUpd.price = productData.price;
           if (productData.compareAtPrice) vUpd.compareAtPrice = productData.compareAtPrice;
           if (productData.sku || productData.cost) {
@@ -642,7 +642,7 @@ export class ShopifyService {
               userErrors { field message }
             }
           }`;
-          await this.shopify.graphql(varMut, {productId: gid, variants: [vUpd]});
+          await this.shopify.graphql(varMut, { productId: gid, variants: [vUpd] });
         }
       }
 
@@ -653,7 +653,7 @@ export class ShopifyService {
           userErrors { field message }
         }
       }`;
-      const vars = {product: updateInput};
+      const vars = { product: updateInput };
       if (newMedia) vars.media = newMedia;
       const result = await this.shopify.graphql(updateMut, vars);
 
@@ -661,7 +661,7 @@ export class ShopifyService {
         throw new Error(result.productUpdate.userErrors[0].message);
       }
 
-      return {id: ShopifyService.fromGid(result.productUpdate.product.id)};
+      return { id: ShopifyService.fromGid(result.productUpdate.product.id) };
     } catch (error) {
       console.error('Error updating product:', error);
       throw new Error(`Failed to update product: ${error.message}`);
@@ -691,11 +691,11 @@ export class ShopifyService {
         }
       `;
 
-      const result = await this.shopify.graphql(query, {query: `sku:${sku}`});
+      const result = await this.shopify.graphql(query, { query: `sku:${sku}` });
 
       if (result.productVariants.edges.length > 0) {
         const node = result.productVariants.edges[0].node;
-        return {product: node.product, variant: node};
+        return { product: node.product, variant: node };
       }
 
       return null;
@@ -725,7 +725,7 @@ export class ShopifyService {
         }
       `;
 
-      const result = await this.shopify.graphql(query, {query: `handle:${handle}`});
+      const result = await this.shopify.graphql(query, { query: `handle:${handle}` });
 
       if (result.products.edges.length > 0) {
         return result.products.edges[0].node;
@@ -772,7 +772,7 @@ export class ShopifyService {
       const gids = chunk.map(id => ShopifyService.toGid('ProductVariant', id));
 
       try {
-        const gqlResult = await this.shopify.graphql(query, {ids: gids});
+        const gqlResult = await this.shopify.graphql(query, { ids: gids });
         const nodes = gqlResult?.nodes || [];
 
         for (const node of nodes) {
@@ -784,7 +784,7 @@ export class ShopifyService {
             ? `https://${domain}/products/${handle}`
             : '';
           const variantImageUrl = node.image?.url || node.product?.featuredImage?.url || '';
-          result.set(numericId, {productUrl, variantImageUrl});
+          result.set(numericId, { productUrl, variantImageUrl });
         }
       } catch (err) {
         console.error(`[ShopifyService] getLineItemsProductInfo chunk ${i / CHUNK_SIZE + 1} failed: ${err.message}`);
@@ -803,10 +803,10 @@ export class ShopifyService {
       let queryParams;
       if (params.page_info) {
         // Cursor pagination: Shopify only allows page_info + limit, no other filters
-        queryParams = {page_info: params.page_info};
+        queryParams = { page_info: params.page_info };
         if (params.limit) queryParams.limit = params.limit;
       } else {
-        queryParams = {limit: 250, status: 'any', ...params};
+        queryParams = { limit: 250, status: 'any', ...params };
       }
 
       const orders = await this.shopify.order.list(queryParams);
@@ -947,7 +947,7 @@ export class ShopifyService {
         }
       }`;
 
-      const foResult = await this.shopify.graphql(foQuery, {id: orderGid});
+      const foResult = await this.shopify.graphql(foQuery, { id: orderGid });
       const fulfillmentOrders = foResult.order.fulfillmentOrders.edges.map(e => e.node);
       const openOrders = fulfillmentOrders.filter(
         fo => fo.status === 'OPEN' || fo.status === 'IN_PROGRESS'
@@ -961,7 +961,7 @@ export class ShopifyService {
         fulfillmentOrderId: fo.id,
         fulfillmentOrderLineItems: fo.lineItems.edges
           .filter(e => e.node.remainingQuantity > 0)
-          .map(e => ({id: e.node.id, quantity: e.node.remainingQuantity}))
+          .map(e => ({ id: e.node.id, quantity: e.node.remainingQuantity }))
       }));
 
       const mutation = `mutation fulfillmentCreate($fulfillment: FulfillmentInput!) {
@@ -1036,7 +1036,7 @@ export class ShopifyService {
    */
   async createTheme(name, src, role = 'unpublished') {
     try {
-      const theme = await this.shopify.theme.create({name, src, role});
+      const theme = await this.shopify.theme.create({ name, src, role });
       return theme;
     } catch (error) {
       console.error('Error creating theme:', error);
@@ -1062,7 +1062,7 @@ export class ShopifyService {
    */
   async publishTheme(themeId) {
     try {
-      const theme = await this.shopify.theme.update(themeId, {role: 'main'});
+      const theme = await this.shopify.theme.update(themeId, { role: 'main' });
       return theme;
     } catch (error) {
       console.error('Error publishing theme:', error);
@@ -1091,7 +1091,7 @@ export class ShopifyService {
           }
         }
       `;
-      const result = await this.shopify.graphql(query, {ownerType});
+      const result = await this.shopify.graphql(query, { ownerType });
       return result.metafieldDefinitions.nodes;
     } catch (error) {
       console.error('Error getting metafield definitions:', error);
@@ -1121,8 +1121,8 @@ export class ShopifyService {
           }
         }
       `;
-      const result = await this.shopify.graphql(mutation, {definition});
-      const {createdDefinition, userErrors} = result.metafieldDefinitionCreate;
+      const result = await this.shopify.graphql(mutation, { definition });
+      const { createdDefinition, userErrors } = result.metafieldDefinitionCreate;
       if (userErrors && userErrors.length > 0) {
         throw new Error(userErrors.map(e => e.message).join(', '));
       }
@@ -1183,8 +1183,8 @@ export class ShopifyService {
           }
         }
       `;
-      const result = await this.shopify.graphql(mutation, {shopPolicy: {type, body}});
-      const {shopPolicy, userErrors} = result.shopPolicyUpdate;
+      const result = await this.shopify.graphql(mutation, { shopPolicy: { type, body } });
+      const { shopPolicy, userErrors } = result.shopPolicyUpdate;
       if (userErrors && userErrors.length > 0) {
         throw new Error(userErrors.map(e => e.message).join(', '));
       }

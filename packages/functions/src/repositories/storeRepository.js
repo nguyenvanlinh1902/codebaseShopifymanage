@@ -310,6 +310,17 @@ export class StoreRepository {
   }
 
   /**
+   * Mark store as hitting Shopify's daily variant creation limit.
+   * Resets at midnight UTC — frontend uses this to disable the store in import selection.
+   */
+  async markVariantThrottled(storeId) {
+    await this.collection.doc(storeId).update({
+      variantThrottledAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    });
+  }
+
+  /**
    * Delete store
    */
   async delete(storeId) {

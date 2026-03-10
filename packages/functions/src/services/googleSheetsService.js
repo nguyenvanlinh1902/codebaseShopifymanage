@@ -244,6 +244,8 @@ export class GoogleSheetsService {
           item.quantity || '',
           item.name || '',
           item.sku || '',
+          '', // Product Link (not available in bulk export)
+          '', // Variant Image (not available in bulk export)
           item.price || '',
           addr.country_code || '',
           isFirst ? order.payment_gateway_names?.[0] || '' : '',
@@ -352,6 +354,8 @@ export class GoogleSheetsService {
       'Quantity',
       'Product name',
       'Product SKU',
+      'Product Link',
+      'Variant Image',
       'Lineitem price',
       'Shipping Country',
       'Payment Method',
@@ -369,9 +373,7 @@ export class GoogleSheetsService {
       'Shipping Country Code',
       'Shipping Phone',
       'Custom name',
-      'Design',
-      'Product Link',
-      'Variant Image'
+      'Design'
     ];
   }
 
@@ -462,7 +464,7 @@ export class GoogleSheetsService {
       const data = await this.readSheet(spreadsheetId, `${sheetName}!B:B`);
       const nextRow = (data?.length || 0) + 1;
       const endRow = nextRow + order.rows.length - 1;
-      await this.writeSheet(spreadsheetId, `${sheetName}!A${nextRow}:AB${endRow}`, order.rows);
+      await this.writeSheet(spreadsheetId, `${sheetName}!A${nextRow}:AD${endRow}`, order.rows);
 
       return {success: true};
     } catch (error) {
@@ -519,7 +521,7 @@ export class GoogleSheetsService {
       const startRow = matchingRows[0];
       const newRows = order.rows;
       const endRow = startRow + newRows.length - 1;
-      await this.writeSheet(spreadsheetId, `${sheetName}!A${startRow}:AB${endRow}`, newRows);
+      await this.writeSheet(spreadsheetId, `${sheetName}!A${startRow}:AD${endRow}`, newRows);
 
       return {success: true};
     } catch (error) {

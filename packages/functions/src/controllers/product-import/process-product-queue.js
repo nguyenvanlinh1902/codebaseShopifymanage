@@ -1,16 +1,19 @@
 /**
  * CronJob handler: Process pending products from queue in batches
- * This runs every minute to process queued products
+ * This runs every minute to process queued products.
+ * Also rescues stuck imports where PubSub failed to trigger.
  */
 
 import {ImportHistoryRepository} from '../../repositories/importHistoryRepository.js';
 import {ProductRepository} from '../../repositories/productRepository.js';
 import {ProductQueueRepository} from '../../repositories/productQueueRepository.js';
+import {StoreRepository} from '../../repositories/storeRepository.js';
 import {ShopifyService} from '../../services/shopifyService.js';
 
 const importHistoryRepo = new ImportHistoryRepository();
 const productRepo = new ProductRepository();
 const productQueueRepo = new ProductQueueRepository();
+const storeRepo = new StoreRepository();
 
 const MAX_ATTEMPTS = 3;
 
@@ -20,6 +23,9 @@ const MAX_ATTEMPTS = 3;
 export async function processProductQueue() {
   try {
     console.log('Starting product queue processing...');
+
+    // Rescue stuck imports where PubSub failed (0 progress after 2 min)
+    await rescueStuckImports();
 
     // Get queue statistics
     const stats = await productQueueRepo.getQueueStats();
@@ -50,6 +56,71 @@ export async function processProductQueue() {
   } catch (error) {
     console.error('Process product queue error:', error);
     throw error;
+  }
+}
+
+/**
+ * Rescue stuck imports: detect imports with 0 progress after 2+ minutes
+ * and enqueue their products into the queue for cron processing.
+ * This handles the case where PubSub fails to trigger.
+ */
+async function rescueStuckImports() {
+  try {
+    const stuckImports = await importHistoryRepo.getStuckImports(2, 5);
+
+    if (stuckImports.length === 0) return;
+
+    console.log(`Found ${stuckImports.length} stuck import(s), rescuing...`);
+
+    for (const importJob of stuckImports) {
+      try {
+        // Get store for accessToken
+        const store = await storeRepo.getById(importJob.storeId);
+        if (!store || !store.accessToken) {
+          console.error(`Stuck import ${importJob.id}: store ${importJob.storeId} missing or no token`);
+          await importHistoryRepo.markFailed(importJob.id, 'Store not found or missing access token');
+          continue;
+        }
+
+        // Check if products are already enqueued for this import
+        const existingQueue = await productQueueRepo.getByImportId(importJob.id);
+        if (existingQueue.length > 0) {
+          console.log(`Stuck import ${importJob.id}: already has ${existingQueue.length} queue items, skipping enqueue`);
+          continue;
+        }
+
+        // Read products from subcollection
+        const products = await importHistoryRepo.getImportProducts(importJob.id);
+        if (!products || products.length === 0) {
+          await importHistoryRepo.markFailed(importJob.id, 'No products found in import job');
+          continue;
+        }
+
+        // Enqueue each product
+        for (let i = 0; i < products.length; i++) {
+          await productQueueRepo.enqueue({
+            importId: importJob.id,
+            storeId: importJob.storeId,
+            userId: importJob.userId,
+            storeName: importJob.storeName,
+            shopDomain: importJob.shopDomain,
+            accessToken: store.accessToken,
+            product: products[i],
+            productIndex: i,
+            totalProducts: products.length
+          });
+        }
+
+        // Update status to processing
+        await importHistoryRepo.updateProgress(importJob.id, {status: 'processing'});
+        console.log(`Rescued import ${importJob.id}: enqueued ${products.length} products`);
+      } catch (err) {
+        console.error(`Failed to rescue import ${importJob.id}:`, err);
+      }
+    }
+  } catch (error) {
+    // Don't let rescue failures block normal queue processing
+    console.error('Rescue stuck imports error:', error);
   }
 }
 

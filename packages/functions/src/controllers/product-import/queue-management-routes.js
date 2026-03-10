@@ -92,6 +92,65 @@ export async function getQueueStats(req, res) {
 }
 
 /**
+ * Get stuck imports (pending/processing with 0 progress for >2 min)
+ */
+export async function getStuckImports(req, res) {
+  try {
+    const stuckImports = await importHistoryRepo.getStuckImports(2, 20);
+    return res.json({success: true, data: stuckImports});
+  } catch (error) {
+    console.error('Get stuck imports error:', error);
+    return res.status(500).json({success: false, error: error.message});
+  }
+}
+
+/**
+ * Retry a specific import by ID: reset status and trigger queue processing
+ */
+export async function retryImport(req, res) {
+  try {
+    const {importId} = req.params;
+    if (!importId) {
+      return res.status(400).json({success: false, error: 'importId required'});
+    }
+
+    const importJob = await importHistoryRepo.getById(importId);
+    if (!importJob) {
+      return res.status(404).json({success: false, error: 'Import job not found'});
+    }
+
+    // Reset to pending with 0 progress so rescueStuckImports picks it up
+    await importHistoryRepo.updateProgress(importId, {
+      status: 'pending',
+      processedProducts: 0,
+      processedVariants: 0,
+      successCount: 0,
+      failedCount: 0,
+      failedProductDetails: []
+    });
+
+    // Clean up any existing queue items for this import
+    const existingQueue = await productQueueRepo.getByImportId(importId);
+    for (const item of existingQueue) {
+      await productQueueRepo.updateStatus(item.id, 'failed', 'Cleared for retry');
+    }
+
+    // Trigger queue processing immediately (includes rescueStuckImports)
+    await processProductQueue();
+
+    const updated = await importHistoryRepo.getById(importId);
+    return res.json({
+      success: true,
+      message: `Import ${importId} queued for retry`,
+      data: updated
+    });
+  } catch (error) {
+    console.error('Retry import error:', error);
+    return res.status(500).json({success: false, error: error.message});
+  }
+}
+
+/**
  * Manual trigger: Process queue immediately
  */
 export async function processQueueManual(req, res) {

@@ -25,7 +25,7 @@ export {
 
 export {getProducts, getProductFilterOptions} from './product-import/product-query-routes.js';
 
-export {getQueueStats, processQueueManual} from './product-import/queue-management-routes.js';
+export {getQueueStats, getStuckImports, retryImport, processQueueManual} from './product-import/queue-management-routes.js';
 
 // Re-export background processors
 export {processProductImport} from './product-import/process-import-job.js';

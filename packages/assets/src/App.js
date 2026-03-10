@@ -37,6 +37,7 @@ import SetupStore from './pages/SetupStore';
 import Stores from './pages/Stores';
 import Users from './pages/Users';
 import DevWebhooks from './pages/DevWebhooks';
+import DevTestImport from './pages/DevTestImport';
 import Guide from './pages/Guide';
 import OrderSearch from './pages/OrderSearch';
 import NotFound from './pages/NotFound';
@@ -168,6 +169,7 @@ function StandaloneFrame() {
         <Route path="/setup" element={<FeatureGuard feature="setup"><SetupStore /></FeatureGuard>} />
         <Route path="/users" element={isAdmin ? <Users /> : <NotFound />} />
         <Route path="/dev/webhooks" element={isAdmin ? <DevWebhooks /> : <NotFound />} />
+        <Route path="/dev/test-import" element={isAdmin ? <DevTestImport /> : <NotFound />} />
         <Route path="/dev/guide" element={isAdmin ? <Guide /> : <NotFound />} />
         <Route path="*" element={<NotFound />} />
       </Routes>

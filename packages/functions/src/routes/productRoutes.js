@@ -12,5 +12,8 @@ router.get('/list', productImportController.getProducts);
 router.get('/filter-options', productImportController.getProductFilterOptions);
 router.get('/template', productImportController.downloadTemplate);
 router.get('/imports/:importId', productImportController.getImportDetails);
+router.get('/stuck-imports', productImportController.getStuckImports);
+router.post('/imports/:importId/retry', productImportController.retryImport);
+router.post('/process-queue', productImportController.processQueueManual);
 
 export default router;

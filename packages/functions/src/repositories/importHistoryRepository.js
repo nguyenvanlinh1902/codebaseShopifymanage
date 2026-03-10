@@ -196,6 +196,26 @@ export class ImportHistoryRepository {
   }
 
   /**
+   * Get stuck imports: pending/processing with 0 progress for more than N minutes.
+   * These are imports where PubSub failed to trigger the background processor.
+   */
+  async getStuckImports(stuckMinutes = 2, limit = 10) {
+    const cutoff = new Date();
+    cutoff.setMinutes(cutoff.getMinutes() - stuckMinutes);
+    const cutoffISO = cutoff.toISOString();
+
+    const snapshot = await this.collection
+      .where('status', 'in', ['pending', 'processing'])
+      .where('processedProducts', '==', 0)
+      .where('createdAt', '<', cutoffISO)
+      .orderBy('createdAt', 'asc')
+      .limit(limit)
+      .get();
+
+    return snapshot.docs.map(doc => doc.data());
+  }
+
+  /**
    * Save grouped products to Firestore subcollection (avoids PubSub size limits).
    * Each product is stored as a separate doc: product_imports/{importId}/import_products/{index}
    */

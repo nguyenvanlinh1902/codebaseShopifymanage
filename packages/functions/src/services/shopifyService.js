@@ -779,8 +779,9 @@ export class ShopifyService {
           if (!node || !node.id) continue;
           const numericId = ShopifyService.fromGid(node.id).toString();
           const handle = node.product?.handle;
-          const productUrl = handle && shopDomain
-            ? `https://${shopDomain}/products/${handle}`
+          const domain = shopDomain?.includes('.') ? shopDomain : `${shopDomain}.myshopify.com`;
+          const productUrl = handle && domain
+            ? `https://${domain}/products/${handle}`
             : '';
           const variantImageUrl = node.image?.url || node.product?.featuredImage?.url || '';
           result.set(numericId, {productUrl, variantImageUrl});

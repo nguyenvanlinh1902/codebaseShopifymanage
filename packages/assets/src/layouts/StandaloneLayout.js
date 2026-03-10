@@ -355,6 +355,7 @@ export default function StandaloneLayout({children}) {
   const devNavItems = isAdmin
     ? [
         {label: 'Webhook Checker', icon: CodeIcon, url: '/dev/webhooks'},
+        {label: 'Test Import', icon: ProductIcon, url: '/dev/test-import'},
         {label: 'Setup Guide', icon: SettingsIcon, url: '/dev/guide'}
       ]
     : [];

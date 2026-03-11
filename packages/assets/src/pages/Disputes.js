@@ -13,7 +13,7 @@ import {
   InlineStack,
   TextField
 } from '@shopify/polaris';
-import {AlertDiamondIcon} from '@shopify/polaris-icons';
+import {AlertDiamondIcon, DeleteIcon} from '@shopify/polaris-icons';
 import {api} from '../helpers/api';
 import {usePermittedStores} from '../hooks/usePermittedStores';
 import {formatDate, formatDateTime} from '../helpers/format-date';
@@ -125,7 +125,13 @@ export default function Disputes() {
         </Text>
       </IndexTable.Cell>
       <IndexTable.Cell>{d.orderName}</IndexTable.Cell>
-      <IndexTable.Cell>{d.email || '—'}</IndexTable.Cell>
+      <IndexTable.Cell>
+        {d.email
+          ? d.email
+          : d.orderDeleted
+          ? <InlineStack gap="100" blockAlign="center"><Icon source={DeleteIcon} tone="subdued" /><Text tone="subdued">Order deleted</Text></InlineStack>
+          : '—'}
+      </IndexTable.Cell>
       <IndexTable.Cell>
         <Badge tone={STATUS_TONES[d.status] || 'new'}>{statusLabel(d.status)}</Badge>
       </IndexTable.Cell>

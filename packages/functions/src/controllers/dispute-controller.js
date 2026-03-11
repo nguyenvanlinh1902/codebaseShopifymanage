@@ -105,15 +105,17 @@ async function fetchDisputesPage(baseUrl, headers, status = null) {
   const response = await fetch(url, {method: 'GET', headers});
 
   if (!response.ok) {
-    // 404 = Shopify Payments not enabled on this store, skip silently
-    if (response.status !== 404) {
-      const text = await response.text();
-      console.error(`[Disputes] REST ${response.status}: ${text.slice(0, 500)}`);
+    const text = await response.text();
+    if (response.status === 404) {
+      console.log(`[Disputes] ${url} → 404 (Shopify Payments not enabled), skipping`);
+    } else {
+      console.error(`[Disputes] ${url} → HTTP ${response.status}: ${text.slice(0, 500)}`);
     }
     return [];
   }
 
   const json = await response.json();
+  console.log(`[Disputes] ${url} → ${(json.disputes || []).length} disputes`);
   return json.disputes || [];
 }
 
@@ -124,8 +126,15 @@ async function mapDisputes(disputes, store) {
     'Content-Type': 'application/json'
   };
 
+  // Log raw dispute data for debugging
+  console.log(`[Disputes][${store.shopDomain}] Raw disputes (${disputes.length}):`, JSON.stringify(
+    disputes.map(d => ({id: d.id, order_id: d.order_id, status: d.status, reason: d.reason, amount: d.amount, currency: d.currency}))
+  ));
+
   // Fetch order details (number + email) for disputes that have order_id
   const orderIds = [...new Set(disputes.filter(d => d.order_id).map(d => d.order_id))];
+  console.log(`[Disputes][${store.shopDomain}] Fetching ${orderIds.length} orders for email: ${orderIds.join(', ')}`);
+
   const orderMap = {};
   await Promise.all(
     orderIds.map(async orderId => {
@@ -137,15 +146,24 @@ async function mapDisputes(disputes, store) {
         if (res.ok) {
           const json = await res.json();
           orderMap[orderId] = {name: json.order?.name, email: json.order?.email};
+          console.log(`[Disputes][${store.shopDomain}] Order ${orderId}: name=${json.order?.name} email=${json.order?.email}`);
+        } else if (res.status === 404) {
+          // Order was deleted from Shopify — dispute still references old order_id
+          orderMap[orderId] = {name: null, email: '', deleted: true};
+          console.warn(`[Disputes][${store.shopDomain}] Order ${orderId} was deleted (404)`);
+        } else {
+          const text = await res.text();
+          console.error(`[Disputes][${store.shopDomain}] Order ${orderId} fetch failed: HTTP ${res.status} - ${text.slice(0, 300)}`);
         }
       } catch (err) {
-        console.error(`[Disputes] Failed to fetch order ${orderId}:`, err.message);
+        console.error(`[Disputes][${store.shopDomain}] Order ${orderId} fetch error:`, err.message);
       }
     })
   );
 
   return disputes.map(d => {
     const order = orderMap[d.order_id] || {};
+    const orderDeleted = order.deleted === true;
     return {
       store: store.name || store.shopDomain,
       storeId: store.id,
@@ -154,6 +172,7 @@ async function mapDisputes(disputes, store) {
       orderId: d.order_id,
       orderName: order.name || (d.order_id ? `#${d.order_id}` : 'N/A'),
       email: order.email || '',
+      orderDeleted,
       initiatedAt: d.initiated_at,
       evidenceDueBy: d.evidence_due_by,
       evidenceSentOn: d.evidence_sent_on,

@@ -48,19 +48,17 @@ export async function getOrderAnalytics(req, res) {
     }
 
     // ShopifyQL uses 'sales' dataset (not 'orders')
-    // Use explicit dates so results match Dashboard's client-side filtering
-    const sinceDate = `date(${from})`;
-    const untilDate = `date(${to})`;
+    // Use explicit ISO dates so results match Dashboard's client-side filtering
     const [summaryResult, timeSeriesResult, statusBreakdown] = await Promise.all([
       runShopifyQL(
         store.shopDomain,
         store.accessToken,
-        `FROM sales SHOW net_sales, total_sales, orders SINCE ${sinceDate} UNTIL ${untilDate}`
+        `FROM sales SHOW net_sales, total_sales, orders SINCE ${from} UNTIL ${to}`
       ),
       runShopifyQL(
         store.shopDomain,
         store.accessToken,
-        `FROM sales SHOW net_sales, total_sales, orders GROUP BY day SINCE ${sinceDate} UNTIL ${untilDate} ORDER BY day ASC`
+        `FROM sales SHOW net_sales, total_sales, orders GROUP BY day SINCE ${from} UNTIL ${to} ORDER BY day ASC`
       ),
       fetchOrderStatusBreakdown(store, from)
     ]);

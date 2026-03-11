@@ -1,12 +1,12 @@
-import React, {useState} from 'react';
-import {BlockStack, InlineStack, Text, List, Divider, Banner, Box, Button} from '@shopify/polaris';
-import {ClipboardIcon} from '@shopify/polaris-icons';
+import React, { useState } from 'react';
+import { BlockStack, InlineStack, Text, List, Divider, Banner, Box, Button } from '@shopify/polaris';
+import { ClipboardIcon } from '@shopify/polaris-icons';
 
 const APP_URL = 'https://trackingorder-1c98b.firebaseapp.com';
 const CALLBACK_URL = `${APP_URL}/api/authMultip/shopify/callback`;
 const SCOPES = 'read_products,write_products,read_all_orders,read_orders,write_orders,read_fulfillments,write_fulfillments,read_assigned_fulfillment_orders,write_assigned_fulfillment_orders,read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders,read_third_party_fulfillment_orders,write_third_party_fulfillment_orders,read_inventory,write_inventory,read_themes,write_themes,read_metaobjects,write_metaobjects,read_metaobject_definitions,write_metaobject_definitions,read_customers,read_shopify_payments_disputes,read_shopify_payments_payouts,read_shopify_payments_accounts,read_legal_policies,write_legal_policies,read_analytics,read_reports';
 
-function CopyBox({value}) {
+function CopyBox({ value }) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {
@@ -20,9 +20,9 @@ function CopyBox({value}) {
     <Box padding="200" background="bg-surface-secondary" borderRadius="200">
       <InlineStack align="space-between" blockAlign="start" gap="200" wrap={false}>
         <Text variant="bodySm" as="p" breakWord>
-          <code style={{wordBreak: 'break-all'}}>{value}</code>
+          <code style={{ wordBreak: 'break-all' }}>{value}</code>
         </Text>
-        <div style={{flexShrink: 0}}>
+        <div style={{ flexShrink: 0 }}>
           <Button
             size="slim"
             icon={ClipboardIcon}

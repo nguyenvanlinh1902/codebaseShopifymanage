@@ -1,9 +1,24 @@
 import React, {useState, useEffect, useMemo} from 'react';
 import {
-  Card, BlockStack, InlineStack, Text, SkeletonBodyText, Badge, Divider,
-  Popover, ActionList, Button, TextField
+  Card,
+  BlockStack,
+  InlineStack,
+  Text,
+  SkeletonBodyText,
+  Badge,
+  Divider,
+  Popover,
+  ActionList,
+  Button,
+  TextField
 } from '@shopify/polaris';
-import {CashDollarIcon, TargetIcon, ChartVerticalFilledIcon, CalendarIcon, CartIcon} from '@shopify/polaris-icons';
+import {
+  CashDollarIcon,
+  TargetIcon,
+  ChartVerticalFilledIcon,
+  CalendarIcon,
+  CartIcon
+} from '@shopify/polaris-icons';
 import {api} from '../../helpers/api';
 import {usePermittedStores} from '../../hooks/usePermittedStores';
 import AnalyticsStatCard from '../analytics/analytics-stat-card';
@@ -20,35 +35,87 @@ const PERIOD_OPTIONS = [
 
 function fmt(v) {
   return new Intl.NumberFormat('en-US', {
-    style: 'currency', currency: 'USD', maximumFractionDigits: 0
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 0
   }).format(v || 0);
 }
 
+/** Get today's date string (YYYY-MM-DD) in the given timezone */
+function getTodayStr(timezone) {
+  if (!timezone) return new Date().toISOString().split('T')[0];
+  try {
+    return new Intl.DateTimeFormat('en-CA', {timeZone: timezone}).format(new Date());
+  } catch {
+    return new Date().toISOString().split('T')[0];
+  }
+}
+
 function toDateStr(d) {
-  return d.toISOString().split('T')[0];
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
-function daysAgo(n) {
-  const d = new Date();
-  d.setDate(d.getDate() - n);
-  return toDateStr(d);
+function daysAgo(n, timezone) {
+  const today = new Date(getTodayStr(timezone) + 'T00:00:00');
+  today.setDate(today.getDate() - n);
+  return toDateStr(today);
 }
 
-function getDateRange(period, customFrom, customTo) {
-  const today = toDateStr(new Date());
-  const now = new Date();
+function getDateRange(period, customFrom, customTo, timezone) {
+  const today = getTodayStr(timezone);
+  const now = new Date(today + 'T00:00:00');
   const monthStart = today.slice(0, 8) + '01';
   const prevMonthStart = toDateStr(new Date(now.getFullYear(), now.getMonth() - 1, 1));
   const yearStart = now.getFullYear() + '-01-01';
-  const prevYearStart = (now.getFullYear() - 1) + '-01-01';
+  const prevYearStart = now.getFullYear() - 1 + '-01-01';
 
+  const da = n => daysAgo(n, timezone);
   const ranges = {
-    today: {from: today, to: today, prevFrom: daysAgo(1), prevTo: daysAgo(1), label: 'vs yesterday'},
-    '7d': {from: daysAgo(7), to: today, prevFrom: daysAgo(14), prevTo: daysAgo(8), label: 'vs prev 7d'},
-    '30d': {from: daysAgo(30), to: today, prevFrom: daysAgo(60), prevTo: daysAgo(31), label: 'vs prev 30d'},
-    month: {from: monthStart, to: today, prevFrom: prevMonthStart, prevTo: daysAgo(now.getDate()), label: 'vs last month'},
-    '90d': {from: daysAgo(90), to: today, prevFrom: daysAgo(180), prevTo: daysAgo(91), label: 'vs prev 90d'},
-    year: {from: yearStart, to: today, prevFrom: prevYearStart, prevTo: (now.getFullYear() - 1) + today.slice(4), label: 'vs last year'},
+    today: {
+      from: today,
+      to: today,
+      prevFrom: da(1),
+      prevTo: da(1),
+      label: 'vs yesterday'
+    },
+    '7d': {
+      from: da(7),
+      to: today,
+      prevFrom: da(14),
+      prevTo: da(8),
+      label: 'vs prev 7d'
+    },
+    '30d': {
+      from: da(30),
+      to: today,
+      prevFrom: da(60),
+      prevTo: da(31),
+      label: 'vs prev 30d'
+    },
+    month: {
+      from: monthStart,
+      to: today,
+      prevFrom: prevMonthStart,
+      prevTo: da(now.getDate()),
+      label: 'vs last month'
+    },
+    '90d': {
+      from: da(90),
+      to: today,
+      prevFrom: da(180),
+      prevTo: da(91),
+      label: 'vs prev 90d'
+    },
+    year: {
+      from: yearStart,
+      to: today,
+      prevFrom: prevYearStart,
+      prevTo: now.getFullYear() - 1 + today.slice(4),
+      label: 'vs last year'
+    },
     custom: {from: customFrom, to: customTo, prevFrom: null, prevTo: null, label: ''}
   };
   return ranges[period] || ranges.month;
@@ -92,13 +159,21 @@ function PopoverFilter({label, options, value, onChange, icon}) {
 }
 
 // Period filter with custom date range inside the Popover
-function PeriodPopoverFilter({period, customFrom, customTo, onPeriodChange, onCustomFromChange, onCustomToChange}) {
+function PeriodPopoverFilter({
+  period,
+  customFrom,
+  customTo,
+  onPeriodChange,
+  onCustomFromChange,
+  onCustomToChange
+}) {
   const [open, setOpen] = useState(false);
   const selected = PERIOD_OPTIONS.find(o => o.value === period);
 
-  const buttonLabel = period === 'custom' && customFrom && customTo
-    ? `${customFrom} → ${customTo}`
-    : selected?.label || 'Period';
+  const buttonLabel =
+    period === 'custom' && customFrom && customTo
+      ? `${customFrom} → ${customTo}`
+      : selected?.label || 'Period';
 
   return (
     <Popover
@@ -120,22 +195,41 @@ function PeriodPopoverFilter({period, customFrom, customTo, onPeriodChange, onCu
           }
         }))}
       />
-      <div style={{padding: '12px 16px', borderTop: '1px solid var(--p-color-border-secondary, #E1E3E5)'}}>
+      <div
+        style={{
+          padding: '12px 16px',
+          borderTop: '1px solid var(--p-color-border-secondary, #E1E3E5)'
+        }}
+      >
         <BlockStack gap="200">
-          <Text variant="bodySm" fontWeight="semibold">Custom Range</Text>
+          <Text variant="bodySm" fontWeight="semibold">
+            Custom Range
+          </Text>
           <InlineStack gap="200">
             <div style={{width: 140}}>
               <TextField
-                label="From" type="date" value={customFrom}
-                onChange={v => { onCustomFromChange(v); onPeriodChange('custom'); }}
-                autoComplete="off" labelHidden
+                label="From"
+                type="date"
+                value={customFrom}
+                onChange={v => {
+                  onCustomFromChange(v);
+                  onPeriodChange('custom');
+                }}
+                autoComplete="off"
+                labelHidden
               />
             </div>
             <div style={{width: 140}}>
               <TextField
-                label="To" type="date" value={customTo}
-                onChange={v => { onCustomToChange(v); onPeriodChange('custom'); }}
-                autoComplete="off" labelHidden
+                label="To"
+                type="date"
+                value={customTo}
+                onChange={v => {
+                  onCustomToChange(v);
+                  onPeriodChange('custom');
+                }}
+                autoComplete="off"
+                labelHidden
               />
             </div>
           </InlineStack>
@@ -146,7 +240,8 @@ function PeriodPopoverFilter({period, customFrom, customTo, onPeriodChange, onCu
 }
 
 export default function DashboardFinanceSummary() {
-  const {groups, stores: contextStores, isAdmin} = usePermittedStores();
+  const {groups, stores: contextStores, isAdmin, user} = usePermittedStores();
+  const userTimezone = user?.timezone || '';
   const [rawStores, setRawStores] = useState(null);
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState('month');
@@ -180,15 +275,15 @@ export default function DashboardFinanceSummary() {
     ];
   }, [rawStores, groupStoreIds]);
 
-  const groupOptions = useMemo(() => [
-    {label: 'All Groups', value: 'all'},
-    ...groups.map(g => ({label: g.name, value: g.id}))
-  ], [groups]);
+  const groupOptions = useMemo(
+    () => [{label: 'All Groups', value: 'all'}, ...groups.map(g => ({label: g.name, value: g.id}))],
+    [groups]
+  );
 
   const computed = useMemo(() => {
     if (!rawStores) return null;
     if (period === 'custom' && (!customFrom || !customTo)) return null;
-    const range = getDateRange(period, customFrom, customTo);
+    const range = getDateRange(period, customFrom, customTo, userTimezone);
 
     let filtered = rawStores;
     // Apply group filter first
@@ -201,7 +296,9 @@ export default function DashboardFinanceSummary() {
       revenue: sumDays(s.revenueDays, range.from, range.to),
       revenuePrev: range.prevFrom ? sumDays(s.revenueDays, range.prevFrom, range.prevTo) : null,
       totalSales: sumDays(s.revenueDays, range.from, range.to, 'totalSales'),
-      totalSalesPrev: range.prevFrom ? sumDays(s.revenueDays, range.prevFrom, range.prevTo, 'totalSales') : null,
+      totalSalesPrev: range.prevFrom
+        ? sumDays(s.revenueDays, range.prevFrom, range.prevTo, 'totalSales')
+        : null,
       adSpend: sumDays(s.adSpendDays, range.from, range.to),
       adSpendPrev: range.prevFrom ? sumDays(s.adSpendDays, range.prevFrom, range.prevTo) : null
     }));
@@ -217,15 +314,25 @@ export default function DashboardFinanceSummary() {
         a.payoutBalance += s.payoutBalance?.amount || 0;
         return a;
       },
-      {revenue: 0, revenuePrev: 0, totalSales: 0, totalSalesPrev: 0, adSpend: 0, adSpendPrev: 0, payoutBalance: 0}
+      {
+        revenue: 0,
+        revenuePrev: 0,
+        totalSales: 0,
+        totalSalesPrev: 0,
+        adSpend: 0,
+        adSpendPrev: 0,
+        payoutBalance: 0
+      }
     );
     return {stores, totals, label: range.label};
-  }, [rawStores, period, customFrom, customTo, storeFilter, groupStoreIds]);
+  }, [rawStores, period, customFrom, customTo, storeFilter, groupStoreIds, userTimezone]);
 
   if (loading) return <SkeletonBodyText lines={4} />;
   if (!rawStores) return null;
 
-  const salesPct = computed ? pctChange(computed.totals.totalSales, computed.totals.totalSalesPrev) : null;
+  const salesPct = computed
+    ? pctChange(computed.totals.totalSales, computed.totals.totalSalesPrev)
+    : null;
   const revPct = computed ? pctChange(computed.totals.revenue, computed.totals.revenuePrev) : null;
   const adsPct = computed ? pctChange(computed.totals.adSpend, computed.totals.adSpendPrev) : null;
 
@@ -246,7 +353,12 @@ export default function DashboardFinanceSummary() {
             />
           )}
           {storeOptions.length > 2 && (
-            <PopoverFilter label="Store" options={storeOptions} value={storeFilter} onChange={setStoreFilter} />
+            <PopoverFilter
+              label="Store"
+              options={storeOptions}
+              value={storeFilter}
+              onChange={setStoreFilter}
+            />
           )}
           <PeriodPopoverFilter
             period={period}
@@ -261,7 +373,13 @@ export default function DashboardFinanceSummary() {
 
       {computed && (
         <>
-          <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px'}}>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+              gap: '16px'
+            }}
+          >
             <AnalyticsStatCard
               title="Total Sales"
               value={fmt(computed.totals.totalSales)}
@@ -310,7 +428,9 @@ export default function DashboardFinanceSummary() {
               {computed.stores.map(s => (
                 <div key={s.storeId} style={{padding: '8px 0'}}>
                   <InlineStack align="space-between" blockAlign="center">
-                    <Text variant="bodySm" fontWeight="semibold">{s.name}</Text>
+                    <Text variant="bodySm" fontWeight="semibold">
+                      {s.name}
+                    </Text>
                     <InlineStack gap="300">
                       <Badge>{fmt(s.totalSales)} sales</Badge>
                       <Badge tone="success">{fmt(s.revenue)} net</Badge>

@@ -1,10 +1,9 @@
 import React from 'react';
-import {ChoiceList, BlockStack, Text, InlineStack, Button} from '@shopify/polaris';
+import {Checkbox, BlockStack, Text, InlineStack, Button} from '@shopify/polaris';
 import PropTypes from 'prop-types';
 
-// Dashboard is always accessible — not included here
-// Finance (Balance, Campaign Ads) is admin-only — not assignable
 const ALL_FEATURES = [
+  {label: 'Dashboard', value: 'dashboard'},
   {label: 'Stores', value: 'stores'},
   {label: 'Google Sheets', value: 'sheets'},
   {label: 'Products', value: 'products'},
@@ -12,14 +11,33 @@ const ALL_FEATURES = [
   {label: 'Order Search', value: 'order-search'},
   {label: 'Tracking', value: 'tracking'},
   {label: 'Analytics (Revenue)', value: 'analytics'},
+  {label: 'Finance (Balance, Campaign Ads)', value: 'finance'},
   {label: 'Disputes', value: 'dispute'},
   {label: 'Themes', value: 'themes'},
   {label: 'Setup Store', value: 'setup'}
 ];
 
+// Sub-features rendered indented right below their parent
+const SUB_FEATURES = {
+  dashboard: [{label: 'Finance Overview', value: 'dashboard-finance'}]
+};
+
+// All feature values including sub-features
+const ALL_VALUES = [
+  ...ALL_FEATURES.map(f => f.value),
+  ...Object.values(SUB_FEATURES).flat().map(f => f.value)
+];
+
 export default function UserFeatureAssignment({selectedFeatures, onChange}) {
-  const allSelected = selectedFeatures.length === ALL_FEATURES.length;
-  const toggleAll = () => onChange(allSelected ? [] : ALL_FEATURES.map(f => f.value));
+  const allSelected = ALL_VALUES.every(v => selectedFeatures.includes(v));
+  const toggleAll = () => onChange(allSelected ? [] : ALL_VALUES);
+
+  const toggle = value => {
+    const next = selectedFeatures.includes(value)
+      ? selectedFeatures.filter(f => f !== value)
+      : [...selectedFeatures, value];
+    onChange(next);
+  };
 
   return (
     <BlockStack gap="200">
@@ -30,16 +48,31 @@ export default function UserFeatureAssignment({selectedFeatures, onChange}) {
         </Button>
       </InlineStack>
       <Text variant="bodySm" tone="subdued">
-        Empty = Dashboard only · Select features to grant access
+        Select features to grant access
       </Text>
-      <ChoiceList
-        allowMultiple
-        title=""
-        titleHidden
-        choices={ALL_FEATURES}
-        selected={selectedFeatures}
-        onChange={onChange}
-      />
+      <BlockStack gap="100">
+        {ALL_FEATURES.map(feature => (
+          <React.Fragment key={feature.value}>
+            <Checkbox
+              label={feature.label}
+              checked={selectedFeatures.includes(feature.value)}
+              onChange={() => toggle(feature.value)}
+            />
+            {SUB_FEATURES[feature.value] && selectedFeatures.includes(feature.value) && (
+              <div style={{paddingLeft: 24}}>
+                {SUB_FEATURES[feature.value].map(sub => (
+                  <Checkbox
+                    key={sub.value}
+                    label={sub.label}
+                    checked={selectedFeatures.includes(sub.value)}
+                    onChange={() => toggle(sub.value)}
+                  />
+                ))}
+              </div>
+            )}
+          </React.Fragment>
+        ))}
+      </BlockStack>
     </BlockStack>
   );
 }

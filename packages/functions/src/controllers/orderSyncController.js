@@ -755,11 +755,12 @@ export async function handleOrderWebhook(req, res) {
  * Returns { orderId, orderNumber, rows: [[...], [...]] }
  *
  * Columns: STT | Order Number | Email | Created at | Base cost | Size | Type |
- *   Quantity | Product name | Product SKU | Product Link | Variant Image |
+ *   Quantity | Product name | Product SKU |
  *   Lineitem price | Shipping Country | Payment Method | Total | Tax |
  *   Fee (PP/ST & Shopify) | Note | Shipping Address | Shipping Name |
  *   Shipping Address 1 | Shipping Address 2 | Shipping City | Shipping Zip |
- *   Shipping State | Shipping Country Code | Shipping Phone | Custom name | Design
+ *   Shipping State | Shipping Country Code | Shipping Phone | Custom name | Design |
+ *   Product Link | Variant Image
  *
  * @param {Object} order - Shopify order object
  * @param {Map<string, {productUrl: string, variantImageUrl: string}>} [productInfoMap] - Optional enrichment map keyed by variant ID
@@ -807,8 +808,6 @@ function formatOrderRowsForSheet(order, productInfoMap) {
       item.quantity || '', // Quantity
       item.name || '', // Product name
       item.sku || '', // Product SKU
-      productInfo.productUrl || '', // Product Link
-      productInfo.variantImageUrl || '', // Variant Image
       item.price || '', // Lineitem price
       addr.country_code || '', // Shipping Country
       isFirst ? paymentMethod : '', // Payment Method
@@ -826,7 +825,9 @@ function formatOrderRowsForSheet(order, productInfoMap) {
       addr.country_code || '', // Shipping Country Code
       addr.phone || '', // Shipping Phone
       customNameValue, // Custom name (all non-mapped properties)
-      designProp ? `${designProp.name}: ${designProp.value}` : '' // Design
+      designProp ? `${designProp.name}: ${designProp.value}` : '', // Design
+      productInfo.productUrl || '', // Product Link
+      productInfo.variantImageUrl || '' // Variant Image
     ];
   };
 

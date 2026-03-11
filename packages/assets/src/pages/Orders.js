@@ -139,7 +139,13 @@ export default function Orders() {
     }
   };
 
-  const storeOptions = stores.map(store => ({label: store.name, value: store.id}));
+  // Stores already having an active sync config are excluded from the setup dropdown
+  const usedStoreIds = new Set(
+    syncConfigs.filter(c => c.status === 'active').map(c => c.storeId)
+  );
+  const storeOptions = stores
+    .filter(store => !usedStoreIds.has(store.id))
+    .map(store => ({label: store.name, value: store.id}));
 
   // Sheets already assigned to an active sync config should not appear in the setup dropdown
   const usedSheetIds = new Set(
@@ -149,7 +155,8 @@ export default function Orders() {
     .filter(sheet => !usedSheetIds.has(sheet.id))
     .map(sheet => ({label: sheet.name, value: sheet.id}));
 
-  const filterStoreOptions = [{label: 'All Stores', value: ''}, ...storeOptions];
+  const allStoreOptions = stores.map(store => ({label: store.name, value: store.id}));
+  const filterStoreOptions = [{label: 'All Stores', value: ''}, ...allStoreOptions];
 
   // Filter configs by store
   const filteredConfigs = filterStore
@@ -185,7 +192,9 @@ export default function Orders() {
       subtitle="Export orders from Shopify to Google Sheets with customer info"
       primaryAction={{
         content: 'Setup Sync',
-        onAction: () => setShowSetupModal(true)
+        onAction: () => setShowSetupModal(true),
+        loading: loading,
+        disabled: loading
       }}
     >
       <Layout>

@@ -76,11 +76,12 @@ export default function Dashboard() {
           </Layout.Section>
         )}
 
-        {/* Finance Overview — scoped to user's permitted stores */}
-        <Layout.Section>
-          <DashboardFinanceSummary />
-        </Layout.Section>
-
+        {/* Finance Overview — scoped to user's permitted stores, requires 'dashboard-finance' sub-permission */}
+        {canAccess('dashboard-finance') && (
+          <Layout.Section>
+            <DashboardFinanceSummary />
+          </Layout.Section>
+        )}
       </Layout>
     </Page>
   );

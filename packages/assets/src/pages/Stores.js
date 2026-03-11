@@ -42,9 +42,10 @@ export default function Stores() {
   const lastStoresFetchKeyRef = useRef(null);
   const [error, setError] = useState(null);
 
-  // Edit niche modal state
+  // Edit store modal state
   const [editModalActive, setEditModalActive] = useState(false);
   const [editStore, setEditStore] = useState(null);
+  const [editNameValue, setEditNameValue] = useState('');
   const [editNicheValue, setEditNicheValue] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -172,6 +173,7 @@ export default function Stores() {
 
   const handleEditClick = useCallback(store => {
     setEditStore(store);
+    setEditNameValue(store.name || '');
     setEditNicheValue(store.niche || '');
     setEditModalActive(true);
   }, []);
@@ -179,6 +181,7 @@ export default function Stores() {
   const handleEditModalClose = useCallback(() => {
     setEditModalActive(false);
     setEditStore(null);
+    setEditNameValue('');
     setEditNicheValue('');
   }, []);
 
@@ -189,7 +192,7 @@ export default function Stores() {
       const response = await api(`/api/stores/${editStore.id}`, {
         method: 'PUT',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({niche: editNicheValue.trim()})
+        body: JSON.stringify({name: editNameValue.trim(), niche: editNicheValue.trim()})
       });
       const result = await response.json();
       if (result.success) {
@@ -317,7 +320,7 @@ export default function Stores() {
       <Modal
         open={editModalActive}
         onClose={handleEditModalClose}
-        title={`Edit Niche — ${editStore?.name || ''}`}
+        title={`Edit Store — ${editStore?.shopDomain || ''}`}
         primaryAction={{
           content: 'Save',
           onAction: handleEditSave,
@@ -327,9 +330,13 @@ export default function Stores() {
       >
         <Modal.Section>
           <BlockStack gap="300">
-            <Text as="p" tone="subdued">
-              {editStore?.shopDomain}
-            </Text>
+            <TextField
+              label="Store Name"
+              value={editNameValue}
+              onChange={setEditNameValue}
+              autoComplete="off"
+              placeholder="e.g. My Awesome Store"
+            />
             <TextField
               label="Niche"
               value={editNicheValue}

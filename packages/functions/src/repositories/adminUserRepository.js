@@ -65,4 +65,8 @@ export class AdminUserRepository {
       updatedAt: new Date().toISOString()
     });
   }
+
+  async deleteById(userId) {
+    await this.collection.doc(userId).delete();
+  }
 }

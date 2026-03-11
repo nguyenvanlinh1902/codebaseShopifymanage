@@ -10,9 +10,10 @@ import {
   Text,
   Banner,
   Spinner,
-  EmptyState
+  EmptyState,
+  Tooltip
 } from '@shopify/polaris';
-import {PlusIcon} from '@shopify/polaris-icons';
+import {PlusIcon, EditIcon, PlayIcon, PauseCircleIcon, DeleteIcon} from '@shopify/polaris-icons';
 import {useApi} from '../hooks/useApi';
 import {useAuth} from '../context/AuthContext';
 import {usePermittedStores} from '../hooks/usePermittedStores';
@@ -50,6 +51,19 @@ export default function Users() {
     await fetchUsers();
   };
 
+  const handleDelete = async userId => {
+    if (!window.confirm('Are you sure you want to permanently delete this user? This cannot be undone.')) {
+      return;
+    }
+    setActionLoading(userId + '-delete');
+    try {
+      await del(`/api/users/${userId}/permanent`);
+      await fetchUsers();
+    } finally {
+      setActionLoading('');
+    }
+  };
+
   const handleStatusToggle = async (userId, newStatus) => {
     setActionLoading(userId + '-' + newStatus);
     try {
@@ -74,41 +88,64 @@ export default function Users() {
       {u.status || 'active'}
     </Badge>,
     u.role !== 'admin' ? (
-      <Text variant="bodySm" key={u.id + '-stores'}>
-        {(u.assignedStores || []).length > 0
-          ? (u.assignedStores || [])
-              .map(s => (typeof s === 'string' ? s : s.shopDomain))
-              .join(', ')
-          : '—'}
-      </Text>
+      <div style={{maxWidth: 250, wordBreak: 'break-word'}} key={u.id + '-stores'}>
+        <Text variant="bodySm">
+          {(u.assignedStores || []).length > 0
+            ? (u.assignedStores || [])
+                .map(s => {
+                  const id = typeof s === 'string' ? s : s.id;
+                  const store = stores.find(st => st.id === id);
+                  return store?.name || (typeof s === 'string' ? s : s.shopDomain);
+                })
+                .join(', ')
+            : '—'}
+        </Text>
+      </div>
     ) : (
       <Text variant="bodySm" tone="subdued" key={u.id + '-stores'}>
         All
       </Text>
     ),
-    <InlineStack gap="200" key={u.id + '-actions'}>
-      <Button size="slim" onClick={() => setModalUser(u)}>
-        Edit
-      </Button>
+    <InlineStack gap="100" key={u.id + '-actions'}>
+      <Tooltip content="Edit">
+        <Button size="slim" icon={EditIcon} onClick={() => setModalUser(u)} accessibilityLabel="Edit" />
+      </Tooltip>
       {u.id !== currentUser?.id && u.status === 'inactive' && (
-        <Button
-          size="slim"
-          tone="success"
-          loading={actionLoading === u.id + '-active'}
-          onClick={() => handleStatusToggle(u.id, 'active')}
-        >
-          Activate
-        </Button>
+        <Tooltip content="Activate">
+          <Button
+            size="slim"
+            icon={PlayIcon}
+            tone="success"
+            loading={actionLoading === u.id + '-active'}
+            onClick={() => handleStatusToggle(u.id, 'active')}
+            accessibilityLabel="Activate"
+          />
+        </Tooltip>
       )}
       {u.id !== currentUser?.id && u.status !== 'inactive' && (
-        <Button
-          size="slim"
-          tone="critical"
-          loading={actionLoading === u.id + '-inactive'}
-          onClick={() => handleStatusToggle(u.id, 'inactive')}
-        >
-          Deactivate
-        </Button>
+        <Tooltip content="Deactivate">
+          <Button
+            size="slim"
+            icon={PauseCircleIcon}
+            tone="critical"
+            loading={actionLoading === u.id + '-inactive'}
+            onClick={() => handleStatusToggle(u.id, 'inactive')}
+            accessibilityLabel="Deactivate"
+          />
+        </Tooltip>
+      )}
+      {u.id !== currentUser?.id && (
+        <Tooltip content="Delete">
+          <Button
+            size="slim"
+            icon={DeleteIcon}
+            variant="primary"
+            tone="critical"
+            loading={actionLoading === u.id + '-delete'}
+            onClick={() => handleDelete(u.id)}
+            accessibilityLabel="Delete"
+          />
+        </Tooltip>
       )}
     </InlineStack>
   ]);
@@ -139,11 +176,14 @@ export default function Users() {
               <Text>Create user accounts and assign access to stores.</Text>
             </EmptyState>
           ) : (
-            <DataTable
-              columnContentTypes={['text', 'text', 'text', 'text', 'text', 'text']}
-              headings={['Username', 'Display Name', 'Role', 'Status', 'Stores', 'Actions']}
-              rows={rows}
-            />
+            <div style={{overflowX: 'hidden'}}>
+              <style>{`.Polaris-DataTable__Cell { white-space: normal !important; }`}</style>
+              <DataTable
+                columnContentTypes={['text', 'text', 'text', 'text', 'text', 'text']}
+                headings={['Username', 'Display Name', 'Role', 'Status', 'Stores', 'Actions']}
+                rows={rows}
+              />
+            </div>
           )}
         </Card>
       </BlockStack>

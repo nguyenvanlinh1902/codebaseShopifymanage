@@ -138,6 +138,32 @@ export async function updateMyPreferences(req, res) {
   }
 }
 
+/** DELETE /api/users/:id/permanent — permanently delete user (admin only) */
+export async function permanentDeleteUser(req, res) {
+  try {
+    if (req.userRole !== 'admin') {
+      return res.status(403).json({success: false, error: 'Admin access required'});
+    }
+
+    const {id} = req.params;
+
+    if (id === req.userId) {
+      return res.status(400).json({success: false, error: 'Cannot delete your own account'});
+    }
+
+    const user = await adminUserRepo.getById(id);
+    if (!user) {
+      return res.status(404).json({success: false, error: 'User not found'});
+    }
+
+    await adminUserRepo.deleteById(id);
+    return res.json({success: true, message: 'User permanently deleted'});
+  } catch (error) {
+    console.error('permanentDeleteUser error:', error);
+    return res.status(500).json({success: false, error: error.message});
+  }
+}
+
 /** DELETE /api/users/:id — deactivate user (admin only, cannot deactivate self) */
 export async function deactivateUser(req, res) {
   try {

@@ -1,6 +1,6 @@
 import React, {forwardRef, useEffect} from 'react';
 import PropTypes from 'prop-types';
-import {BrowserRouter, Routes, Route, Link as RouterLink} from 'react-router-dom';
+import {BrowserRouter, Routes, Route, Link as RouterLink, Navigate} from 'react-router-dom';
 import {AppProvider} from '@shopify/polaris';
 import '@shopify/polaris/build/esm/styles.css';
 import enTranslations from '@shopify/polaris/locales/en.json';
@@ -133,18 +133,40 @@ function AuthGate() {
 }
 
 /**
- * FeatureGuard — redirects to / if user lacks the required feature slug.
+ * FeatureGuard — shows NotFound if user lacks the required feature slug.
  * Admin always passes. null/undefined allowedFeatures = all features allowed (backward compat).
  */
 function FeatureGuard({feature, children}) {
   const {user} = useAuth();
   if (user?.role === 'admin') return children;
   const allowed = user?.allowedFeatures;
-  if (allowed === null || allowed === undefined) return children; // null/undefined = all allowed; [] = only dashboard
+  if (allowed === null || allowed === undefined) return children;
   if (!allowed.includes(feature)) return <NotFound />;
   return children;
 }
 FeatureGuard.propTypes = {feature: PropTypes.string.isRequired, children: PropTypes.node.isRequired};
+
+const FEATURE_ROUTE_MAP = {
+  stores: '/stores', sheets: '/sheets', products: '/products', orders: '/orders',
+  'order-search': '/order-search', tracking: '/tracking', analytics: '/analytics',
+  dispute: '/disputes', themes: '/themes', setup: '/setup'
+};
+
+/**
+ * DashboardOrRedirect — shows Dashboard if allowed, otherwise redirects to first allowed feature.
+ */
+function DashboardOrRedirect() {
+  const {user} = useAuth();
+  if (user?.role === 'admin') return <Dashboard />;
+  const allowed = user?.allowedFeatures;
+  if (allowed === null || allowed === undefined) return <Dashboard />;
+  if (allowed.includes('dashboard')) return <Dashboard />;
+  // Redirect to first allowed feature
+  for (const feature of allowed) {
+    if (FEATURE_ROUTE_MAP[feature]) return <Navigate to={FEATURE_ROUTE_MAP[feature]} replace />;
+  }
+  return <NotFound />;
+}
 
 function StandaloneFrame() {
   const {user} = useAuth();
@@ -154,7 +176,7 @@ function StandaloneFrame() {
     <StoreProvider>
     <StandaloneLayout>
       <Routes>
-        <Route path="/" element={<Dashboard />} />
+        <Route path="/" element={<DashboardOrRedirect />} />
         <Route path="/stores" element={<FeatureGuard feature="stores"><Stores /></FeatureGuard>} />
         <Route path="/sheets" element={<FeatureGuard feature="sheets"><Sheets /></FeatureGuard>} />
         <Route path="/products" element={<FeatureGuard feature="products"><Products /></FeatureGuard>} />
@@ -162,7 +184,7 @@ function StandaloneFrame() {
         <Route path="/tracking" element={<FeatureGuard feature="tracking"><Tracking /></FeatureGuard>} />
         <Route path="/themes" element={<FeatureGuard feature="themes"><Themes /></FeatureGuard>} />
         <Route path="/analytics" element={<FeatureGuard feature="analytics"><Analytics /></FeatureGuard>} />
-        <Route path="/balance" element={isAdmin ? <Balance /> : <NotFound />} />
+        <Route path="/balance" element={<FeatureGuard feature="finance"><Balance /></FeatureGuard>} />
         <Route path="/campaign-ads" element={<FeatureGuard feature="finance"><CampaignAds /></FeatureGuard>} />
         <Route path="/disputes" element={<FeatureGuard feature="dispute"><Disputes /></FeatureGuard>} />
         <Route path="/order-search" element={<FeatureGuard feature="order-search"><OrderSearch /></FeatureGuard>} />

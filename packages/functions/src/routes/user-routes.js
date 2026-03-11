@@ -9,5 +9,6 @@ router.get('/', userController.listUsers);
 router.post('/', userController.createUser);
 router.put('/:id', userController.updateUser);
 router.delete('/:id', userController.deactivateUser);
+router.delete('/:id/permanent', userController.permanentDeleteUser);
 
 export default router;

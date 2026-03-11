@@ -31,6 +31,7 @@ StandaloneLayout.propTypes = {
 };
 
 const NAV_FEATURE_MAP = {
+  '/': 'dashboard',
   '/stores': 'stores',
   '/sheets': 'sheets',
   '/products': 'products',

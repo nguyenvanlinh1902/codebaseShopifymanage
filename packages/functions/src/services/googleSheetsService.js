@@ -244,8 +244,6 @@ export class GoogleSheetsService {
           item.quantity || '',
           item.name || '',
           item.sku || '',
-          '', // Product Link (not available in bulk export)
-          '', // Variant Image (not available in bulk export)
           item.price || '',
           addr.country_code || '',
           isFirst ? order.payment_gateway_names?.[0] || '' : '',
@@ -263,7 +261,9 @@ export class GoogleSheetsService {
           addr.country_code || '',
           addr.phone || '',
           nameProp ? `${nameProp.name}: ${nameProp.value}` : '',
-          designProp ? `${designProp.name}: ${designProp.value}` : ''
+          designProp ? `${designProp.name}: ${designProp.value}` : '',
+          '', // Product Link (not available in bulk export)
+          '' // Variant Image (not available in bulk export)
         ];
       };
 
@@ -354,8 +354,6 @@ export class GoogleSheetsService {
       'Quantity',
       'Product name',
       'Product SKU',
-      'Product Link',
-      'Variant Image',
       'Lineitem price',
       'Shipping Country',
       'Payment Method',
@@ -373,7 +371,9 @@ export class GoogleSheetsService {
       'Shipping Country Code',
       'Shipping Phone',
       'Custom name',
-      'Design'
+      'Design',
+      'Product Link',
+      'Variant Image'
     ];
   }
 

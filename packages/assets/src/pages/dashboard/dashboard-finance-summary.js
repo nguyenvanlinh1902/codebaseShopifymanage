@@ -20,6 +20,7 @@ import {
   CartIcon
 } from '@shopify/polaris-icons';
 import {api} from '../../helpers/api';
+import {getTodayStr, toDateStr, daysAgo} from '../../helpers/timezone-date';
 import {usePermittedStores} from '../../hooks/usePermittedStores';
 import AnalyticsStatCard from '../analytics/analytics-stat-card';
 
@@ -39,29 +40,6 @@ function fmt(v) {
     currency: 'USD',
     maximumFractionDigits: 0
   }).format(v || 0);
-}
-
-/** Get today's date string (YYYY-MM-DD) in the given timezone */
-function getTodayStr(timezone) {
-  if (!timezone) return new Date().toISOString().split('T')[0];
-  try {
-    return new Intl.DateTimeFormat('en-CA', {timeZone: timezone}).format(new Date());
-  } catch {
-    return new Date().toISOString().split('T')[0];
-  }
-}
-
-function toDateStr(d) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
-function daysAgo(n, timezone) {
-  const today = new Date(getTodayStr(timezone) + 'T00:00:00');
-  today.setDate(today.getDate() - n);
-  return toDateStr(today);
 }
 
 function getDateRange(period, customFrom, customTo, timezone) {

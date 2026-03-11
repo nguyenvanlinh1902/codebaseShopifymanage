@@ -1,6 +1,7 @@
 import React, {useState, useEffect, useMemo} from 'react';
 import {Page, Layout, Select, InlineStack} from '@shopify/polaris';
 import {api} from '../helpers/api';
+import {resolvePeriodDates} from '../helpers/timezone-date';
 import {usePermittedStores} from '../hooks/usePermittedStores';
 import AnalyticsOrderStats from './analytics/analytics-order-stats';
 import AnalyticsOrderChart from './analytics/analytics-order-chart';
@@ -74,10 +75,7 @@ export default function Analytics() {
   const storeIds = useMemo(() => filteredStores.map(s => s.id).join(','), [filteredStores]);
 
   const groupOptions = useMemo(
-    () => [
-      {label: 'All groups', value: ''},
-      ...groups.map(g => ({label: g.name, value: g.id}))
-    ],
+    () => [{label: 'All groups', value: ''}, ...groups.map(g => ({label: g.name, value: g.id}))],
     [groups]
   );
 
@@ -109,11 +107,15 @@ export default function Analytics() {
       setLoading(true);
       setAnalyticsData(null);
       try {
+        // Resolve period to explicit date range in user's timezone
+        // so dates match Dashboard's client-side calculations
+        const {from, to} = resolvePeriodDates(timePeriod, userTimezone);
+
         if (selectedStoreId === ALL_STORES_VALUE) {
           const ids = storeIds.split(',').filter(Boolean);
           const results = await Promise.all(
             ids.map(id => {
-              const params = new URLSearchParams({storeId: id, since: timePeriod});
+              const params = new URLSearchParams({storeId: id, from, to});
               if (userTimezone) params.set('timezone', userTimezone);
               return api(`/api/analytics/order-analytics?${params}`)
                 .then(r => r.json())
@@ -122,7 +124,7 @@ export default function Analytics() {
           );
           if (!cancelled) setAnalyticsData(aggregateResults(results.filter(Boolean)));
         } else {
-          const params = new URLSearchParams({storeId: selectedStoreId, since: timePeriod});
+          const params = new URLSearchParams({storeId: selectedStoreId, from, to});
           if (userTimezone) params.set('timezone', userTimezone);
           const res = await api(`/api/analytics/order-analytics?${params}`);
           const result = await res.json();

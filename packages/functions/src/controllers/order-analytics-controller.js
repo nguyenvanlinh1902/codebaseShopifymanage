@@ -7,22 +7,32 @@ import {extractStoreIds, hasStoreAccess} from '../utils/store-access.js';
 const storeRepo = new StoreRepository();
 const adminUserRepo = new AdminUserRepository();
 
-const ALLOWED_SINCE = ['-1d', '-7d', '-30d', '-90d', '-365d', 'startOfMonth(0m)', 'startOfYear(0y)'];
-const DEFAULT_SINCE = '-30d';
-
 /**
- * GET /api/analytics/order-analytics?storeId=xxx&since=-30d
+ * GET /api/analytics/order-analytics?storeId=xxx&from=YYYY-MM-DD&to=YYYY-MM-DD
  * Fetch real order analytics from Shopify via ShopifyQL + GraphQL.
+ * Uses explicit date range so numbers match Dashboard's client-side calculations.
  */
 export async function getOrderAnalytics(req, res) {
   try {
     const {storeId, timezone} = req.query;
-    let {since = DEFAULT_SINCE} = req.query;
+    let {from, to} = req.query;
 
     if (!storeId) {
       return res.status(400).json({success: false, error: 'storeId is required'});
     }
-    if (!ALLOWED_SINCE.includes(since)) since = DEFAULT_SINCE;
+
+    // Default to last 30 days if no dates provided
+    if (!from || !to) {
+      to = getTodayInTimezone(timezone);
+      const d = new Date(to + 'T00:00:00');
+      d.setDate(d.getDate() - 30);
+      from = d.toISOString().split('T')[0];
+    }
+
+    // Validate date format (YYYY-MM-DD)
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+      return res.status(400).json({success: false, error: 'Invalid date format. Use YYYY-MM-DD'});
+    }
 
     const store = await storeRepo.getById(storeId);
     if (!store || !store.accessToken) {
@@ -38,15 +48,21 @@ export async function getOrderAnalytics(req, res) {
     }
 
     // ShopifyQL uses 'sales' dataset (not 'orders')
-    // Columns: net_sales, gross_sales, total_sales, orders, returns, discounts
+    // Use explicit dates so results match Dashboard's client-side filtering
+    const sinceDate = `date(${from})`;
+    const untilDate = `date(${to})`;
     const [summaryResult, timeSeriesResult, statusBreakdown] = await Promise.all([
-      runShopifyQL(store.shopDomain, store.accessToken,
-        `FROM sales SHOW net_sales, total_sales, orders SINCE ${since} UNTIL today`
+      runShopifyQL(
+        store.shopDomain,
+        store.accessToken,
+        `FROM sales SHOW net_sales, total_sales, orders SINCE ${sinceDate} UNTIL ${untilDate}`
       ),
-      runShopifyQL(store.shopDomain, store.accessToken,
-        `FROM sales SHOW net_sales, total_sales, orders GROUP BY day SINCE ${since} UNTIL today ORDER BY day ASC`
+      runShopifyQL(
+        store.shopDomain,
+        store.accessToken,
+        `FROM sales SHOW net_sales, total_sales, orders GROUP BY day SINCE ${sinceDate} UNTIL ${untilDate} ORDER BY day ASC`
       ),
-      fetchOrderStatusBreakdown(store, since, timezone)
+      fetchOrderStatusBreakdown(store, from)
     ]);
 
     const summary = parseSummary(summaryResult);
@@ -54,7 +70,12 @@ export async function getOrderAnalytics(req, res) {
 
     return res.json({
       success: true,
-      data: {summary, byStatus: statusBreakdown, timeSeries, store: {id: store.id, name: store.name, shopDomain: store.shopDomain}}
+      data: {
+        summary,
+        byStatus: statusBreakdown,
+        timeSeries,
+        store: {id: store.id, name: store.name, shopDomain: store.shopDomain}
+      }
     });
   } catch (error) {
     console.error('Order analytics error:', error);
@@ -65,9 +86,8 @@ export async function getOrderAnalytics(req, res) {
 /**
  * Fetch order fulfillment status breakdown via GraphQL Admin API.
  */
-async function fetchOrderStatusBreakdown(store, since, timezone) {
+async function fetchOrderStatusBreakdown(store, sinceDate) {
   try {
-    const sinceDate = resolveSinceDate(since, timezone);
     const query = `{
       fulfilled: ordersCount(query: "fulfillment_status:shipped created_at:>=${sinceDate}") { count }
       unfulfilled: ordersCount(query: "fulfillment_status:unshipped created_at:>=${sinceDate}") { count }
@@ -101,25 +121,16 @@ async function fetchOrderStatusBreakdown(store, since, timezone) {
 function getTodayInTimezone(timezone) {
   if (!timezone) return new Date().toISOString().split('T')[0];
   try {
-    const parts = new Intl.DateTimeFormat('en-CA', {timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit'}).format(new Date());
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(new Date());
     return parts; // en-CA gives YYYY-MM-DD format
   } catch {
     return new Date().toISOString().split('T')[0];
   }
-}
-
-function resolveSinceDate(since, timezone) {
-  const todayStr = getTodayInTimezone(timezone);
-  const today = new Date(todayStr + 'T00:00:00');
-
-  if (since === '-1d') return new Date(today - 86400000).toISOString().split('T')[0];
-  if (since === '-7d') return new Date(today - 7 * 86400000).toISOString().split('T')[0];
-  if (since === '-30d') return new Date(today - 30 * 86400000).toISOString().split('T')[0];
-  if (since === '-90d') return new Date(today - 90 * 86400000).toISOString().split('T')[0];
-  if (since === '-365d') return new Date(today - 365 * 86400000).toISOString().split('T')[0];
-  if (since === 'startOfMonth(0m)') return new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
-  if (since === 'startOfYear(0y)') return new Date(today.getFullYear(), 0, 1).toISOString().split('T')[0];
-  return new Date(today - 30 * 86400000).toISOString().split('T')[0];
 }
 
 function parseSummary(result) {

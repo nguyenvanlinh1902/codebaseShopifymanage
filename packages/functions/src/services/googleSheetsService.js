@@ -225,6 +225,8 @@ export class GoogleSheetsService {
       const lineItems = order.line_items || [];
       const createdAt = order.created_at ? order.created_at.split('T')[0] : '';
 
+      const fmtNum = v => (v ? parseFloat(v) : '');
+
       const buildRow = (item, index) => {
         const props = (item.properties || []).filter(p => p.name && !p.name.startsWith('_'));
         const sizeProp = props.find(p => /size/i.test(p.name));
@@ -238,18 +240,19 @@ export class GoogleSheetsService {
           order.name || '',
           order.email || '',
           createdAt,
-          '', // Base cost (item-level, manual)
+          '', // Base cost (manual)
           sizeProp ? sizeProp.value : '',
           typeProp ? typeProp.value : '',
           item.quantity || '',
           item.name || '',
           item.sku || '',
-          item.price || '',
+          fmtNum(item.price),
           addr.country_code || '',
           isFirst ? order.payment_gateway_names?.[0] || '' : '',
-          isFirst ? order.total_price || '' : '',
-          isFirst ? order.total_tax || '' : '',
+          isFirst ? fmtNum(order.total_price) : '',
+          '', // Base Cost (manual)
           '', // Fee (PP/ST & Shopify) - manual
+          isFirst ? fmtNum(order.total_tax) : '',
           isFirst ? order.note || '' : '',
           isFirst ? addr.address1 || '' : '',
           addr.name || '',
@@ -262,8 +265,8 @@ export class GoogleSheetsService {
           addr.phone || '',
           nameProp ? `${nameProp.name}: ${nameProp.value}` : '',
           designProp ? `${designProp.name}: ${designProp.value}` : '',
-          '', // Product Link (not available in bulk export)
-          '' // Variant Image (not available in bulk export)
+          '', // Link Product (not available in bulk export)
+          '' // Link Image Variant (not available in bulk export)
         ];
       };
 
@@ -358,8 +361,9 @@ export class GoogleSheetsService {
       'Shipping Country',
       'Payment Method',
       'Total',
-      'Tax',
+      'Base Cost',
       'Fee (PP/ST & Shopify)',
+      'Tax',
       'Note',
       'Shipping Address',
       'Shipping Name',
@@ -372,8 +376,8 @@ export class GoogleSheetsService {
       'Shipping Phone',
       'Custom name',
       'Design',
-      'Product Link',
-      'Variant Image'
+      'Link Product',
+      'Link Image Variant'
     ];
   }
 
@@ -382,7 +386,7 @@ export class GoogleSheetsService {
    */
   async ensureHeaders(spreadsheetId, sheetName) {
     try {
-      const data = await this.readSheet(spreadsheetId, `${sheetName}!A1:AD1`);
+      const data = await this.readSheet(spreadsheetId, `${sheetName}!A1:AE1`);
       if (!data || data.length === 0 || data[0][0] !== 'STT') {
         await this.writeSheet(spreadsheetId, `${sheetName}!A1`, [
           GoogleSheetsService.ORDER_HEADERS
@@ -464,7 +468,7 @@ export class GoogleSheetsService {
       const data = await this.readSheet(spreadsheetId, `${sheetName}!B:B`);
       const nextRow = (data?.length || 0) + 1;
       const endRow = nextRow + order.rows.length - 1;
-      await this.writeSheet(spreadsheetId, `${sheetName}!A${nextRow}:AD${endRow}`, order.rows);
+      await this.writeSheet(spreadsheetId, `${sheetName}!A${nextRow}:AE${endRow}`, order.rows);
 
       return {success: true};
     } catch (error) {
@@ -496,6 +500,53 @@ export class GoogleSheetsService {
   }
 
   /**
+   * Ensure a sheet tab exists, create if missing
+   */
+  async ensureSheetTab(spreadsheetId, sheetName) {
+    try {
+      const spreadsheet = await this.sheets.spreadsheets.get({spreadsheetId});
+      const exists = spreadsheet.data.sheets.some(s => s.properties.title === sheetName);
+      if (!exists) {
+        await this.sheets.spreadsheets.batchUpdate({
+          spreadsheetId,
+          requestBody: {requests: [{addSheet: {properties: {title: sheetName}}}]}
+        });
+      }
+    } catch (err) {
+      console.error('Error ensuring sheet tab:', err.message);
+    }
+  }
+
+  /**
+   * Write tracking statuses to a dedicated sheet tab
+   */
+  async writeTrackingStatuses(spreadsheetId, sheetName = 'Tracking Status', statuses) {
+    const headers = [
+      'Order Number',
+      'Tracking Number',
+      'Carrier',
+      'Status',
+      'Last Event',
+      'Last Event Date',
+      'Last Checked'
+    ];
+    const rows = statuses.map(s => [
+      s.orderNumber || '',
+      s.trackingNumber,
+      s.carrier || '',
+      s.status || '',
+      s.lastEvent || '',
+      s.lastEventDate || '',
+      s.lastCheckedAt || ''
+    ]);
+    const values = [headers, ...rows];
+    await this.ensureSheetTab(spreadsheetId, sheetName);
+    const range = `'${sheetName}'!A1:G${values.length}`;
+    await this.writeSheet(spreadsheetId, range, values);
+    return {success: true, rowsWritten: rows.length};
+  }
+
+  /**
    * Update existing order in sheet by order number
    * Searches column B (Order Number) and replaces all matching rows
    * order is { orderId, orderNumber, rows: [[...], [...]] }
@@ -521,7 +572,7 @@ export class GoogleSheetsService {
       const startRow = matchingRows[0];
       const newRows = order.rows;
       const endRow = startRow + newRows.length - 1;
-      await this.writeSheet(spreadsheetId, `${sheetName}!A${startRow}:AD${endRow}`, newRows);
+      await this.writeSheet(spreadsheetId, `${sheetName}!A${startRow}:AE${endRow}`, newRows);
 
       return {success: true};
     } catch (error) {

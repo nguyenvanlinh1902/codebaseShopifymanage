@@ -218,6 +218,98 @@ export async function applyPolicies(req, res) {
 }
 
 /**
+ * POST /api/setup/check-all
+ * Lightweight check of all setup steps for selected stores.
+ * Returns per-store status for: metafields, policies, shipping, themes.
+ * Body: { storeIds: string[] }
+ */
+export async function checkAllSteps(req, res) {
+  try {
+    const {storeIds} = req.body;
+    if (!Array.isArray(storeIds) || storeIds.length === 0) {
+      return res.status(400).json({success: false, error: 'storeIds array is required'});
+    }
+
+    const results = await Promise.all(
+      storeIds.map(async storeId => {
+        try {
+          const {store, shopifyService} = await getStoreAndService(storeId);
+          const storeName = store.name || store.shopDomain;
+
+          // Run all checks in parallel
+          const [metafieldStatus, policyStatus, shippingStatus] = await Promise.allSettled([
+            checkMetafieldStatus(shopifyService),
+            checkPolicyStatus(shopifyService),
+            checkShippingStatus(shopifyService)
+          ]);
+
+          return {
+            storeId,
+            storeName,
+            shopDomain: store.shopDomain,
+            metafields: metafieldStatus.status === 'fulfilled' ? metafieldStatus.value : {done: false, detail: 'Error'},
+            policies: policyStatus.status === 'fulfilled' ? policyStatus.value : {done: false, detail: 'Error'},
+            shipping: shippingStatus.status === 'fulfilled' ? shippingStatus.value : {done: false, detail: 'Error'},
+            themes: {done: false, detail: 'Manual check'}
+          };
+        } catch (err) {
+          return {
+            storeId,
+            storeName: storeId,
+            shopDomain: '',
+            error: err.message,
+            metafields: {done: false, detail: 'Error'},
+            policies: {done: false, detail: 'Error'},
+            shipping: {done: false, detail: 'Error'},
+            themes: {done: false, detail: 'Error'}
+          };
+        }
+      })
+    );
+
+    return res.json({success: true, data: results});
+  } catch (error) {
+    console.error('Check all steps error:', error);
+    return res.status(500).json({success: false, error: error.message});
+  }
+}
+
+async function checkMetafieldStatus(shopifyService) {
+  const ownerTypes = [...new Set(PREDEFINED_METAFIELDS.map(m => m.ownerType))];
+  const existingByOwner = {};
+  for (const ownerType of ownerTypes) {
+    existingByOwner[ownerType] = await shopifyService.getMetafieldDefinitions(ownerType);
+  }
+  const total = PREDEFINED_METAFIELDS.length;
+  const found = PREDEFINED_METAFIELDS.filter(p =>
+    (existingByOwner[p.ownerType] || []).some(d => d.namespace === p.namespace && d.key === p.key)
+  ).length;
+  return {done: found === total, detail: `${found}/${total}`};
+}
+
+async function checkPolicyStatus(shopifyService) {
+  const policies = await shopifyService.getShopPolicies();
+  const filled = (policies || []).filter(p => p.body && p.body.trim().length > 0).length;
+  const total = POLICY_TYPES_CHECK.length;
+  return {done: filled >= 3, detail: `${filled}/${total} filled`};
+}
+
+const POLICY_TYPES_CHECK = ['REFUND_POLICY', 'PRIVACY_POLICY', 'TERMS_OF_SERVICE', 'SHIPPING_POLICY'];
+
+async function checkShippingStatus(shopifyService) {
+  try {
+    const {getDeliveryProfiles} = await import('../services/shopify-shipping-service.js');
+    const profiles = await getDeliveryProfiles(shopifyService);
+    const totalRates = profiles.reduce((sum, p) =>
+      sum + (p.locationGroups || []).reduce((s2, lg) =>
+        s2 + (lg.zones || []).reduce((s3, z) => s3 + (z.rates || []).length, 0), 0), 0);
+    return {done: totalRates > 0, detail: `${totalRates} rates`};
+  } catch {
+    return {done: false, detail: 'No access'};
+  }
+}
+
+/**
  * POST /api/setup/apply
  * Create missing metafield definitions on selected stores
  * Body: { storeIds: string[] }

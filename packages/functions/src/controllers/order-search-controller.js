@@ -15,6 +15,9 @@ query SearchOrders($query: String!, $first: Int!, $after: String) {
         name
         createdAt
         totalPriceSet { shopMoney { amount currencyCode } }
+        subtotalPriceSet { shopMoney { amount currencyCode } }
+        totalTaxSet { shopMoney { amount currencyCode } }
+        totalShippingPriceSet { shopMoney { amount currencyCode } }
         displayFulfillmentStatus
         displayFinancialStatus
         customer { firstName lastName email }
@@ -95,6 +98,9 @@ export async function searchOrders(req, res) {
         name: node.name,
         createdAt: node.createdAt,
         total: node.totalPriceSet?.shopMoney?.amount || '0.00',
+        baseCost: node.subtotalPriceSet?.shopMoney?.amount || '0.00',
+        tax: node.totalTaxSet?.shopMoney?.amount || '0.00',
+        fee: node.totalShippingPriceSet?.shopMoney?.amount || '0.00',
         currency: node.totalPriceSet?.shopMoney?.currencyCode || 'USD',
         fulfillmentStatus: node.displayFulfillmentStatus || 'UNFULFILLED',
         financialStatus: node.displayFinancialStatus || 'PENDING',

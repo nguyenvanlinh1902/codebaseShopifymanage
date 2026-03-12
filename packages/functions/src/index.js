@@ -24,6 +24,9 @@ import gdprRoutes from './routes/gdprRoutes.js';
 import multiAppAuthRoutes from './routes/multi-app-auth-routes.js';
 import userRoutes from './routes/user-routes.js';
 import * as devOrderInspectorController from './controllers/dev-order-inspector-controller.js';
+import trackingStatusRoutes from './routes/tracking-status-routes.js';
+import shippingTemplateRoutes from './routes/shipping-template-routes.js';
+import * as trackingStatusController from './controllers/tracking-status-controller.js';
 // Middleware
 import {authentication} from './middleware/authentication.js';
 // Controllers
@@ -94,6 +97,8 @@ app.use('/api/sheets', sheetRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/tracking', trackingRoutes);
+app.use('/api/tracking-status', trackingStatusRoutes);
+app.use('/api/shipping', shippingTemplateRoutes);
 app.use('/api/themes', themeRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/setup', setupRoutes);
@@ -116,13 +121,13 @@ app.use((err, req, res, _next) => {
 
 /** Main API */
 export const api = onRequest(
-  {memory: '1GiB', timeoutSeconds: 540, invoker: 'public', cors: true},
+  {memory: '512MiB', cpu: 1, timeoutSeconds: 540, invoker: 'public', cors: true},
   app
 );
 
 /** PubSub: Product Import */
 export const processProductImportQueue = onMessagePublished(
-  {topic: 'product-import', memory: '512MiB', timeoutSeconds: 540, retry: true},
+  {topic: 'product-import', memory: '256MiB', cpu: 1, timeoutSeconds: 540, retry: true},
   async event => {
     await productImportController.processProductImport(event.data);
   }
@@ -130,9 +135,23 @@ export const processProductImportQueue = onMessagePublished(
 
 /** PubSub: Tracking Import */
 export const processTrackingImportQueue = onMessagePublished(
-  {topic: 'tracking-import', memory: '512MiB', timeoutSeconds: 540, retry: true},
+  {
+    topic: 'tracking-import',
+    memory: '256MiB',
+    cpu: 1,
+    timeoutSeconds: 540,
+    retry: true
+  },
   async event => {
     await trackingImportController.processTrackingImport(event.data);
+  }
+);
+
+/** PubSub: Check Store Tracking (per-store background processing) */
+export const processCheckStoreTracking = onMessagePublished(
+  {topic: 'check-store-tracking', memory: '256MiB', cpu: 1, timeoutSeconds: 540, retry: true},
+  async event => {
+    await trackingStatusController.processStoreTracking(event.data);
   }
 );
 
@@ -140,7 +159,8 @@ export const processTrackingImportQueue = onMessagePublished(
 export const productQueueCron = onSchedule(
   {
     schedule: 'every 1 minutes',
-    memory: '512MiB',
+    memory: '256MiB',
+    cpu: 1,
     timeoutSeconds: 540,
     retryConfig: {retryCount: 3, maxRetrySeconds: 600}
   },
@@ -154,6 +174,7 @@ export const orderSyncQueueCron = onSchedule(
   {
     schedule: 'every 1 minutes',
     memory: '256MiB',
+    cpu: 1,
     timeoutSeconds: 540,
     retryConfig: {retryCount: 3, maxRetrySeconds: 600}
   },
@@ -162,20 +183,34 @@ export const orderSyncQueueCron = onSchedule(
   }
 );
 
+/** Cron: Check tracking statuses via 17TRACK (every hour) */
+export const trackingStatusCron = onSchedule(
+  {
+    schedule: 'every 60 minutes',
+    memory: '256MiB',
+    cpu: 1,
+    timeoutSeconds: 540,
+    retryConfig: {retryCount: 2, maxRetrySeconds: 600}
+  },
+  async () => {
+    await trackingStatusController.processTrackingStatusQueue();
+  }
+);
+
 /** Firestore Triggers -> BigQuery */
 export const onWriteStores = onDocumentWritten(
-  {document: 'shopify_stores/{docId}', memory: '256MiB'},
+  {document: 'shopify_stores/{docId}', memory: '256MiB', cpu: 1},
   onTriggerStores
 );
 export const onWriteGoogleAuth = onDocumentWritten(
-  {document: 'google_auth/{docId}', memory: '256MiB'},
+  {document: 'google_auth/{docId}', memory: '256MiB', cpu: 1},
   onTriggerGoogleAuth
 );
 export const onWriteGoogleSheets = onDocumentWritten(
-  {document: 'google_sheets/{docId}', memory: '256MiB'},
+  {document: 'google_sheets/{docId}', memory: '256MiB', cpu: 1},
   onTriggerGoogleSheets
 );
 export const onWriteProducts = onDocumentWritten(
-  {document: 'products/{docId}', memory: '256MiB'},
+  {document: 'products/{docId}', memory: '256MiB', cpu: 1},
   onTriggerProducts
 );

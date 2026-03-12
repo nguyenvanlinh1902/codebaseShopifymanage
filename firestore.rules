@@ -10,5 +10,8 @@ service cloud.firestore {
     match /product_imports/{document} {
       allow read: if true;
     }
+    match /tracking_check_jobs/{document} {
+      allow read: if true;
+    }
   }
 }

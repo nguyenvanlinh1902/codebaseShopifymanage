@@ -32,6 +32,7 @@ export default function Orders() {
   const [settingUpSync, setSettingUpSync] = useState(false);
   const [syncConfigs, setSyncConfigs] = useState([]);
   const [filterStore, setFilterStore] = useState('');
+  const [filterStatus, setFilterStatus] = useState('active');
   const [showSetupModal, setShowSetupModal] = useState(false);
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
@@ -158,10 +159,18 @@ export default function Orders() {
   const allStoreOptions = stores.map(store => ({label: store.name, value: store.id}));
   const filterStoreOptions = [{label: 'All Stores', value: ''}, ...allStoreOptions];
 
-  // Filter configs by store
-  const filteredConfigs = filterStore
-    ? syncConfigs.filter(c => c.storeId === filterStore)
-    : syncConfigs;
+  const filterStatusOptions = [
+    {label: 'All Status', value: ''},
+    {label: 'Active', value: 'active'},
+    {label: 'Inactive', value: 'inactive'}
+  ];
+
+  // Filter configs by store and status
+  const filteredConfigs = syncConfigs.filter(c => {
+    if (filterStore && c.storeId !== filterStore) return false;
+    if (filterStatus && c.status !== filterStatus) return false;
+    return true;
+  });
 
   const configRows = filteredConfigs.map(config => [
     config.storeName || 'N/A',
@@ -221,15 +230,26 @@ export default function Orders() {
                 <Text variant="headingMd" as="h2">
                   Sync Configurations
                 </Text>
-                <div style={{minWidth: '250px'}}>
-                  <Select
-                    label="Filter by store"
-                    labelHidden
-                    options={filterStoreOptions}
-                    value={filterStore}
-                    onChange={setFilterStore}
-                  />
-                </div>
+                <InlineStack gap="300">
+                  <div style={{minWidth: '150px'}}>
+                    <Select
+                      label="Filter by status"
+                      labelHidden
+                      options={filterStatusOptions}
+                      value={filterStatus}
+                      onChange={setFilterStatus}
+                    />
+                  </div>
+                  <div style={{minWidth: '250px'}}>
+                    <Select
+                      label="Filter by store"
+                      labelHidden
+                      options={filterStoreOptions}
+                      value={filterStore}
+                      onChange={setFilterStore}
+                    />
+                  </div>
+                </InlineStack>
               </InlineStack>
 
               {loading ? (

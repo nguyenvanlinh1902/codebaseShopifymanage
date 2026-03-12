@@ -1,14 +1,7 @@
 import React, {useState, useEffect} from 'react';
 import {
-  Modal,
-  BlockStack,
-  Text,
-  Tabs,
-  TextField,
-  InlineStack,
-  Badge,
-  Spinner,
-  Card
+  Modal, BlockStack, Text, Tabs, TextField, InlineStack,
+  Badge, Spinner, Card, ChoiceList
 } from '@shopify/polaris';
 import {api} from '../../helpers/api';
 
@@ -22,11 +15,8 @@ const POLICY_TYPES = [
 
 const EMPTY_CONTENT = Object.fromEntries(POLICY_TYPES.map(p => [p.type, '']));
 
-/**
- * PolicySetup modal — opens when user clicks "Setup Policies" after selecting stores.
- * Auto-loads current policies from selected stores on open.
- */
-export default function PolicySetup({open, onClose, selectedStoreIds, onSuccess}) {
+export default function PolicySetup({open, onClose, stores, onSuccess}) {
+  const [selectedStoreIds, setSelectedStoreIds] = useState([]);
   const [selectedTab, setSelectedTab] = useState(0);
   const [policyContent, setPolicyContent] = useState(EMPTY_CONTENT);
   const [loading, setLoading] = useState(false);
@@ -34,15 +24,18 @@ export default function PolicySetup({open, onClose, selectedStoreIds, onSuccess}
   const [applyResults, setApplyResults] = useState([]);
 
   const tabs = POLICY_TYPES.map(p => ({
-    id: p.type,
-    content: p.label,
-    panelID: `${p.type}-panel`
+    id: p.type, content: p.label, panelID: `${p.type}-panel`
   }));
 
   const currentType = POLICY_TYPES[selectedTab].type;
   const currentLabel = POLICY_TYPES[selectedTab].label;
 
-  // Auto-load current policies when modal opens
+  const storeChoices = (stores || []).map(s => ({
+    label: `${s.name || s.shopDomain} (${s.shopDomain}.myshopify.com)`,
+    value: s.id
+  }));
+
+  // Auto-load policies when stores are selected
   useEffect(() => {
     if (!open || selectedStoreIds.length === 0) return;
 
@@ -58,7 +51,6 @@ export default function PolicySetup({open, onClose, selectedStoreIds, onSuccess}
       .then(r => r.json())
       .then(data => {
         if (cancelled || !data.success) return;
-        // Pre-populate from first store that has policies
         const firstStore = (data.data || []).find(s => !s.error && s.policies?.length > 0);
         if (firstStore) {
           setPolicyContent(prev => {
@@ -71,21 +63,16 @@ export default function PolicySetup({open, onClose, selectedStoreIds, onSuccess}
         }
       })
       .catch(() => {})
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+      .finally(() => { if (!cancelled) setLoading(false); });
 
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [open, selectedStoreIds]);
 
   const handleApply = async () => {
     const policies = POLICY_TYPES.filter(p => policyContent[p.type]?.trim()).map(p => ({
-      type: p.type,
-      body: policyContent[p.type]
+      type: p.type, body: policyContent[p.type]
     }));
-    if (policies.length === 0) return;
+    if (policies.length === 0 || !selectedStoreIds.length) return;
 
     try {
       setApplying(true);
@@ -98,11 +85,9 @@ export default function PolicySetup({open, onClose, selectedStoreIds, onSuccess}
       if (data.success) {
         setApplyResults(data.data || []);
         const totalUpdated = (data.data || []).reduce((sum, s) => sum + s.updated.length, 0);
-        if (onSuccess) onSuccess(`Policies applied: ${totalUpdated} updated across ${data.data.length} store(s).`);
+        onSuccess(`Policies applied: ${totalUpdated} updated across ${data.data.length} store(s).`);
       }
-    } catch {
-      // errors shown in applyResults
-    } finally {
+    } catch { /* silent */ } finally {
       setApplying(false);
     }
   };
@@ -113,65 +98,72 @@ export default function PolicySetup({open, onClose, selectedStoreIds, onSuccess}
     <Modal
       open={open}
       onClose={onClose}
-      title={`Setup Policies — ${selectedStoreIds.length} store(s)`}
+      title="Setup Policies"
       primaryAction={{
         content: applying ? 'Applying...' : `Apply Policies (${filledCount})`,
         onAction: handleApply,
-        disabled: filledCount === 0 || applying || loading,
+        disabled: filledCount === 0 || applying || loading || !selectedStoreIds.length,
         loading: applying
       }}
       secondaryActions={[{content: 'Close', onAction: onClose}]}
       large
     >
       <Modal.Section>
-        {loading ? (
-          <InlineStack align="center">
-            <Spinner size="small" />
-            <Text tone="subdued">Loading current policies...</Text>
-          </InlineStack>
-        ) : (
-          <BlockStack gap="400">
-            <Text variant="bodySm" tone="subdued">
-              Current policies have been loaded from the first selected store. Edit and click Apply to push to all selected stores.
-            </Text>
+        <BlockStack gap="400">
+          {/* Store selection */}
+          <ChoiceList
+            title="Select stores"
+            allowMultiple
+            choices={storeChoices}
+            selected={selectedStoreIds}
+            onChange={setSelectedStoreIds}
+            disabled={applying}
+          />
 
-            <Tabs tabs={tabs} selected={selectedTab} onSelect={setSelectedTab}>
-              <BlockStack gap="300">
-                <TextField
-                  label={currentLabel}
-                  value={policyContent[currentType]}
-                  onChange={val => setPolicyContent(prev => ({...prev, [currentType]: val}))}
-                  multiline={14}
-                  placeholder={`Enter ${currentLabel} content (HTML supported)...`}
-                  autoComplete="off"
-                />
-                {policyContent[currentType]?.trim() && (
-                  <Badge tone="success">Content set</Badge>
-                )}
-              </BlockStack>
-            </Tabs>
+          {loading ? (
+            <InlineStack align="center">
+              <Spinner size="small" />
+              <Text tone="subdued">Loading current policies...</Text>
+            </InlineStack>
+          ) : selectedStoreIds.length > 0 ? (
+            <BlockStack gap="300">
+              <Text variant="bodySm" tone="subdued">
+                Policies loaded from first selected store. Edit and Apply to push to all.
+              </Text>
 
-            {/* Apply results */}
-            {applyResults.length > 0 && (
-              <BlockStack gap="200">
-                <Text variant="headingSm" as="h3">Results</Text>
-                {applyResults.map(store => (
-                  <Card key={store.storeId}>
-                    <InlineStack gap="200" blockAlign="center">
-                      <Text variant="bodyMd" fontWeight="semibold">{store.storeName}</Text>
-                      {store.updated.length > 0 && (
-                        <Badge tone="success">{store.updated.length} updated</Badge>
-                      )}
-                      {store.errors.length > 0 && (
-                        <Badge tone="critical">{store.errors.length} failed</Badge>
-                      )}
-                    </InlineStack>
-                  </Card>
-                ))}
-              </BlockStack>
-            )}
-          </BlockStack>
-        )}
+              <Tabs tabs={tabs} selected={selectedTab} onSelect={setSelectedTab}>
+                <BlockStack gap="300">
+                  <TextField
+                    label={currentLabel}
+                    value={policyContent[currentType]}
+                    onChange={val => setPolicyContent(prev => ({...prev, [currentType]: val}))}
+                    multiline={14}
+                    placeholder={`Enter ${currentLabel} content (HTML supported)...`}
+                    autoComplete="off"
+                  />
+                  {policyContent[currentType]?.trim() && <Badge tone="success">Content set</Badge>}
+                </BlockStack>
+              </Tabs>
+            </BlockStack>
+          ) : (
+            <Text tone="subdued">Select stores to load current policies.</Text>
+          )}
+
+          {applyResults.length > 0 && (
+            <BlockStack gap="200">
+              <Text variant="headingSm">Results</Text>
+              {applyResults.map(store => (
+                <Card key={store.storeId}>
+                  <InlineStack gap="200" blockAlign="center">
+                    <Text variant="bodyMd" fontWeight="semibold">{store.storeName}</Text>
+                    {store.updated.length > 0 && <Badge tone="success">{store.updated.length} updated</Badge>}
+                    {store.errors.length > 0 && <Badge tone="critical">{store.errors.length} failed</Badge>}
+                  </InlineStack>
+                </Card>
+              ))}
+            </BlockStack>
+          )}
+        </BlockStack>
       </Modal.Section>
     </Modal>
   );

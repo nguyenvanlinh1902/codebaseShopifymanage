@@ -1221,4 +1221,52 @@ export class ShopifyService {
 
     return domain;
   }
+
+  /**
+   * Get fulfilled orders with tracking info via GraphQL.
+   * Returns orders that have fulfillments with tracking numbers.
+   * Paginates automatically up to maxPages (default 5 = ~125 orders).
+   */
+  async getOrdersWithFulfillments({first = 25, maxPages = 5, query = 'fulfillment_status:shipped'} = {}) {
+    const gqlQuery = `query GetFulfilledOrders($first: Int!, $after: String, $query: String) {
+      orders(first: $first, after: $after, query: $query, sortKey: CREATED_AT, reverse: true) {
+        edges {
+          node {
+            id
+            name
+            createdAt
+            displayFulfillmentStatus
+            fulfillments {
+              trackingInfo {
+                number
+                company
+                url
+              }
+              status
+              createdAt
+            }
+          }
+        }
+        pageInfo { hasNextPage endCursor }
+      }
+    }`;
+
+    const allOrders = [];
+    let after = null;
+
+    for (let page = 0; page < maxPages; page++) {
+      const result = await this.shopify.graphql(gqlQuery, {first, after, query});
+      const edges = result.orders.edges || [];
+      const orders = edges
+        .map(e => e.node)
+        .filter(o => o.fulfillments?.some(f => f.trackingInfo?.some(t => t.number)));
+
+      allOrders.push(...orders);
+
+      if (!result.orders.pageInfo.hasNextPage) break;
+      after = result.orders.pageInfo.endCursor;
+    }
+
+    return allOrders;
+  }
 }

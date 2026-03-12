@@ -1,48 +1,44 @@
 import React, {useState, useEffect} from 'react';
-import {Page, Layout, Banner, Button, InlineStack} from '@shopify/polaris';
+import {
+  Page, Layout, Banner, Card, Text, BlockStack,
+  Button, Modal, ChoiceList, InlineStack, Spinner, Badge,
+  IndexTable, Select
+} from '@shopify/polaris';
 import {api} from '../helpers/api';
 import {usePermittedStores} from '../hooks/usePermittedStores';
-import MetafieldDefinitionsTable from './setup-store/MetafieldDefinitionsTable';
-import ThemeSelection from './setup-store/ThemeSelection';
-import StoreSelection from './setup-store/StoreSelection';
-import CheckResults from './setup-store/CheckResults';
-import ApplyResults from './setup-store/ApplyResults';
 import PolicySetup from './setup-store/PolicySetup';
+
+const SETUP_STEPS = [
+  {value: 'metafields', label: 'Metafields — Create metafield definitions'},
+  {value: 'themes', label: 'Themes — Import saved theme'},
+  {value: 'shipping', label: 'Shipping — Apply shipping rate template'}
+];
 
 export default function SetupStore() {
   const {stores, loading: storesLoading} = usePermittedStores();
+
+  const [modalOpen, setModalOpen] = useState(false);
+  const [selectedSteps, setSelectedSteps] = useState([]);
   const [selectedStoreIds, setSelectedStoreIds] = useState([]);
 
-  const [definitions, setDefinitions] = useState([]);
+  // Theme/shipping options
   const [savedThemes, setSavedThemes] = useState([]);
   const [savedThemesLoading, setSavedThemesLoading] = useState(true);
   const [selectedThemeId, setSelectedThemeId] = useState('');
+  const [shippingTemplates, setShippingTemplates] = useState([]);
+  const [shippingTemplatesLoading, setShippingTemplatesLoading] = useState(true);
+  const [selectedShippingTemplate, setSelectedShippingTemplate] = useState('');
 
-  const [checkResults, setCheckResults] = useState([]);
-  const [checking, setChecking] = useState(false);
-  const [applyResults, setApplyResults] = useState([]);
-  const [applying, setApplying] = useState(false);
-
-  // Policy modal
   const [policyModalOpen, setPolicyModalOpen] = useState(false);
 
+  const [applying, setApplying] = useState(false);
+  const [results, setResults] = useState([]);
   const [successMsg, setSuccessMsg] = useState('');
-  const [errorMsg, setErrorMsg] = useState('');
 
   useEffect(() => {
-    loadDefinitions();
     loadSavedThemes();
+    loadShippingTemplates();
   }, []);
-
-  const loadDefinitions = async () => {
-    try {
-      const res = await api('/api/setup/definitions');
-      const data = await res.json();
-      if (data.success) setDefinitions(data.data || []);
-    } catch (err) {
-      console.error('Failed to load definitions', err);
-    }
-  };
 
   const loadSavedThemes = async () => {
     try {
@@ -50,150 +46,122 @@ export default function SetupStore() {
       const res = await api('/api/themes/imported');
       const data = await res.json();
       if (data.success) setSavedThemes(data.data || []);
-    } catch (err) {
-      console.error('Failed to load saved themes', err);
-    } finally {
+    } catch { /* silent */ } finally {
       setSavedThemesLoading(false);
     }
   };
 
-  const formatFileSize = bytes => {
-    if (!bytes) return '';
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
+  const loadShippingTemplates = async () => {
+    try {
+      setShippingTemplatesLoading(true);
+      const res = await api('/api/shipping/templates');
+      const data = await res.json();
+      if (data.success) setShippingTemplates(data.data || []);
+    } catch { /* silent */ } finally {
+      setShippingTemplatesLoading(false);
+    }
   };
 
-  const handleCheck = async () => {
-    if (selectedStoreIds.length === 0) {
-      setErrorMsg('Please select at least one store');
-      return;
-    }
-    try {
-      setChecking(true);
-      setErrorMsg('');
-      setSuccessMsg('');
-      setCheckResults([]);
-      setApplyResults([]);
-
-      const res = await api('/api/setup/check', {
-        method: 'POST',
-        body: JSON.stringify({storeIds: selectedStoreIds})
-      });
-      const data = await res.json();
-      if (data.success) {
-        setCheckResults(data.data || []);
-        const allOk = (data.data || []).every(
-          store => !store.error && store.metafields.every(m => m.status === 'exists')
-        );
-        if (allOk) setSuccessMsg('All selected stores have all metafield definitions.');
-      } else {
-        setErrorMsg(data.error || 'Failed to check stores');
-      }
-    } catch {
-      setErrorMsg('Failed to check stores');
-    } finally {
-      setChecking(false);
-    }
+  const openModal = () => {
+    setSelectedSteps([]);
+    setSelectedStoreIds([]);
+    setSelectedThemeId('');
+    setSelectedShippingTemplate('');
+    setResults([]);
+    setModalOpen(true);
   };
 
   const handleApply = async () => {
-    if (selectedStoreIds.length === 0) {
-      setErrorMsg('Please select at least one store');
-      return;
-    }
-    try {
-      setApplying(true);
-      setErrorMsg('');
-      setSuccessMsg('');
-      setApplyResults([]);
+    if (!selectedSteps.length || !selectedStoreIds.length) return;
+    setApplying(true);
+    setResults([]);
+    const allResults = [];
 
-      const metafieldRes = await api('/api/setup/apply', {
-        method: 'POST',
-        body: JSON.stringify({storeIds: selectedStoreIds})
-      });
-      const metafieldData = await metafieldRes.json();
-
-      let results = [];
-      if (metafieldData.success) {
-        results = (metafieldData.data || []).map(r => ({...r, themeResult: null}));
-      }
-
-      if (selectedThemeId) {
-        const selectedTheme = savedThemes.find(t => t.id === selectedThemeId);
-        for (let i = 0; i < results.length; i++) {
-          const storeId = results[i].storeId;
-          try {
-            const themeRes = await api(`/api/themes/imported/${selectedThemeId}/reimport`, {
-              method: 'POST',
-              body: JSON.stringify({storeId, themeName: selectedTheme?.themeName})
-            });
-            const themeData = await themeRes.json();
-            results[i].themeResult = themeData.success
-              ? {success: true, message: 'Theme import started'}
-              : {success: false, message: themeData.error || 'Failed'};
-          } catch {
-            results[i].themeResult = {success: false, message: 'Request failed'};
-          }
+    // Metafields
+    if (selectedSteps.includes('metafields')) {
+      try {
+        const res = await api('/api/setup/apply', {
+          method: 'POST',
+          body: JSON.stringify({storeIds: selectedStoreIds})
+        });
+        const data = await res.json();
+        if (data.success) {
+          const created = (data.data || []).reduce((s, r) => s + (r.created?.length || 0), 0);
+          allResults.push({step: 'Metafields', success: true, detail: created > 0 ? `Created ${created}` : 'All exist'});
+        } else {
+          allResults.push({step: 'Metafields', success: false, detail: data.error || 'Failed'});
         }
+      } catch {
+        allResults.push({step: 'Metafields', success: false, detail: 'Request failed'});
+      }
+    }
 
-        for (const storeId of selectedStoreIds) {
-          if (!results.find(r => r.storeId === storeId)) {
-            const store = stores.find(s => s.id === storeId);
-            try {
-              const themeRes = await api(`/api/themes/imported/${selectedThemeId}/reimport`, {
-                method: 'POST',
-                body: JSON.stringify({storeId, themeName: selectedTheme?.themeName})
-              });
-              const themeData = await themeRes.json();
-              results.push({
-                storeId,
-                storeName: store?.name || store?.shopDomain || storeId,
-                shopDomain: store?.shopDomain || '',
-                created: [],
-                skipped: [],
-                errors: [],
-                themeResult: themeData.success
-                  ? {success: true, message: 'Theme import started'}
-                  : {success: false, message: themeData.error || 'Failed'}
-              });
-            } catch {
-              results.push({
-                storeId,
-                storeName: store?.name || store?.shopDomain || storeId,
-                shopDomain: store?.shopDomain || '',
-                created: [],
-                skipped: [],
-                errors: [],
-                themeResult: {success: false, message: 'Request failed'}
-              });
-            }
-          }
+    // Themes
+    if (selectedSteps.includes('themes') && selectedThemeId) {
+      const theme = savedThemes.find(t => t.id === selectedThemeId);
+      let ok = 0;
+      let fail = 0;
+      for (const storeId of selectedStoreIds) {
+        try {
+          const res = await api(`/api/themes/imported/${selectedThemeId}/reimport`, {
+            method: 'POST',
+            body: JSON.stringify({storeId, themeName: theme?.themeName})
+          });
+          const data = await res.json();
+          if (data.success) ok++;
+          else fail++;
+        } catch {
+          fail++;
         }
       }
-
-      setApplyResults(results);
-
-      const totalCreated = results.reduce((sum, s) => sum + (s.created?.length || 0), 0);
-      const totalErrors = results.reduce((sum, s) => sum + (s.errors?.length || 0), 0);
-      const themeSuccessCount = results.filter(r => r.themeResult?.success).length;
-      const themeFailCount = results.filter(r => r.themeResult && !r.themeResult.success).length;
-
-      const msgs = [];
-      if (totalCreated > 0) msgs.push(`Created ${totalCreated} metafield definition(s)`);
-      if (totalCreated === 0 && totalErrors === 0) msgs.push('All metafield definitions already exist');
-      if (totalErrors > 0) msgs.push(`${totalErrors} metafield error(s)`);
-      if (themeSuccessCount > 0) msgs.push(`Theme imported to ${themeSuccessCount} store(s)`);
-      if (themeFailCount > 0) msgs.push(`Theme failed on ${themeFailCount} store(s)`);
-
-      setSuccessMsg(msgs.join('. ') + '.');
-      setCheckResults([]);
-    } catch {
-      setErrorMsg('Failed to apply setup');
-    } finally {
-      setApplying(false);
+      allResults.push({step: 'Themes', success: fail === 0, detail: `${ok} OK, ${fail} failed`});
     }
+
+    // Shipping
+    if (selectedSteps.includes('shipping') && selectedShippingTemplate) {
+      try {
+        const shopDomains = selectedStoreIds
+          .map(id => stores.find(s => s.id === id))
+          .filter(s => s?.shopDomain)
+          .map(s => s.shopDomain);
+        const res = await api('/api/shipping/bulk-apply', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({templateId: selectedShippingTemplate, shopDomains})
+        });
+        const data = await res.json();
+        if (data.success) {
+          allResults.push({step: 'Shipping', success: true, detail: 'Job started'});
+        } else {
+          allResults.push({step: 'Shipping', success: false, detail: data.error || 'Failed'});
+        }
+      } catch {
+        allResults.push({step: 'Shipping', success: false, detail: 'Request failed'});
+      }
+    }
+
+    setResults(allResults);
+    setApplying(false);
+    const successCount = allResults.filter(r => r.success).length;
+    setSuccessMsg(`Setup complete: ${successCount}/${allResults.length} steps succeeded.`);
   };
+
+  const storeChoices = stores.map(s => ({
+    label: `${s.name || s.shopDomain} (${s.shopDomain}.myshopify.com)`,
+    value: s.id
+  }));
+
+  const themeOptions = savedThemes.map(t => ({label: t.themeName, value: t.id}));
+  const shippingOptions = shippingTemplates.map(t => ({
+    label: `${t.name} (${t.sourceStore}) — ${t.zoneCount} zones`,
+    value: t.id
+  }));
+
+  const needsTheme = selectedSteps.includes('themes');
+  const needsShipping = selectedSteps.includes('shipping');
+  const canApply = selectedSteps.length > 0 && selectedStoreIds.length > 0
+    && (!needsTheme || selectedThemeId)
+    && (!needsShipping || selectedShippingTemplate);
 
   return (
     <Page title="Setup Store">
@@ -203,75 +171,124 @@ export default function SetupStore() {
             <Banner tone="success" onDismiss={() => setSuccessMsg('')}>{successMsg}</Banner>
           </Layout.Section>
         )}
-        {errorMsg && (
-          <Layout.Section>
-            <Banner tone="critical" onDismiss={() => setErrorMsg('')}>{errorMsg}</Banner>
-          </Layout.Section>
-        )}
 
         <Layout.Section>
-          <MetafieldDefinitionsTable definitions={definitions} />
+          <Card>
+            <BlockStack gap="400">
+              <Text as="h2" variant="headingMd">Store Setup</Text>
+              <Text variant="bodySm" tone="subdued">
+                Setup metafields, themes, policies, and shipping rates for multiple stores at once.
+              </Text>
+              <InlineStack gap="300">
+                <Button variant="primary" onClick={openModal}>
+                  Open Setup
+                </Button>
+                <Button onClick={() => setPolicyModalOpen(true)}>
+                  Setup Policies
+                </Button>
+              </InlineStack>
+            </BlockStack>
+          </Card>
         </Layout.Section>
-
-        <Layout.Section>
-          <ThemeSelection
-            savedThemes={savedThemes}
-            savedThemesLoading={savedThemesLoading}
-            selectedThemeId={selectedThemeId}
-            onThemeChange={setSelectedThemeId}
-            checking={checking}
-            applying={applying}
-            formatFileSize={formatFileSize}
-          />
-        </Layout.Section>
-
-        <Layout.Section>
-          <StoreSelection
-            stores={stores}
-            storesLoading={storesLoading}
-            selectedStoreIds={selectedStoreIds}
-            onStoreSelectionChange={setSelectedStoreIds}
-            selectedThemeId={selectedThemeId}
-            savedThemes={savedThemes}
-            checking={checking}
-            applying={applying}
-            onCheck={handleCheck}
-            onApply={handleApply}
-          />
-        </Layout.Section>
-
-        {/* Setup Policies button — visible only after stores are selected */}
-        {selectedStoreIds.length > 0 && (
-          <Layout.Section>
-            <InlineStack align="end">
-              <Button variant="secondary" onClick={() => setPolicyModalOpen(true)}>
-                Setup Policies ({selectedStoreIds.length} store{selectedStoreIds.length > 1 ? 's' : ''})
-              </Button>
-            </InlineStack>
-          </Layout.Section>
-        )}
-
-        {checkResults.length > 0 && (
-          <Layout.Section>
-            <CheckResults checkResults={checkResults} />
-          </Layout.Section>
-        )}
-
-        {applyResults.length > 0 && (
-          <Layout.Section>
-            <ApplyResults applyResults={applyResults} />
-          </Layout.Section>
-        )}
       </Layout>
+
+      <Modal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        title="Setup Stores"
+        primaryAction={{
+          content: applying ? 'Applying...' : 'Apply Setup',
+          onAction: handleApply,
+          loading: applying,
+          disabled: !canApply
+        }}
+        secondaryActions={[{content: 'Close', onAction: () => setModalOpen(false)}]}
+        large
+      >
+        <Modal.Section>
+          <BlockStack gap="400">
+            {/* Step 1: Select steps */}
+            <ChoiceList
+              title="Select setup steps"
+              allowMultiple
+              choices={SETUP_STEPS}
+              selected={selectedSteps}
+              onChange={setSelectedSteps}
+              disabled={applying}
+            />
+
+            {/* Theme selector (if themes step selected) */}
+            {needsTheme && (
+              savedThemesLoading ? <Spinner size="small" /> : (
+                <Select
+                  label="Theme to import"
+                  options={[{label: '-- Select Theme --', value: ''}, ...themeOptions]}
+                  value={selectedThemeId}
+                  onChange={setSelectedThemeId}
+                  disabled={applying}
+                />
+              )
+            )}
+
+            {/* Shipping template selector (if shipping step selected) */}
+            {needsShipping && (
+              shippingTemplatesLoading ? <Spinner size="small" /> : (
+                <Select
+                  label="Shipping template"
+                  options={[{label: '-- Select Template --', value: ''}, ...shippingOptions]}
+                  value={selectedShippingTemplate}
+                  onChange={setSelectedShippingTemplate}
+                  disabled={applying}
+                />
+              )
+            )}
+
+            {/* Step 2: Select stores */}
+            {storesLoading ? <Spinner size="small" /> : (
+              <ChoiceList
+                title="Select stores"
+                allowMultiple
+                choices={storeChoices}
+                selected={selectedStoreIds}
+                onChange={setSelectedStoreIds}
+                disabled={applying}
+              />
+            )}
+
+            {/* Results */}
+            {results.length > 0 && (
+              <IndexTable
+                resourceName={{singular: 'step', plural: 'steps'}}
+                itemCount={results.length}
+                headings={[{title: 'Step'}, {title: 'Status'}, {title: 'Detail'}]}
+                selectable={false}
+              >
+                {results.map((r, i) => (
+                  <IndexTable.Row id={r.step} key={r.step} position={i}>
+                    <IndexTable.Cell>
+                      <Text variant="bodySm" fontWeight="semibold">{r.step}</Text>
+                    </IndexTable.Cell>
+                    <IndexTable.Cell>
+                      <Badge tone={r.success ? 'success' : 'critical'}>
+                        {r.success ? '✓' : '✗'}
+                      </Badge>
+                    </IndexTable.Cell>
+                    <IndexTable.Cell>
+                      <Text variant="bodySm">{r.detail}</Text>
+                    </IndexTable.Cell>
+                  </IndexTable.Row>
+                ))}
+              </IndexTable>
+            )}
+          </BlockStack>
+        </Modal.Section>
+      </Modal>
 
       <PolicySetup
         open={policyModalOpen}
         onClose={() => setPolicyModalOpen(false)}
-        selectedStoreIds={selectedStoreIds}
-        onSuccess={msg => {
-          setPolicyModalOpen(false);
-          setSuccessMsg(msg);
-        }}
+        stores={stores}
+        onSuccess={msg => { setPolicyModalOpen(false); setSuccessMsg(msg); }}
       />
     </Page>
   );

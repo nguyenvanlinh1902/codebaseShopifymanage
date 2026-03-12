@@ -28,6 +28,8 @@ import Sheets from './pages/Sheets';
 import Products from './pages/Products';
 import Orders from './pages/Orders';
 import Tracking from './pages/Tracking';
+import OrdersCheckPage from './pages/tracking-status/OrdersCheckTab';
+import TrackingApiKeysPage from './pages/tracking-status/TrackingApiKeysPage';
 import Analytics from './pages/Analytics';
 import Balance from './pages/Balance';
 import CampaignAds from './pages/CampaignAds';
@@ -40,6 +42,7 @@ import DevWebhooks from './pages/DevWebhooks';
 import DevTestImport from './pages/DevTestImport';
 import Guide from './pages/Guide';
 import OrderSearch from './pages/OrderSearch';
+import ShippingManagement from './pages/ShippingManagement';
 import NotFound from './pages/NotFound';
 import LoginPage from './pages/LoginPage';
 import SetupAdminPage from './pages/SetupAdminPage';
@@ -182,12 +185,15 @@ function StandaloneFrame() {
         <Route path="/products" element={<FeatureGuard feature="products"><Products /></FeatureGuard>} />
         <Route path="/orders" element={<FeatureGuard feature="orders"><Orders /></FeatureGuard>} />
         <Route path="/tracking" element={<FeatureGuard feature="tracking"><Tracking /></FeatureGuard>} />
+        <Route path="/tracking-orders-check" element={<FeatureGuard feature="tracking"><OrdersCheckPage /></FeatureGuard>} />
+        <Route path="/tracking-api-keys" element={<FeatureGuard feature="tracking"><TrackingApiKeysPage /></FeatureGuard>} />
         <Route path="/themes" element={<FeatureGuard feature="themes"><Themes /></FeatureGuard>} />
         <Route path="/analytics" element={<FeatureGuard feature="analytics"><Analytics /></FeatureGuard>} />
         <Route path="/balance" element={<FeatureGuard feature="finance"><Balance /></FeatureGuard>} />
         <Route path="/campaign-ads" element={<FeatureGuard feature="finance"><CampaignAds /></FeatureGuard>} />
         <Route path="/disputes" element={<FeatureGuard feature="dispute"><Disputes /></FeatureGuard>} />
         <Route path="/order-search" element={<FeatureGuard feature="order-search"><OrderSearch /></FeatureGuard>} />
+        <Route path="/shipping-management" element={<FeatureGuard feature="shipping"><ShippingManagement /></FeatureGuard>} />
         <Route path="/setup" element={<FeatureGuard feature="setup"><SetupStore /></FeatureGuard>} />
         <Route path="/users" element={isAdmin ? <Users /> : <NotFound />} />
         <Route path="/dev/webhooks" element={isAdmin ? <DevWebhooks /> : <NotFound />} />

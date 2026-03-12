@@ -756,11 +756,11 @@ export async function handleOrderWebhook(req, res) {
  *
  * Columns: STT | Order Number | Email | Created at | Base cost | Size | Type |
  *   Quantity | Product name | Product SKU |
- *   Lineitem price | Shipping Country | Payment Method | Total | Tax |
- *   Fee (PP/ST & Shopify) | Note | Shipping Address | Shipping Name |
+ *   Lineitem price | Shipping Country | Payment Method | Total | Base Cost |
+ *   Fee (PP/ST & Shopify) | Tax | Note | Shipping Address | Shipping Name |
  *   Shipping Address 1 | Shipping Address 2 | Shipping City | Shipping Zip |
  *   Shipping State | Shipping Country Code | Shipping Phone | Custom name | Design |
- *   Product Link | Variant Image
+ *   Link Product | Link Image Variant
  *
  * @param {Object} order - Shopify order object
  * @param {Map<string, {productUrl: string, variantImageUrl: string}>} [productInfoMap] - Optional enrichment map keyed by variant ID
@@ -772,8 +772,9 @@ function formatOrderRowsForSheet(order, productInfoMap) {
   const email = order.email || '';
   const createdAt = order.created_at ? order.created_at.split('T')[0] : '';
   const paymentMethod = order.payment_gateway_names?.[0] || '';
-  const totalPrice = order.total_price || '';
-  const totalTax = order.total_tax || '';
+  const fmtNum = v => (v ? parseFloat(v) : '');
+  const totalPrice = fmtNum(order.total_price);
+  const totalTax = fmtNum(order.total_tax);
   const note = order.note || '';
 
   const buildRow = (item, index) => {
@@ -802,18 +803,19 @@ function formatOrderRowsForSheet(order, productInfoMap) {
       orderNumber, // Order Number
       email, // Email
       createdAt, // Created at
-      '', // Base cost (item-level, manual)
+      '', // Base cost (manual)
       sizeProp ? sizeProp.value : '', // Size
       typeProp ? typeProp.value : '', // Type
       item.quantity || '', // Quantity
       item.name || '', // Product name
       item.sku || '', // Product SKU
-      item.price || '', // Lineitem price
+      fmtNum(item.price), // Lineitem price
       addr.country_code || '', // Shipping Country
       isFirst ? paymentMethod : '', // Payment Method
       isFirst ? totalPrice : '', // Total
-      isFirst ? totalTax : '', // Tax
+      '', // Base Cost (manual)
       '', // Fee (PP/ST & Shopify) - manual
+      isFirst ? totalTax : '', // Tax
       isFirst ? note : '', // Note
       isFirst ? addr.address1 || '' : '', // Shipping Address
       addr.name || '', // Shipping Name
@@ -826,8 +828,8 @@ function formatOrderRowsForSheet(order, productInfoMap) {
       addr.phone || '', // Shipping Phone
       customNameValue, // Custom name (all non-mapped properties)
       designProp ? `${designProp.name}: ${designProp.value}` : '', // Design
-      productInfo.productUrl || '', // Product Link
-      productInfo.variantImageUrl || '' // Variant Image
+      productInfo.productUrl || '', // Link Product
+      productInfo.variantImageUrl || '' // Link Image Variant
     ];
   };
 

@@ -79,6 +79,11 @@ export default function OrderSearch() {
 
   const storeOptions = stores.map(s => ({label: s.name || s.shopDomain, value: s.id}));
 
+  const fmtUSD = (amount) => {
+    const num = parseFloat(amount || 0);
+    return `$${num.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+  };
+
   const rows = results.map(o => [
     <Link key={o.id} url={o.adminUrl} external>
       {o.name}
@@ -86,6 +91,9 @@ export default function OrderSearch() {
     new Date(o.createdAt).toLocaleDateString(),
     o.customer?.name || 'N/A',
     `${o.currency} ${o.total}`,
+    fmtUSD(o.baseCost),
+    fmtUSD(o.fee),
+    fmtUSD(o.tax),
     <Badge key={`f-${o.id}`} tone={FULFILLMENT_TONE[o.fulfillmentStatus] || 'new'}>
       {o.fulfillmentStatus}
     </Badge>,
@@ -131,8 +139,8 @@ export default function OrderSearch() {
             ) : results.length > 0 ? (
               <>
                 <DataTable
-                  columnContentTypes={['text', 'text', 'text', 'numeric', 'text', 'text']}
-                  headings={['Order', 'Date', 'Customer', 'Total', 'Fulfillment', 'Payment']}
+                  columnContentTypes={['text', 'text', 'text', 'numeric', 'numeric', 'numeric', 'numeric', 'text', 'text']}
+                  headings={['Order', 'Date', 'Customer', 'Total', 'Base Cost', 'Fee', 'Tax', 'Fulfillment', 'Payment']}
                   rows={rows}
                 />
                 {pageInfo.hasNextPage && (

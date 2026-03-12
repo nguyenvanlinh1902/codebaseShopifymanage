@@ -1,9 +1,18 @@
 {
   "includeCoAuthoredBy": false,
-  "statusLine": {
-    "type": "command",
-    "command": "node .claude/statusline.cjs",
-    "padding": 0
+  "permissions": {
+    "allow": [
+      "Bash(gemini -y -m gemini-3-flash-preview \"Research Shopify GraphQL Admin API for shipping management \\(2024-2025\\). Cover::*)",
+      "WebFetch(domain:community.shopify.com)",
+      "WebFetch(domain:www.trackingmore.com)",
+      "WebFetch(domain:docs.ship24.com)",
+      "WebFetch(domain:www.aftership.com)",
+      "WebFetch(domain:parcelsapp.com)",
+      "WebFetch(domain:www.ship24.com)"
+    ],
+    "additionalDirectories": [
+      "/Users/linhnv/Project/toolShopify/plans/reports"
+    ]
   },
   "hooks": {
     "SessionStart": [
@@ -98,5 +107,10 @@
         ]
       }
     ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "node .claude/statusline.cjs",
+    "padding": 0
   }
 }

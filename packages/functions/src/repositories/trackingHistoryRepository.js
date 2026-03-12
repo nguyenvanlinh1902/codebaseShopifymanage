@@ -1,4 +1,4 @@
-import {getFirestore} from 'firebase-admin/firestore';
+import {getFirestore, FieldValue} from 'firebase-admin/firestore';
 
 /**
  * Tracking History Repository
@@ -117,6 +117,39 @@ export class TrackingHistoryRepository {
       .limit(limit)
       .get();
     return snapshot.docs.map(doc => doc.data());
+  }
+
+  /**
+   * Add a tracking detail to an import job
+   */
+  async addTrackingDetail(importId, detail) {
+    await this.collection.doc(importId).update({
+      trackingDetails: FieldValue.arrayUnion(detail),
+      updatedAt: new Date().toISOString()
+    });
+  }
+
+  /**
+   * Get imports by multiple store IDs
+   */
+  async getByStoreIds(storeIds, limit = 200) {
+    if (!storeIds || storeIds.length === 0) return [];
+    // Firestore 'in' supports max 30 values
+    const chunks = [];
+    for (let i = 0; i < storeIds.length; i += 30) {
+      chunks.push(storeIds.slice(i, i + 30));
+    }
+    const results = [];
+    for (const chunk of chunks) {
+      const snapshot = await this.collection
+        .where('storeId', 'in', chunk)
+        .orderBy('createdAt', 'desc')
+        .limit(limit)
+        .get();
+      results.push(...snapshot.docs.map(doc => doc.data()));
+    }
+    results.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    return results.slice(0, limit);
   }
 
   /**

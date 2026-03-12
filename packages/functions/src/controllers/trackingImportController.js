@@ -1,21 +1,16 @@
 import {TrackingHistoryRepository} from '../repositories/trackingHistoryRepository.js';
 import {StoreRepository} from '../repositories/storeRepository.js';
-import {SheetRepository} from '../repositories/sheetRepository.js';
 import {ShopifyService} from '../services/shopifyService.js';
-import {GoogleSheetsService} from '../services/googleSheetsService.js';
-import {GoogleAuthRepository} from '../repositories/googleAuthRepository.js';
 import {
   parseTrackingExcel,
   validateTrackingRecord,
   mapToTrackingData,
-  convertRowsToRecords,
   generateTrackingTemplate
 } from '../helpers/excelParser.js';
 import {getOrCreateTopic, publishMessage} from '../helpers/pubsubHelper.js';
 
 const trackingHistoryRepo = new TrackingHistoryRepository();
 const storeRepo = new StoreRepository();
-const sheetRepo = new SheetRepository();
 
 const TRACKING_IMPORT_TOPIC = 'tracking-import';
 
@@ -230,170 +225,50 @@ export async function downloadTemplate(req, res) {
 }
 
 /**
- * Initialize GoogleSheetsService from sheet document (3-tier fallback)
+ * Get flattened tracking records across all imports
+ * Supports filtering by storeId or groupId (comma-separated storeIds)
  */
-async function initSheetsService(sheet) {
-  if (sheet.credentials) return new GoogleSheetsService(sheet.credentials);
-  if (sheet.refreshToken) return GoogleSheetsService.createFromRefreshToken(sheet.refreshToken);
-  return GoogleSheetsService.createFromAnyAuth(new GoogleAuthRepository());
-}
-
-/**
- * Preview tracking data from a Google Sheet tab
- */
-export async function previewSheet(req, res) {
+export async function getTrackingRecords(req, res) {
   try {
-    const {sheetId, tabName} = req.query;
+    const {storeId, storeIds} = req.query;
 
-    if (!sheetId || !tabName) {
-      return res.status(400).json({
-        success: false,
-        error: 'sheetId and tabName are required'
-      });
+    let imports;
+    if (storeIds) {
+      const ids = storeIds.split(',').filter(Boolean);
+      imports = await trackingHistoryRepo.getByStoreIds(ids);
+    } else if (storeId) {
+      imports = await trackingHistoryRepo.getByStore(storeId);
+    } else {
+      imports = await trackingHistoryRepo.getAll(200);
     }
 
-    const sheet = await sheetRepo.getById(sheetId);
-    if (!sheet) {
-      return res.status(404).json({success: false, error: 'Sheet not found'});
+    // Flatten trackingDetails from all imports
+    const records = [];
+    for (const imp of imports) {
+      if (!imp.trackingDetails || imp.trackingDetails.length === 0) continue;
+      for (const detail of imp.trackingDetails) {
+        records.push({
+          ...detail,
+          importId: imp.id,
+          storeId: imp.storeId,
+          storeName: imp.storeName,
+          shopDomain: imp.shopDomain,
+          source: imp.fileName,
+          importDate: imp.createdAt
+        });
+      }
     }
 
-    const sheetsService = await initSheetsService(sheet);
-    const rows = await sheetsService.readSheet(sheet.spreadsheetId, `${tabName}`);
-    const records = convertRowsToRecords(rows);
-
-    // Validate and map for preview
-    const preview = records.map((record, index) => {
-      const errors = validateTrackingRecord(record);
-      const mapped = errors.length === 0 ? mapToTrackingData(record) : null;
-      return {
-        row: index + 2,
-        valid: errors.length === 0,
-        errors,
-        data: mapped || record
-      };
-    });
+    // Sort by updatedAt desc
+    records.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
 
     return res.json({
       success: true,
-      data: {
-        records: preview,
-        totalRows: records.length,
-        validCount: preview.filter(r => r.valid).length,
-        invalidCount: preview.filter(r => !r.valid).length
-      }
+      data: records,
+      total: records.length
     });
   } catch (error) {
-    console.error('Preview sheet error:', error);
-    return res.status(500).json({success: false, error: error.message});
-  }
-}
-
-/**
- * Import tracking from a Google Sheet tab (same PubSub flow as Excel)
- */
-export async function importFromSheet(req, res) {
-  try {
-    const {storeId, sheetId, tabName} = req.body;
-    const userId = req.body.userId || 'default-user';
-
-    if (!storeId || !sheetId || !tabName) {
-      return res.status(400).json({
-        success: false,
-        error: 'storeId, sheetId, and tabName are required'
-      });
-    }
-
-    // Get store and sheet
-    const store = await storeRepo.getById(storeId);
-    if (!store) {
-      return res.status(404).json({success: false, error: 'Store not found'});
-    }
-
-    const sheet = await sheetRepo.getById(sheetId);
-    if (!sheet) {
-      return res.status(404).json({success: false, error: 'Sheet not found'});
-    }
-
-    // Read data from Google Sheet
-    const sheetsService = await initSheetsService(sheet);
-    const rows = await sheetsService.readSheet(sheet.spreadsheetId, `${tabName}`);
-    const trackingRecords = convertRowsToRecords(rows);
-
-    if (trackingRecords.length === 0) {
-      return res.status(400).json({
-        success: false,
-        error: 'No tracking records found in sheet'
-      });
-    }
-
-    // Validate and map (reuse same logic as Excel)
-    const validRecords = [];
-    const invalidRecords = [];
-
-    trackingRecords.forEach((record, index) => {
-      const errors = validateTrackingRecord(record);
-      if (errors.length > 0) {
-        invalidRecords.push({row: index + 2, record, errors});
-      } else {
-        validRecords.push(mapToTrackingData(record));
-      }
-    });
-
-    if (validRecords.length === 0) {
-      return res.status(400).json({
-        success: false,
-        error: 'No valid tracking records found in sheet',
-        invalidRecords
-      });
-    }
-
-    // Create import job (same as Excel flow)
-    const importJob = await trackingHistoryRepo.create({
-      userId,
-      storeId,
-      storeName: store.name,
-      shopDomain: store.shopDomain,
-      fileName: `${sheet.title || sheet.name} / ${tabName}`,
-      totalRecords: validRecords.length,
-      processedRecords: 0,
-      successCount: 0,
-      failedCount: 0,
-      status: 'pending',
-      source: 'google_sheet',
-      invalidRecords: invalidRecords.length > 0 ? invalidRecords : []
-    });
-
-    // Publish to PubSub (same topic as Excel)
-    await getOrCreateTopic(TRACKING_IMPORT_TOPIC);
-
-    const publishPromises = validRecords.map((record, index) => {
-      const message = {
-        importId: importJob.id,
-        storeId,
-        shopDomain: store.shopDomain,
-        accessToken: store.accessToken,
-        trackingData: record,
-        recordIndex: index,
-        totalRecords: validRecords.length
-      };
-      return publishMessage(TRACKING_IMPORT_TOPIC, message);
-    });
-
-    await Promise.all(publishPromises);
-
-    await trackingHistoryRepo.updateProgress(importJob.id, {status: 'processing'});
-
-    return res.json({
-      success: true,
-      message: `Import job created. Processing ${validRecords.length} tracking records in background.`,
-      data: {
-        importId: importJob.id,
-        totalRecords: validRecords.length,
-        invalidRecords: invalidRecords.length
-      }
-    });
-  } catch (error) {
-    console.error('Import from sheet error:', error);
+    console.error('Get tracking records error:', error);
     return res.status(500).json({success: false, error: error.message});
   }
 }
@@ -431,6 +306,15 @@ export async function processTrackingImport(messageData) {
       trackingUrl
     });
 
+    // Store per-order tracking detail
+    await trackingHistoryRepo.addTrackingDetail(importId, {
+      orderNumber,
+      trackingNumber,
+      carrier: trackingCompany || '',
+      success: true,
+      updatedAt: new Date().toISOString()
+    });
+
     // Update import progress (success)
     const importJob = await trackingHistoryRepo.getById(importId);
     await trackingHistoryRepo.updateProgress(importId, {
@@ -447,6 +331,16 @@ export async function processTrackingImport(messageData) {
     }
   } catch (error) {
     console.error(`Failed to update tracking for order ${trackingData.orderNumber}:`, error);
+
+    // Store per-order tracking detail (failure)
+    await trackingHistoryRepo.addTrackingDetail(importId, {
+      orderNumber: trackingData.orderNumber,
+      trackingNumber: trackingData.trackingNumber,
+      carrier: trackingData.trackingCompany || '',
+      success: false,
+      error: error.message || 'Unknown error',
+      updatedAt: new Date().toISOString()
+    });
 
     // Update import progress (failure)
     const importJob = await trackingHistoryRepo.getById(importId);

@@ -225,7 +225,7 @@ export class ImportHistoryRepository {
 
     for (let i = 0; i < products.length; i++) {
       const docRef = subCol.doc(String(i));
-      batch.set(docRef, {index: i, ...products[i]});
+      batch.set(docRef, JSON.parse(JSON.stringify({index: i, ...products[i]})));
     }
 
     await batch.commit();

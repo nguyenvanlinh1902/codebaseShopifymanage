@@ -28,8 +28,8 @@ const STATUS_TABS = [
 
 const FINAL_STATUSES = ['delivered', 'expired'];
 
-function getDaysStale(statusChangedAt, createdAt) {
-  const ref = statusChangedAt || createdAt;
+function getDaysStale(lastEventDate, createdAt) {
+  const ref = lastEventDate || createdAt;
   if (!ref) return null;
   return Math.floor((Date.now() - new Date(ref).getTime()) / (1000 * 60 * 60 * 24));
 }
@@ -95,7 +95,7 @@ export default function StatusListTab({
         {FINAL_STATUSES.includes(item.status) ? (
           <Text variant="bodySm" tone="subdued">—</Text>
         ) : (() => {
-          const days = getDaysStale(item.statusChangedAt, item.firstEventDate || item.createdAt);
+          const days = getDaysStale(item.lastEventDate, item.firstEventDate || item.createdAt);
           if (days === null) return <Text variant="bodySm" tone="subdued">—</Text>;
           return <Badge tone={days > 7 ? 'critical' : 'success'}>{days}d</Badge>;
         })()}

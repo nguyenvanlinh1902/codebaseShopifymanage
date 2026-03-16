@@ -136,10 +136,17 @@ export default function TemplatesTab({templates, loading, stores, onCreate, onDe
                             <BlockStack gap="100">
                               <Text variant="bodyMd" fontWeight="semibold">{zone.zoneName}</Text>
                               {zone.rates?.map((rate, ri) => (
-                                <InlineStack key={ri} gap="200">
+                                <InlineStack key={ri} gap="200" blockAlign="center" wrap={false}>
                                   <Text variant="bodySm">{rate.name}:</Text>
                                   <Badge>{rate.price} {rate.currencyCode}</Badge>
                                   {!rate.active && <Badge tone="warning">Inactive</Badge>}
+                                  {rate.conditions?.map((c, ci) => (
+                                    <Badge key={ci} tone="info">
+                                      {c.field === 'TOTAL_PRICE'
+                                        ? `Order ≥ ${c.criteria?.amount} ${c.criteria?.currencyCode || ''}`
+                                        : `Weight ≥ ${c.criteria?.value} ${c.criteria?.unit || ''}`}
+                                    </Badge>
+                                  ))}
                                 </InlineStack>
                               ))}
                             </BlockStack>

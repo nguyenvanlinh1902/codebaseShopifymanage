@@ -170,6 +170,17 @@ export default function StoreRatesTab({stores, groups, onError, onSuccess}) {
           )}
         </IndexTable.Cell>
         <IndexTable.Cell>
+          <InlineStack gap="100">
+            {row.conditions?.length > 0 ? row.conditions.map((c, ci) => (
+              <Badge key={ci} tone="info">
+                {c.field === 'TOTAL_PRICE'
+                  ? `Order ≥ ${c.criteria?.amount} ${c.criteria?.currencyCode || ''}`
+                  : `Weight ≥ ${c.criteria?.value} ${c.criteria?.unit || ''}`}
+              </Badge>
+            )) : <Text variant="bodySm" tone="subdued">None</Text>}
+          </InlineStack>
+        </IndexTable.Cell>
+        <IndexTable.Cell>
           {row.active ? <Badge tone="success">Active</Badge> : <Badge>Inactive</Badge>}
         </IndexTable.Cell>
       </IndexTable.Row>
@@ -232,7 +243,7 @@ export default function StoreRatesTab({stores, groups, onError, onSuccess}) {
               itemCount={rows.length}
               headings={[
                 {title: 'Profile'}, {title: 'Zone'}, {title: 'Rate Name'},
-                {title: 'Price'}, {title: 'Status'}
+                {title: 'Price'}, {title: 'Conditions'}, {title: 'Status'}
               ]}
               selectable={false}
             >

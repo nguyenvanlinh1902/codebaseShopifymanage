@@ -8,6 +8,7 @@ import {
   Text,
   Button,
   Select,
+  TextField,
   IndexTable,
   Badge,
   SkeletonBodyText,
@@ -19,6 +20,7 @@ import useTrackingCheckProgress from '../../hooks/use-tracking-check-progress';
 
 const STATUS_TONE_MAP = {
   pending: 'attention',
+  info_received: 'info',
   in_transit: 'info',
   delivered: 'success',
   expired: undefined,
@@ -49,10 +51,24 @@ export default function OrdersCheckPage() {
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
   const [recheckLoading, setRecheckLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [apiKeys, setApiKeys] = useState([]);
+  const [selectedKeyId, setSelectedKeyId] = useState('');
 
   // Job progress via Firestore onSnapshot (like Import Product)
   const [jobId, setJobId] = useState(null);
   const {job, clearJob} = useTrackingCheckProgress(jobId);
+
+  // Fetch API keys
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await api('/api/tracking-status/keys');
+        const data = await res.json();
+        if (data.success) setApiKeys(data.data);
+      } catch { /* ignore */ }
+    })();
+  }, []);
 
   // Auto-select first store
   useEffect(() => {
@@ -145,6 +161,7 @@ export default function OrdersCheckPage() {
       clearJob();
 
       const body = {};
+      if (selectedKeyId) body.keyId = selectedKeyId;
       if (filterType === 'all') {
         body.storeIds = stores.map(s => s.id);
       } else if (filterType === 'store' && selectedStore) {
@@ -219,7 +236,8 @@ export default function OrdersCheckPage() {
           trackingNumber: item.trackingNumber,
           carrier: item.carrier,
           orderNumber: item.orderNumber,
-          storeId: item.storeId
+          storeId: item.storeId,
+          ...(selectedKeyId && {keyId: selectedKeyId})
         })
       });
       const data = await res.json();
@@ -248,7 +266,7 @@ export default function OrdersCheckPage() {
     } finally {
       setCheckingId(null);
     }
-  }, []);
+  }, [selectedKeyId]);
 
   // Store name lookup
   const storeNameMap = {};
@@ -270,10 +288,21 @@ export default function OrdersCheckPage() {
     ...(groups.length > 0 ? [{label: 'Group', value: 'group'}] : [])
   ];
 
+  // Search filter
+  const filteredOrders = searchQuery
+    ? orders.filter(o => {
+      const q = searchQuery.toLowerCase();
+      return (
+        (o.orderNumber || '').toLowerCase().includes(q) ||
+        (o.trackingNumber || '').toLowerCase().includes(q)
+      );
+    })
+    : orders;
+
   // Stats
-  const newCount = orders.filter(o => !o.inHistory).length;
-  const existingCount = orders.filter(o => o.inHistory).length;
-  const deliveredCount = orders.filter(o => o.isDelivered).length;
+  const newCount = filteredOrders.filter(o => !o.inHistory).length;
+  const existingCount = filteredOrders.filter(o => o.inHistory).length;
+  const deliveredCount = filteredOrders.filter(o => o.isDelivered).length;
 
   // Progress from job doc
   const progressPercent = job?.totalStores
@@ -281,7 +310,7 @@ export default function OrdersCheckPage() {
     : 0;
   const currentStore = job?.stores?.find(s => s.status === 'pending');
 
-  const rowMarkup = orders.map((item, index) => {
+  const rowMarkup = filteredOrders.map((item, index) => {
     const rowKey = `${item.trackingNumber}-${item.storeId}`;
     const isCheckingThis = checkingId === rowKey;
     return (
@@ -453,6 +482,20 @@ export default function OrdersCheckPage() {
                       />
                     </div>
                   )}
+                  <div style={{minWidth: '160px'}}>
+                    <Select
+                      label="API Key"
+                      options={[
+                        {label: 'Auto', value: ''},
+                        ...apiKeys.map(k => ({
+                          label: `${k.name}${k.status !== 'active' ? ` (${k.status})` : ''}`,
+                          value: k.id
+                        }))
+                      ]}
+                      value={selectedKeyId}
+                      onChange={setSelectedKeyId}
+                    />
+                  </div>
                   <InlineStack gap="300">
                     <Button
                       onClick={fetchOrders}
@@ -481,8 +524,20 @@ export default function OrdersCheckPage() {
             </Card>
 
             {orders.length > 0 && (
+              <TextField
+                label=""
+                placeholder="Search by order # or tracking #"
+                value={searchQuery}
+                onChange={setSearchQuery}
+                clearButton
+                onClearButtonClick={() => setSearchQuery('')}
+                autoComplete="off"
+              />
+            )}
+
+            {filteredOrders.length > 0 && (
               <InlineStack gap="400">
-                <Badge>Total: {orders.length}</Badge>
+                <Badge>Total: {filteredOrders.length}</Badge>
                 <Badge tone="new">New: {newCount}</Badge>
                 <Badge tone="info">In History: {existingCount}</Badge>
                 <Badge tone="success">Delivered: {deliveredCount}</Badge>
@@ -491,11 +546,11 @@ export default function OrdersCheckPage() {
 
             {loading && !orders.length && <SkeletonBodyText lines={8} />}
 
-            {orders.length > 0 && (
+            {filteredOrders.length > 0 && (
               <Card padding="0">
                 <IndexTable
                   resourceName={{singular: 'order', plural: 'orders'}}
-                  itemCount={orders.length}
+                  itemCount={filteredOrders.length}
                   headings={[
                     {title: 'Order #'},
                     {title: 'Store'},
@@ -527,6 +582,14 @@ export default function OrdersCheckPage() {
               <Card>
                 <Text tone="subdued" alignment="center">
                   No fulfilled orders with tracking found
+                </Text>
+              </Card>
+            )}
+
+            {!loading && searchQuery && filteredOrders.length === 0 && orders.length > 0 && (
+              <Card>
+                <Text tone="subdued" alignment="center">
+                  No orders matching "{searchQuery}"
                 </Text>
               </Card>
             )}

@@ -17,44 +17,6 @@ const TIME_OPTIONS = [
 
 const ALL_STORES_VALUE = '__all__';
 
-/** Aggregate multiple analytics results into one */
-function aggregateResults(results) {
-  const summary = {totalOrders: 0, totalRevenue: 0, totalSales: 0, avgOrderValue: 0};
-  const statusMap = {};
-  const timeMap = {};
-
-  for (const r of results) {
-    if (r.summary) {
-      summary.totalOrders += r.summary.totalOrders || 0;
-      summary.totalRevenue += r.summary.totalRevenue || 0;
-      summary.totalSales += r.summary.totalSales || 0;
-    }
-    if (r.byStatus) {
-      for (const [k, v] of Object.entries(r.byStatus)) {
-        statusMap[k] = (statusMap[k] || 0) + v;
-      }
-    }
-    if (r.timeSeries) {
-      for (const row of r.timeSeries) {
-        if (!timeMap[row.date]) {
-          timeMap[row.date] = {date: row.date, orders: 0, revenue: 0, totalSales: 0};
-        }
-        timeMap[row.date].orders += row.orders || 0;
-        timeMap[row.date].revenue += row.revenue || 0;
-        timeMap[row.date].totalSales += row.totalSales || 0;
-      }
-    }
-  }
-
-  summary.avgOrderValue =
-    summary.totalOrders > 0
-      ? Math.round((summary.totalRevenue / summary.totalOrders) * 100) / 100
-      : 0;
-
-  const timeSeries = Object.values(timeMap).sort((a, b) => a.date.localeCompare(b.date));
-  return {summary, byStatus: statusMap, timeSeries};
-}
-
 export default function Analytics() {
   const {stores, groups, isAdmin, user} = usePermittedStores();
 
@@ -112,17 +74,12 @@ export default function Analytics() {
         const {from, to} = resolvePeriodDates(timePeriod, userTimezone);
 
         if (selectedStoreId === ALL_STORES_VALUE) {
-          const ids = storeIds.split(',').filter(Boolean);
-          const results = await Promise.all(
-            ids.map(id => {
-              const params = new URLSearchParams({storeId: id, from, to});
-              if (userTimezone) params.set('timezone', userTimezone);
-              return api(`/api/analytics/order-analytics?${params}`)
-                .then(r => r.json())
-                .then(r => (r.success ? r.data : null));
-            })
-          );
-          if (!cancelled) setAnalyticsData(aggregateResults(results.filter(Boolean)));
+          // Single batch request instead of N individual requests
+          const params = new URLSearchParams({storeIds, from, to});
+          if (userTimezone) params.set('timezone', userTimezone);
+          const res = await api(`/api/analytics/order-analytics-batch?${params}`);
+          const result = await res.json();
+          if (!cancelled && result.success) setAnalyticsData(result.data);
         } else {
           const params = new URLSearchParams({storeId: selectedStoreId, from, to});
           if (userTimezone) params.set('timezone', userTimezone);

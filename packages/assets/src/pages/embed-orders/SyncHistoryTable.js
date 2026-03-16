@@ -1,15 +1,28 @@
 import React from 'react';
-import {Card, BlockStack, Text, DataTable, Badge} from '@shopify/polaris';
+import {Card, BlockStack, Text, DataTable, Badge, SkeletonBodyText} from '@shopify/polaris';
+import PaginationControls from '../../components/pagination-controls';
 
 /**
  * Displays sync history table with configuration details
  */
-export default function SyncHistoryTable({syncConfigs}) {
-  if (!syncConfigs || syncConfigs.length === 0) {
+export default function SyncHistoryTable({
+  syncConfigs,
+  loading,
+  pagination,
+  page,
+  perPage,
+  search,
+  onPageChange,
+  onPerPageChange,
+  onSearchChange
+}) {
+  const totalItems = pagination?.total ?? (syncConfigs || []).length;
+
+  if (!syncConfigs || totalItems === 0) {
     return null;
   }
 
-  const configRows = syncConfigs.map(config => [
+  const configRows = (syncConfigs || []).map(config => [
     config.spreadsheetId ? (
       <a
         key={`link-${config.id}`}
@@ -37,11 +50,26 @@ export default function SyncHistoryTable({syncConfigs}) {
         <Text variant="headingMd" as="h2">
           Sync History
         </Text>
-        <DataTable
-          columnContentTypes={['text', 'text', 'text', 'numeric', 'text']}
-          headings={['Sheet', 'Target Tab', 'Status', 'Orders Synced', 'Last Sync']}
-          rows={configRows}
+        <PaginationControls
+          page={page}
+          totalPages={pagination?.totalPages || 1}
+          totalItems={totalItems}
+          perPage={perPage}
+          onPageChange={onPageChange}
+          onPerPageChange={onPerPageChange}
+          search={search}
+          onSearchChange={onSearchChange}
+          searchPlaceholder="Search by sheet, tab, or status..."
         />
+        {loading ? (
+          <SkeletonBodyText lines={3} />
+        ) : (
+          <DataTable
+            columnContentTypes={['text', 'text', 'text', 'numeric', 'text']}
+            headings={['Sheet', 'Target Tab', 'Status', 'Orders Synced', 'Last Sync']}
+            rows={configRows}
+          />
+        )}
       </BlockStack>
     </Card>
   );

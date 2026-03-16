@@ -2,43 +2,41 @@ import React from 'react';
 import {
   Card,
   BlockStack,
-  InlineStack,
   Text,
   Button,
   Box,
-  Select,
   IndexTable,
   Badge,
-  SkeletonBodyText
+  SkeletonBodyText,
+  Tabs
 } from '@shopify/polaris';
+import PaginationControls from '../../components/pagination-controls';
 
-const STATUS_OPTIONS = [
-  {label: 'All statuses', value: ''},
-  {label: 'Pending', value: 'pending'},
-  {label: 'In Transit', value: 'in_transit'},
-  {label: 'Delivered', value: 'delivered'},
-  {label: 'Expired', value: 'expired'},
-  {label: 'Not Found', value: 'not_found'},
-  {label: 'Pick Up', value: 'pick_up'},
-  {label: 'Undelivered', value: 'undelivered'},
-  {label: 'Alert', value: 'alert'}
+const STATUS_TABS = [
+  {id: '', content: 'All'},
+  {id: 'pending', content: 'Pending'},
+  {id: 'info_received', content: 'Info Received'},
+  {id: 'in_transit', content: 'In Transit'},
+  {id: 'delivered', content: 'Delivered'},
+  {id: 'expired', content: 'Expired'},
+  {id: 'not_found', content: 'Not Found'},
+  {id: 'pick_up', content: 'Pick Up'},
+  {id: 'undelivered', content: 'Undelivered'},
+  {id: 'alert', content: 'Alert'},
+  {id: '__stale__', content: 'Stale (7d+)'}
 ];
 
-const LIMIT_OPTIONS = [
-  {label: '50', value: '50'},
-  {label: '100', value: '100'},
-  {label: '500', value: '500'},
-  {label: '1000', value: '1000'}
-];
+const FINAL_STATUSES = ['delivered', 'expired'];
 
-const FILTER_TYPE_OPTIONS = [
-  {label: 'All Stores', value: 'all'},
-  {label: 'Store', value: 'store'},
-  {label: 'Group', value: 'group'}
-];
+function getDaysStale(statusChangedAt, createdAt) {
+  const ref = statusChangedAt || createdAt;
+  if (!ref) return null;
+  return Math.floor((Date.now() - new Date(ref).getTime()) / (1000 * 60 * 60 * 24));
+}
 
 const STATUS_TONE_MAP = {
   pending: 'attention',
+  info_received: 'info',
   in_transit: 'info',
   delivered: 'success',
   expired: undefined,
@@ -62,28 +60,16 @@ export default function StatusListTab({
   loading,
   statusFilter,
   onFilterChange,
-  statusLimit,
-  onLimitChange,
-  onRefresh,
-  onRecheck,
-  recheckLoading,
-  stores = [],
-  groups = [],
-  filterType,
-  onFilterTypeChange,
-  selectedStore,
-  onStoreChange,
-  selectedGroup,
-  onGroupChange
+  pagination,
+  page,
+  perPage,
+  search,
+  onPageChange,
+  onPerPageChange,
+  onSearchChange,
+  onHide
 }) {
-  const storeOptions = stores.map(s => ({label: s.name || s.shopDomain || s.id, value: s.id}));
-  const groupOptions = groups.map(g => ({label: g.name, value: g.id}));
-
-  // Build store name lookup (prefer name over shopDomain)
-  const storeMap = {};
-  stores.forEach(s => { storeMap[s.id] = s.name || s.shopDomain || s.id; });
-
-  const hasSelection = filterType === 'all' || (filterType === 'store' && selectedStore) || (filterType === 'group' && selectedGroup);
+  const selectedTabIndex = STATUS_TABS.findIndex(t => t.id === statusFilter);
 
   if (loading && !statuses.length) {
     return (
@@ -97,122 +83,90 @@ export default function StatusListTab({
 
   const rowMarkup = statuses.map((item, index) => (
     <IndexTable.Row id={item.id || item.trackingNumber} key={item.id || item.trackingNumber} position={index}>
+      <IndexTable.Cell>{formatDate(item.firstEventDate || item.createdAt)}</IndexTable.Cell>
+      <IndexTable.Cell>{item.orderNumber || '—'}</IndexTable.Cell>
       <IndexTable.Cell>
         <Text variant="bodyMd" fontWeight="semibold">{item.trackingNumber}</Text>
       </IndexTable.Cell>
-      <IndexTable.Cell>{item.orderNumber || '—'}</IndexTable.Cell>
-      <IndexTable.Cell>
-        <Text variant="bodySm">{storeMap[item.storeId] || item.storeId || '—'}</Text>
-      </IndexTable.Cell>
-      <IndexTable.Cell>{item.carrier || '—'}</IndexTable.Cell>
       <IndexTable.Cell>
         <Badge tone={STATUS_TONE_MAP[item.status]}>{item.status || 'unknown'}</Badge>
       </IndexTable.Cell>
       <IndexTable.Cell>
-        <div style={{maxWidth: '280px', wordBreak: 'break-word', whiteSpace: 'normal'}}>
+        {FINAL_STATUSES.includes(item.status) ? (
+          <Text variant="bodySm" tone="subdued">—</Text>
+        ) : (() => {
+          const days = getDaysStale(item.statusChangedAt, item.firstEventDate || item.createdAt);
+          if (days === null) return <Text variant="bodySm" tone="subdued">—</Text>;
+          return <Badge tone={days > 7 ? 'critical' : 'success'}>{days}d</Badge>;
+        })()}
+      </IndexTable.Cell>
+      <IndexTable.Cell>{formatDate(item.lastEventDate || item.lastCheckedAt)}</IndexTable.Cell>
+      <IndexTable.Cell>
+        <div style={{maxWidth: '300px', wordBreak: 'break-word', whiteSpace: 'normal'}}>
           <Text variant="bodySm">{item.lastEvent || '—'}</Text>
         </div>
       </IndexTable.Cell>
-      <IndexTable.Cell>{formatDate(item.lastCheckedAt)}</IndexTable.Cell>
       <IndexTable.Cell>
         <Text variant="bodySm" tone="subdued">{item.apiKeyName || '—'}</Text>
       </IndexTable.Cell>
+      {onHide && (
+        <IndexTable.Cell>
+          <Button
+            size="slim"
+            tone="critical"
+            variant="plain"
+            onClick={() => onHide(item.id || item.trackingNumber)}
+          >
+            Hide
+          </Button>
+        </IndexTable.Cell>
+      )}
     </IndexTable.Row>
   ));
 
   return (
-    <Box padding="400">
+    <Box>
       <BlockStack gap="400">
-        {/* Store/Group Filter */}
-        <Card>
-          <InlineStack gap="300" blockAlign="end" wrap={false}>
-            <div style={{minWidth: '100px'}}>
-              <Select
-                label="Filter by"
-                options={FILTER_TYPE_OPTIONS}
-                value={filterType}
-                onChange={(v) => { onFilterTypeChange(v); onStoreChange(''); onGroupChange(''); }}
-              />
-            </div>
-            {filterType === 'store' && (
-              <div style={{minWidth: '200px'}}>
-                <Select
-                  label="Store"
-                  options={[{label: '-- Select Store --', value: ''}, ...storeOptions]}
-                  value={selectedStore}
-                  onChange={onStoreChange}
-                />
-              </div>
-            )}
-            {filterType === 'group' && (
-              <div style={{minWidth: '200px'}}>
-                <Select
-                  label="Group"
-                  options={[{label: '-- Select Group --', value: ''}, ...groupOptions]}
-                  value={selectedGroup}
-                  onChange={onGroupChange}
-                />
-              </div>
-            )}
-            <div style={{minWidth: '140px'}}>
-              <Select
-                label="Status"
-                options={STATUS_OPTIONS}
-                value={statusFilter}
-                onChange={onFilterChange}
-              />
-            </div>
-            <div style={{minWidth: '80px'}}>
-              <Select
-                label="Limit"
-                options={LIMIT_OPTIONS}
-                value={statusLimit}
-                onChange={onLimitChange}
-              />
-            </div>
-            <Button onClick={onRefresh} disabled={loading || !hasSelection}>Refresh</Button>
-            {onRecheck && (
-              <Button variant="primary" onClick={onRecheck} loading={recheckLoading} disabled={!hasSelection}>
-                Recheck All
-              </Button>
-            )}
-          </InlineStack>
-        </Card>
-
-        {!hasSelection && (
-          <Card>
-            <Text tone="subdued">Select a Store or Group to view tracking history.</Text>
-          </Card>
-        )}
+        {/* Status Tabs */}
+        <Tabs
+          tabs={STATUS_TABS}
+          selected={selectedTabIndex >= 0 ? selectedTabIndex : 0}
+          onSelect={i => onFilterChange(STATUS_TABS[i].id)}
+          fitted
+        />
 
         {/* Table */}
-        {hasSelection && (
-          <>
-            <Card padding="0">
-              <IndexTable
-                resourceName={resourceName}
-                itemCount={statuses.length}
-                headings={[
-                  {title: 'Tracking #'},
-                  {title: 'Order'},
-                  {title: 'Store'},
-                  {title: 'Carrier'},
-                  {title: 'Status'},
-                  {title: 'Last Event'},
-                  {title: 'Last Checked'},
-                  {title: 'API Key'}
-                ]}
-                selectable={false}
-              >
-                {rowMarkup}
-              </IndexTable>
-            </Card>
-
-            <Text variant="bodySm" tone="subdued" alignment="end">
-              Showing {statuses.length} tracking(s)
-            </Text>
-          </>
-        )}
+        <PaginationControls
+          page={page}
+          totalPages={pagination?.totalPages || 1}
+          totalItems={pagination?.total || 0}
+          perPage={perPage}
+          onPageChange={onPageChange}
+          onPerPageChange={onPerPageChange}
+          search={search}
+          onSearchChange={onSearchChange}
+          searchPlaceholder="Search tracking number, order, note..."
+        />
+        <Card padding="0">
+          <IndexTable
+            resourceName={resourceName}
+            itemCount={statuses.length}
+            headings={[
+              {title: 'Shipment Date'},
+              {title: 'Order number'},
+              {title: 'Tracking number'},
+              {title: 'Status'},
+              {title: 'Days Stale'},
+              {title: 'Last updated date'},
+              {title: 'Note'},
+              {title: 'API Key'},
+              ...(onHide ? [{title: 'Actions'}] : [])
+            ]}
+            selectable={false}
+          >
+            {rowMarkup}
+          </IndexTable>
+        </Card>
       </BlockStack>
     </Box>
   );

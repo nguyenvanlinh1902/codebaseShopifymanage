@@ -7,11 +7,15 @@ const router = new Router();
 router.get('/keys', controller.listApiKeys);
 router.post('/keys', controller.createApiKey);
 router.put('/keys/:id', controller.updateApiKey);
+router.post('/keys/sync-all', controller.syncAllKeysQuota);
 router.post('/keys/:id/sync-quota', controller.syncKeyQuota);
 router.delete('/keys/:id', controller.deleteApiKey);
 
 // Tracking statuses
 router.get('/statuses', controller.listStatuses);
+router.post('/statuses/clear-invalid', controller.clearInvalidStatuses);
+router.post('/statuses/:id/hide', controller.hideTracking);
+router.post('/statuses/:id/unhide', controller.unhideTracking);
 router.get('/statuses/:trackingNumber', controller.getStatus);
 router.post('/trigger', controller.triggerStatusCheck);
 

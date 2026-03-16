@@ -13,5 +13,8 @@ service cloud.firestore {
     match /tracking_check_jobs/{document} {
       allow read: if true;
     }
+    match /tracking_recheck_jobs/{document} {
+      allow read: if true;
+    }
   }
 }

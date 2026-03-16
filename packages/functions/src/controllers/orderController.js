@@ -100,7 +100,7 @@ async function processOrderSync(jobId, store, sheet, sheetName, params) {
     });
 
     // Get orders from Shopify
-    const orders = await shopifyService.getOrders(params);
+    const {orders} = await shopifyService.getOrders(params);
 
     // Add store ID to each order
     const ordersWithStoreId = orders.map(order => ({
@@ -161,7 +161,7 @@ export async function getOrders(req, res) {
     });
 
     // Get orders
-    const orders = await shopifyService.getOrders({
+    const {orders} = await shopifyService.getOrders({
       limit: parseInt(limit),
       status
     });

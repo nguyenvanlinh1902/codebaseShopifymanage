@@ -1,102 +1,78 @@
-import React, {useState, useEffect, useCallback} from 'react';
+import React, {useState, useEffect} from 'react';
 import {Page, Layout, Banner} from '@shopify/polaris';
-import {api} from '../../helpers/api';
+import {useTrackingStatusApi} from '../../hooks/use-tracking-status-api';
 import ApiKeysTab from './ApiKeysTab';
 
 /**
  * Standalone page for managing 17TRACK API keys
  */
 export default function TrackingApiKeysPage() {
-  const [apiKeys, setApiKeys] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const trackingApi = useTrackingStatusApi();
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
 
-  const fetchApiKeys = useCallback(async () => {
-    try {
-      setLoading(true);
-      const res = await api('/api/tracking-status/keys');
-      const data = await res.json();
-      if (data.success) setApiKeys(data.data);
-      else setError(data.error);
-    } catch {
-      setError('Failed to fetch API keys');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { fetchApiKeys(); }, [fetchApiKeys]);
+  useEffect(() => {
+    trackingApi.fetchApiKeys().catch(err => setError(err.message));
+  }, [trackingApi.fetchApiKeys]);
 
   const handleCreate = async (keyData) => {
     try {
       setError(null);
-      const res = await api('/api/tracking-status/keys', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(keyData)
-      });
-      const data = await res.json();
-      if (data.success) {
-        setSuccess('API key created');
-        fetchApiKeys();
-      } else {
-        setError(data.error);
-      }
-    } catch {
-      setError('Failed to create API key');
+      await trackingApi.createApiKey(keyData);
+      setSuccess('API key created');
+      trackingApi.fetchApiKeys();
+    } catch (err) {
+      setError(err.message);
     }
   };
 
   const handleUpdate = async (id, updates) => {
     try {
       setError(null);
-      const res = await api(`/api/tracking-status/keys/${id}`, {
-        method: 'PUT',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(updates)
-      });
-      const data = await res.json();
-      if (data.success) {
-        setSuccess('API key updated');
-        fetchApiKeys();
-      } else {
-        setError(data.error);
-      }
-    } catch {
-      setError('Failed to update API key');
+      await trackingApi.updateApiKey(id, updates);
+      setSuccess('API key updated');
+      trackingApi.fetchApiKeys();
+    } catch (err) {
+      setError(err.message);
     }
   };
 
   const handleSyncQuota = async (id) => {
     try {
       setError(null);
-      const res = await api(`/api/tracking-status/keys/${id}/sync-quota`, {method: 'POST'});
-      const data = await res.json();
-      if (data.success) {
-        setSuccess(`Quota synced: ${data.data.quotaRemain} remaining`);
-        fetchApiKeys();
+      const quota = await trackingApi.syncKeyQuota(id);
+      setSuccess(`Quota synced: ${quota.quotaRemain} remaining`);
+      trackingApi.fetchApiKeys();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleSyncAllQuota = async () => {
+    try {
+      setError(null);
+      const results = await trackingApi.syncAllKeysQuota();
+      const failed = results.filter(r => !r.success);
+      if (failed.length) {
+        setSuccess(`Synced ${results.length - failed.length}/${results.length} keys`);
+        setError(`Failed: ${failed.map(f => f.name).join(', ')}`);
       } else {
-        setError(data.error);
+        setSuccess(`All ${results.length} keys synced`);
       }
-    } catch {
-      setError('Failed to sync quota');
+      trackingApi.fetchApiKeys();
+    } catch (err) {
+      setError(err.message);
     }
   };
 
   const handleDelete = async (id) => {
     try {
       setError(null);
-      const res = await api(`/api/tracking-status/keys/${id}`, {method: 'DELETE'});
-      const data = await res.json();
-      if (data.success) {
-        setSuccess('API key deleted');
-        fetchApiKeys();
-      } else {
-        setError(data.error);
-      }
-    } catch {
-      setError('Failed to delete API key');
+      await trackingApi.deleteApiKey(id);
+      setSuccess('API key deleted');
+      trackingApi.fetchApiKeys();
+    } catch (err) {
+      setError(err.message);
     }
   };
 
@@ -115,13 +91,14 @@ export default function TrackingApiKeysPage() {
         )}
         <Layout.Section>
           <ApiKeysTab
-            apiKeys={apiKeys}
-            loading={loading}
+            apiKeys={trackingApi.apiKeys}
+            loading={trackingApi.keysLoading}
             onCreate={handleCreate}
             onUpdate={handleUpdate}
             onDelete={handleDelete}
             onSyncQuota={handleSyncQuota}
-            onRefresh={fetchApiKeys}
+            onSyncAll={handleSyncAllQuota}
+            onRefresh={trackingApi.fetchApiKeys}
           />
         </Layout.Section>
       </Layout>

@@ -1,4 +1,4 @@
-import React, {useState, useEffect} from 'react';
+import React, {useState, useEffect, useRef} from 'react';
 import {Page, Banner, Badge, BlockStack} from '@shopify/polaris';
 import {api} from '../helpers/api';
 import {useGoogleAuth} from '../hooks/useGoogleAuth';
@@ -22,6 +22,11 @@ export default function EmbedOrders() {
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
   const [addingSheet, setAddingSheet] = useState(false);
+  const [syncPagination, setSyncPagination] = useState({page: 1, perPage: 10, total: 0, totalPages: 1});
+  const [syncPage, setSyncPage] = useState(1);
+  const [syncPerPage, setSyncPerPage] = useState(10);
+  const [syncSearch, setSyncSearch] = useState('');
+  const [syncFetching, setSyncFetching] = useState(false);
 
   const {startAuth, getPickerToken} = useGoogleAuth();
   const {openPicker} = useGooglePicker();
@@ -45,16 +50,36 @@ export default function EmbedOrders() {
     else if (sheets.length === 1) setSelectedSheet(sheets[0].id);
   }, [syncConfigs, sheets]);
 
+  // Single effect: fetch + auto-reset page when filters change
+  const syncFiltersRef = useRef({syncPerPage, syncSearch});
+  useEffect(() => {
+    const prev = syncFiltersRef.current;
+    const filtersChanged =
+      prev.syncPerPage !== syncPerPage ||
+      prev.syncSearch !== syncSearch;
+    syncFiltersRef.current = {syncPerPage, syncSearch};
+
+    if (filtersChanged && syncPage !== 1) {
+      setSyncPage(1);
+      return;
+    }
+    fetchSyncConfigs();
+  }, [syncPage, syncPerPage, syncSearch]);
+
   const fetchData = async () => {
     try {
       setLoading(true);
+      const params = new URLSearchParams({page: syncPage, perPage: syncPerPage, search: syncSearch});
       const [sheetsRes, configsRes] = await Promise.all([
         api('/api/embed/sheets'),
-        api('/api/embed/orders/sync-configs')
+        api(`/api/embed/orders/sync-configs?${params}`)
       ]);
       const [sheetsData, configsData] = await Promise.all([sheetsRes.json(), configsRes.json()]);
       if (sheetsData.success) setSheets(sheetsData.data);
-      if (configsData.success) setSyncConfigs(configsData.data);
+      if (configsData.success) {
+        setSyncConfigs(configsData.data);
+        if (configsData.pagination) setSyncPagination(configsData.pagination);
+      }
     } catch (err) {
       setError('Failed to load data');
     } finally {
@@ -64,11 +89,18 @@ export default function EmbedOrders() {
 
   const fetchSyncConfigs = async () => {
     try {
-      const response = await api('/api/embed/orders/sync-configs');
+      setSyncFetching(true);
+      const params = new URLSearchParams({page: syncPage, perPage: syncPerPage, search: syncSearch});
+      const response = await api(`/api/embed/orders/sync-configs?${params}`);
       const result = await response.json();
-      if (result.success) setSyncConfigs(result.data);
+      if (result.success) {
+        setSyncConfigs(result.data);
+        if (result.pagination) setSyncPagination(result.pagination);
+      }
     } catch (err) {
       console.error('Error fetching sync configs:', err);
+    } finally {
+      setSyncFetching(false);
     }
   };
 
@@ -238,7 +270,17 @@ export default function EmbedOrders() {
           onSetupSync={handleSetupSync}
         />
 
-        <SyncHistoryTable syncConfigs={syncConfigs} />
+        <SyncHistoryTable
+          syncConfigs={syncConfigs}
+          loading={syncFetching}
+          pagination={syncPagination}
+          page={syncPage}
+          perPage={syncPerPage}
+          search={syncSearch}
+          onPageChange={setSyncPage}
+          onPerPageChange={setSyncPerPage}
+          onSearchChange={setSyncSearch}
+        />
       </BlockStack>
     </Page>
   );

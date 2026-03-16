@@ -23,6 +23,15 @@ const GET_DELIVERY_PROFILES_QUERY = `
                         id
                         name
                         active
+                        methodConditions {
+                          id
+                          field
+                          operator
+                          conditionCriteria {
+                            ... on MoneyV2 { amount currencyCode }
+                            ... on Weight { unit value }
+                          }
+                        }
                         rateProvider {
                           ... on DeliveryRateDefinition {
                             id
@@ -75,7 +84,13 @@ export async function getDeliveryProfiles(shopifyService) {
             active: md.active,
             rateDefinitionId: md.rateProvider?.id || null,
             price: md.rateProvider?.price?.amount || null,
-            currencyCode: md.rateProvider?.price?.currencyCode || null
+            currencyCode: md.rateProvider?.price?.currencyCode || null,
+            conditions: (md.methodConditions || []).map(c => ({
+              id: c.id,
+              field: c.field,
+              operator: c.operator,
+              criteria: c.conditionCriteria
+            }))
           }))
         }))
       }))
@@ -192,16 +207,38 @@ export async function replaceDeliveryProfileRates(shopifyService, templateProfil
           // Collect existing methodDefinition IDs to delete
           const idsToDelete = liveZone.rates.map(r => r.methodDefinitionId);
 
-          // Build new rates to create
-          const methodDefinitionsToCreate = templateRates.map(r => ({
-            name: r.name,
-            rateDefinition: {
-              price: {
-                amount: parseFloat(r.price),
-                currencyCode: r.currencyCode || 'USD'
+          // Build new rates to create (with conditions)
+          const methodDefinitionsToCreate = templateRates.map(r => {
+            const def = {
+              name: r.name,
+              rateDefinition: {
+                price: {
+                  amount: parseFloat(r.price),
+                  currencyCode: r.currencyCode || 'USD'
+                }
               }
+            };
+
+            // Restore price/weight conditions (e.g. free shipping when order >= $90.01)
+            if (r.conditions?.length) {
+              const priceConditions = r.conditions
+                .filter(c => c.field === 'TOTAL_PRICE')
+                .map(c => ({
+                  criteria: {amount: parseFloat(c.criteria.amount), currencyCode: c.criteria.currencyCode},
+                  operator: c.operator
+                }));
+              const weightConditions = r.conditions
+                .filter(c => c.field === 'TOTAL_WEIGHT')
+                .map(c => ({
+                  criteria: {value: parseFloat(c.criteria.value), unit: c.criteria.unit},
+                  operator: c.operator
+                }));
+              if (priceConditions.length) def.priceConditionsToCreate = priceConditions;
+              if (weightConditions.length) def.weightConditionsToCreate = weightConditions;
             }
-          }));
+
+            return def;
+          });
 
           try {
             // Single mutation: delete old + create new in same zone

@@ -1,12 +1,26 @@
 import React, {useState, useEffect, useCallback, useRef} from 'react';
 import {
-  Page, Layout, Card, Banner, Select, BlockStack, Text,
-  Button, InlineStack, Modal, InlineGrid, SkeletonBodyText,
-  Divider, Badge
+  Page,
+  Layout,
+  Card,
+  Banner,
+  Select,
+  BlockStack,
+  Text,
+  Button,
+  InlineStack,
+  Modal,
+  InlineGrid,
+  SkeletonBodyText,
+  Divider,
+  Badge,
+  ChoiceList
 } from '@shopify/polaris';
 import {ImportIcon, ClockIcon} from '@shopify/polaris-icons';
 import {api} from '../helpers/api';
 import {usePermittedStores} from '../hooks/usePermittedStores';
+import {useTrackingStatusApi} from '../hooks/use-tracking-status-api';
+import useRecheckProgress from '../hooks/use-recheck-progress';
 import ExcelUploadTab from './tracking/ExcelUploadTab';
 import ImportHistoryTable from './tracking/ImportHistoryTable';
 import ImportDetailsModal from './tracking/ImportDetailsModal';
@@ -17,9 +31,13 @@ function StatCard({label, value, tone}) {
   return (
     <Card>
       <BlockStack gap="200">
-        <Text variant="bodySm" tone="subdued">{label}</Text>
+        <Text variant="bodySm" tone="subdued">
+          {label}
+        </Text>
         <InlineStack align="space-between" blockAlign="center">
-          <Text variant="headingLg" fontWeight="bold">{value ?? '—'}</Text>
+          <Text variant="headingLg" fontWeight="bold">
+            {value ?? '—'}
+          </Text>
           {tone && <Badge tone={tone}>{label}</Badge>}
         </InlineStack>
       </BlockStack>
@@ -43,9 +61,7 @@ const STAT_CARDS = [
 export default function Tracking() {
   const {stores, groups, loading} = usePermittedStores();
 
-  // Stats
-  const [stats, setStats] = useState(null);
-  const [statsLoading, setStatsLoading] = useState(false);
+  const trackingApi = useTrackingStatusApi();
   const [triggering, setTriggering] = useState(false);
 
   // Import modal
@@ -57,6 +73,17 @@ export default function Tracking() {
   const [importHistory, setImportHistory] = useState([]);
   const [selectedImport, setSelectedImport] = useState(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [importPagination, setImportPagination] = useState({page: 1, perPage: 10, total: 0, totalPages: 1});
+  const [importPage, setImportPage] = useState(1);
+  const [importPerPage, setImportPerPage] = useState(10);
+  const [importSearch, setImportSearch] = useState('');
+  const [importFetching, setImportFetching] = useState(false);
+
+  // Recheck modal + progress
+  const [recheckModalOpen, setRecheckModalOpen] = useState(false);
+  const [recheckStatuses, setRecheckStatuses] = useState(['pending', 'in_transit', 'not_found']);
+  const [recheckJobId, setRecheckJobId] = useState(null);
+  const {job: recheckJob, clearJob: clearRecheckJob} = useRecheckProgress(recheckJobId);
 
   // Excel state
   const [file, setFile] = useState(null);
@@ -69,15 +96,27 @@ export default function Tracking() {
   const [historyStore, setHistoryStore] = useState('');
   const [historyGroup, setHistoryGroup] = useState('');
   const [historyStatusFilter, setHistoryStatusFilter] = useState('');
-  const [historyLimit, setHistoryLimit] = useState('100');
+  const [historyPagination, setHistoryPagination] = useState({page: 1, perPage: 10, total: 0, totalPages: 1});
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyPerPage, setHistoryPerPage] = useState(10);
+  const [historySearch, setHistorySearch] = useState('');
 
   // Feedback
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
 
   // Fetch tracking history (statuses from Firestore)
+  const storesRef = useRef(stores);
+  const groupsRef = useRef(groups);
+  storesRef.current = stores;
+  groupsRef.current = groups;
+
   const fetchHistory = useCallback(async () => {
-    const params = new URLSearchParams({limit: historyLimit});
+    const params = new URLSearchParams({
+      page: historyPage,
+      perPage: historyPerPage,
+      search: historySearch
+    });
     if (historyStatusFilter) params.set('status', historyStatusFilter);
 
     if (historyFilterType === 'all') {
@@ -85,9 +124,14 @@ export default function Tracking() {
     } else if (historyFilterType === 'store' && historyStore) {
       params.set('storeId', historyStore);
     } else if (historyFilterType === 'group' && historyGroup) {
-      const group = groups.find(g => g.id === historyGroup);
-      const ids = stores.filter(s => s.groupId === historyGroup || s.group === group?.name).map(s => s.id);
-      if (!ids.length) { setHistoryStatuses([]); return; }
+      const group = groupsRef.current.find(g => g.id === historyGroup);
+      const ids = storesRef.current
+        .filter(s => s.groupId === historyGroup || s.group === group?.name)
+        .map(s => s.id);
+      if (!ids.length) {
+        setHistoryStatuses([]);
+        return;
+      }
       params.set('storeIds', ids.join(','));
     } else {
       return;
@@ -97,71 +141,161 @@ export default function Tracking() {
       setHistoryLoading(true);
       const res = await api(`/api/tracking-status/statuses?${params}`);
       const data = await res.json();
-      if (data.success) setHistoryStatuses(data.data);
-    } catch { /* silent */ } finally {
+      if (data.success) {
+        setHistoryStatuses(data.data);
+        if (data.pagination) setHistoryPagination(data.pagination);
+      }
+    } catch {
+      /* silent */
+    } finally {
       setHistoryLoading(false);
     }
-  }, [historyFilterType, historyStore, historyGroup, historyStatusFilter, historyLimit, stores, groups]);
+  }, [
+    historyFilterType,
+    historyStore,
+    historyGroup,
+    historyStatusFilter,
+    historyPage,
+    historyPerPage,
+    historySearch
+  ]);
 
+  // Single effect: fetch + auto-reset page when filters change
+  const historyFiltersRef = useRef({
+    historyFilterType, historyStore, historyGroup,
+    historyStatusFilter, historyPerPage, historySearch
+  });
   useEffect(() => {
-    if (historyFilterType === 'all' || (historyFilterType === 'store' && historyStore) || (historyFilterType === 'group' && historyGroup)) {
+    const prev = historyFiltersRef.current;
+    const filtersChanged =
+      prev.historyFilterType !== historyFilterType ||
+      prev.historyStore !== historyStore ||
+      prev.historyGroup !== historyGroup ||
+      prev.historyStatusFilter !== historyStatusFilter ||
+      prev.historyPerPage !== historyPerPage ||
+      prev.historySearch !== historySearch;
+    historyFiltersRef.current = {
+      historyFilterType, historyStore, historyGroup,
+      historyStatusFilter, historyPerPage, historySearch
+    };
+
+    if (filtersChanged && historyPage !== 1) {
+      setHistoryPage(1);
+      return;
+    }
+
+    if (
+      historyFilterType === 'all' ||
+      (historyFilterType === 'store' && historyStore) ||
+      (historyFilterType === 'group' && historyGroup)
+    ) {
       fetchHistory();
     }
-  }, [fetchHistory, historyFilterType, historyStore, historyGroup]);
+  }, [
+    historyPage, historyPerPage, historySearch,
+    historyFilterType, historyStore, historyGroup,
+    historyStatusFilter
+  ]);
 
   // Auto-select first store for import
   useEffect(() => {
     if (stores.length > 0 && !importStore) setImportStore(stores[0].id);
   }, [stores]);
 
-  // Fetch dashboard stats
-  const fetchStats = useCallback(async () => {
-    try {
-      setStatsLoading(true);
-      const res = await api('/api/tracking-status/stats');
-      const data = await res.json();
-      if (data.success) setStats(data.data);
-    } catch { /* silent */ } finally {
-      setStatsLoading(false);
-    }
-  }, []);
+  useEffect(() => {
+    trackingApi.fetchStats();
+  }, [trackingApi.fetchStats]);
 
-  useEffect(() => { fetchStats(); }, [fetchStats]);
-
-  // Recheck existing trackings
-  const handleRecheck = async () => {
+  const handleRecheck = async selectedStatuses => {
     try {
       setTriggering(true);
       setError(null);
-      const res = await api('/api/tracking-status/trigger', {method: 'POST'});
-      const data = await res.json();
-      if (data.success) {
-        setSuccessMessage(`Recheck complete: ${data.data.registered} registered, ${data.data.queried} queried, ${data.data.updated} updated`);
-        fetchStats();
-        fetchHistory();
+      setSuccessMessage(null);
+      const d = await trackingApi.triggerRecheck(selectedStatuses);
+      if (d.jobId) {
+        setRecheckJobId(d.jobId);
       } else {
-        setError(data.error);
+        setSuccessMessage('No trackings to recheck');
+        setTriggering(false);
       }
-    } catch {
-      setError('Failed to trigger recheck');
-    } finally {
+    } catch (err) {
+      setError(err.message || 'Failed to trigger recheck');
       setTriggering(false);
     }
   };
 
-  // Fetch import history
-  const fetchImportHistory = useCallback(async () => {
-    try {
-      const url = importStore
-        ? `/api/tracking/import-history?storeId=${importStore}`
-        : '/api/tracking/import-history';
-      const res = await api(url);
-      const data = await res.json();
-      if (data.success) setImportHistory(data.data);
-    } catch { /* silent */ }
-  }, [importStore]);
+  // When recheck job completes, refresh data
+  useEffect(() => {
+    if (!recheckJob || recheckJob.status !== 'completed') return;
+    setTriggering(false);
+    setSuccessMessage(
+      `Recheck complete: ${recheckJob.totalRegistered || 0} registered, ` +
+        `${recheckJob.totalQueried || 0} queried, ${recheckJob.totalUpdated || 0} updated`
+    );
+    trackingApi.fetchStats();
+    fetchHistory();
+    const timer = setTimeout(() => {
+      setRecheckJobId(null);
+      clearRecheckJob();
+    }, 8000);
+    return () => clearTimeout(timer);
+  }, [recheckJob?.status]);
 
-  useEffect(() => { fetchImportHistory(); }, [fetchImportHistory]);
+  const handleClearInvalid = async () => {
+    try {
+      setError(null);
+      const d = await trackingApi.clearInvalid();
+      setSuccessMessage(`Cleared ${d.deleted} invalid tracking(s)`);
+      fetchHistory();
+      trackingApi.fetchStats();
+    } catch (err) {
+      setError(err.message || 'Failed to clear invalid trackings');
+    }
+  };
+
+  // Fetch import history
+  const fetchImportHistory = async () => {
+    try {
+      setImportFetching(true);
+      const params = new URLSearchParams({
+        page: importPage,
+        perPage: importPerPage,
+        search: importSearch
+      });
+      if (importStore) params.set('storeId', importStore);
+      const res = await api(`/api/tracking/import-history?${params}`);
+      const data = await res.json();
+      if (data.success) {
+        setImportHistory(data.data);
+        if (data.pagination) setImportPagination(data.pagination);
+      }
+    } catch {
+      /* silent */
+    } finally {
+      setImportFetching(false);
+    }
+  };
+
+  // Single effect: fetch + auto-reset page when filters change
+  const importFiltersRef = useRef({importStore, importPerPage, importSearch});
+  useEffect(() => {
+    const prev = importFiltersRef.current;
+    const filtersChanged =
+      prev.importStore !== importStore ||
+      prev.importPerPage !== importPerPage ||
+      prev.importSearch !== importSearch;
+    importFiltersRef.current = {importStore, importPerPage, importSearch};
+
+    if (filtersChanged && importPage !== 1) {
+      setImportPage(1);
+      return;
+    }
+    fetchImportHistory();
+  }, [importPage, importPerPage, importSearch, importStore]);
+
+  // Keep a ref to the latest fetchImportHistory for polling
+  const fetchImportHistoryRef = useRef(fetchImportHistory);
+  fetchImportHistoryRef.current = fetchImportHistory;
 
   // Auto-refresh while jobs are processing
   useEffect(() => {
@@ -169,9 +303,11 @@ export default function Tracking() {
       i => i.status === 'processing' || i.status === 'pending'
     );
     if (!hasProcessing) return;
-    const id = setInterval(() => { fetchImportHistory(); }, 3000);
+    const id = setInterval(() => {
+      fetchImportHistoryRef.current();
+    }, 3000);
     return () => clearInterval(id);
-  }, [importHistory, fetchImportHistory]);
+  }, [importHistory]);
 
   // Polling after import
   const pollRef = useRef(null);
@@ -179,25 +315,36 @@ export default function Tracking() {
     if (pollRef.current) clearInterval(pollRef.current);
     let count = 0;
     pollRef.current = setInterval(() => {
-      fetchImportHistory();
+      fetchImportHistoryRef.current();
       count++;
       if (count >= 10) clearInterval(pollRef.current);
     }, 3000);
-  }, [fetchImportHistory]);
+  }, []);
 
   useEffect(() => {
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
   }, []);
 
   const handleDropZoneDrop = useCallback((_drop, accepted) => {
-    setFile(accepted[0]); setError(null);
+    setFile(accepted[0]);
+    setError(null);
   }, []);
 
   const handleUpload = async () => {
-    if (!importStore) { setError('Please select a store first'); return; }
-    if (!file) { setError('Please upload an Excel file first'); return; }
+    if (!importStore) {
+      setError('Please select a store first');
+      return;
+    }
+    if (!file) {
+      setError('Please upload an Excel file first');
+      return;
+    }
     try {
-      setUploading(true); setError(null); setSuccessMessage(null);
+      setUploading(true);
+      setError(null);
+      setSuccessMessage(null);
       const reader = new FileReader();
       reader.onload = async e => {
         const res = await api('/api/tracking/upload-excel', {
@@ -211,14 +358,22 @@ export default function Tracking() {
         });
         const data = await res.json();
         if (data.success) {
-          setSuccessMessage(data.message); setFile(null);
-          setImportModalOpen(false); startPolling();
+          setSuccessMessage(data.message);
+          setFile(null);
+          setImportModalOpen(false);
+          startPolling();
         } else setError(data.error || 'Failed to upload file');
         setUploading(false);
       };
-      reader.onerror = () => { setError('Failed to read file'); setUploading(false); };
+      reader.onerror = () => {
+        setError('Failed to read file');
+        setUploading(false);
+      };
       reader.readAsDataURL(file);
-    } catch { setError('Failed to upload file'); setUploading(false); }
+    } catch {
+      setError('Failed to upload file');
+      setUploading(false);
+    }
   };
 
   const handleDownloadTemplate = async () => {
@@ -227,10 +382,15 @@ export default function Tracking() {
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = url; a.download = 'tracking-import-template.xlsx';
-      document.body.appendChild(a); a.click(); a.remove();
+      a.href = url;
+      a.download = 'tracking-import-template.xlsx';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
       window.URL.revokeObjectURL(url);
-    } catch { setError('Failed to download template'); }
+    } catch {
+      setError('Failed to download template');
+    }
   };
 
   // Options
@@ -239,34 +399,100 @@ export default function Tracking() {
     ...stores.map(s => ({label: s.name || s.shopDomain, value: s.id}))
   ];
 
-  const statusStats = stats?.statuses || {};
+  const statusStats = trackingApi.stats?.statuses || {};
 
   return (
     <Page
       title="Tracking Dashboard"
+      fullWidth
       subtitle="Overview, import tracking, and manage tracking records"
       primaryAction={{
         content: 'Import Tracking',
         icon: ImportIcon,
-        onAction: () => { setImportModalOpen(true); setError(null); setSuccessMessage(null); }
+        onAction: () => {
+          setImportModalOpen(true);
+          setError(null);
+          setSuccessMessage(null);
+        }
       }}
       secondaryActions={[
         {
           content: 'Import History',
           icon: ClockIcon,
-          onAction: () => { setHistoryModalOpen(true); fetchImportHistory(); }
+          onAction: () => {
+            setHistoryModalOpen(true);
+            fetchImportHistory();
+          }
         }
       ]}
     >
       <Layout>
         {error && !importModalOpen && (
           <Layout.Section>
-            <Banner tone="critical" onDismiss={() => setError(null)}>{error}</Banner>
+            <Banner tone="critical" onDismiss={() => setError(null)}>
+              {error}
+            </Banner>
           </Layout.Section>
         )}
         {successMessage && (
           <Layout.Section>
-            <Banner tone="success" onDismiss={() => setSuccessMessage(null)}>{successMessage}</Banner>
+            <Banner tone="success" onDismiss={() => setSuccessMessage(null)}>
+              {successMessage}
+            </Banner>
+          </Layout.Section>
+        )}
+
+        {/* Recheck Progress */}
+        {recheckJob && (
+          <Layout.Section>
+            <Card>
+              <BlockStack gap="300">
+                <InlineStack align="space-between" blockAlign="center">
+                  <Text variant="headingMd" as="h2">
+                    {recheckJob.status === 'completed' ? 'Recheck Complete' : 'Rechecking...'}
+                  </Text>
+                  <Badge tone={recheckJob.status === 'completed' ? 'success' : 'attention'}>
+                    {recheckJob.totalGroups
+                      ? Math.round((recheckJob.processedGroups / recheckJob.totalGroups) * 100)
+                      : 0}
+                    %
+                  </Badge>
+                </InlineStack>
+                <div
+                  style={{
+                    width: '100%',
+                    height: '8px',
+                    backgroundColor: '#e4e5e7',
+                    borderRadius: '4px',
+                    overflow: 'hidden'
+                  }}
+                >
+                  <div
+                    style={{
+                      width: `${recheckJob.totalGroups ? Math.round((recheckJob.processedGroups / recheckJob.totalGroups) * 100) : 0}%`,
+                      height: '100%',
+                      backgroundColor: '#008060',
+                      borderRadius: '4px',
+                      transition: 'width 0.3s ease'
+                    }}
+                  />
+                </div>
+                <InlineStack gap="400">
+                  <Text variant="bodySm" tone="subdued">
+                    {recheckJob.processedGroups}/{recheckJob.totalGroups} groups
+                  </Text>
+                  <Text variant="bodySm" tone="success">
+                    {recheckJob.totalUpdated || 0} updated
+                  </Text>
+                  <Text variant="bodySm" tone="subdued">
+                    {recheckJob.totalRegistered || 0} registered
+                  </Text>
+                  <Text variant="bodySm" tone="subdued">
+                    {recheckJob.totalQueried || 0} queried
+                  </Text>
+                </InlineStack>
+              </BlockStack>
+            </Card>
           </Layout.Section>
         )}
 
@@ -274,15 +500,28 @@ export default function Tracking() {
         <Layout.Section>
           <BlockStack gap="300">
             <InlineStack align="space-between" blockAlign="center">
-              <Text variant="headingMd" fontWeight="semibold">Status Overview</Text>
+              <Text variant="headingMd" fontWeight="semibold">
+                Status Overview
+              </Text>
               <InlineStack gap="300">
-                <Button onClick={fetchStats} disabled={statsLoading} size="slim">Refresh Stats</Button>
-                <Button variant="primary" onClick={handleRecheck} loading={triggering} size="slim">
+                <Button
+                  onClick={trackingApi.fetchStats}
+                  disabled={trackingApi.statsLoading}
+                  size="slim"
+                >
+                  Refresh Stats
+                </Button>
+                <Button
+                  variant="primary"
+                  onClick={() => setRecheckModalOpen(true)}
+                  loading={triggering}
+                  size="slim"
+                >
                   Recheck All
                 </Button>
               </InlineStack>
             </InlineStack>
-            {statsLoading && !stats ? (
+            {trackingApi.statsLoading && !trackingApi.stats ? (
               <SkeletonBodyText lines={2} />
             ) : (
               <InlineGrid columns={{xs: 2, sm: 3, md: 6}} gap="300">
@@ -301,17 +540,18 @@ export default function Tracking() {
         {/* Tracking History (from 17TRACK checks) */}
         <Layout.Section>
           <BlockStack gap="300">
-            <Text variant="headingMd" fontWeight="semibold">Tracking History</Text>
+            <Text variant="headingMd" fontWeight="semibold">
+              Tracking History
+            </Text>
             <StatusListTab
               statuses={historyStatuses}
               loading={historyLoading}
               statusFilter={historyStatusFilter}
               onFilterChange={setHistoryStatusFilter}
-              statusLimit={historyLimit}
-              onLimitChange={setHistoryLimit}
               onRefresh={fetchHistory}
               onRecheck={handleRecheck}
               recheckLoading={triggering}
+              onClearInvalid={handleClearInvalid}
               stores={stores}
               groups={groups}
               filterType={historyFilterType}
@@ -320,6 +560,13 @@ export default function Tracking() {
               onStoreChange={setHistoryStore}
               selectedGroup={historyGroup}
               onGroupChange={setHistoryGroup}
+              pagination={historyPagination}
+              page={historyPage}
+              perPage={historyPerPage}
+              search={historySearch}
+              onPageChange={setHistoryPage}
+              onPerPageChange={setHistoryPerPage}
+              onSearchChange={setHistorySearch}
             />
           </BlockStack>
         </Layout.Section>
@@ -335,7 +582,9 @@ export default function Tracking() {
         <Modal.Section>
           <BlockStack gap="400">
             {error && importModalOpen && (
-              <Banner tone="critical" onDismiss={() => setError(null)}>{error}</Banner>
+              <Banner tone="critical" onDismiss={() => setError(null)}>
+                {error}
+              </Banner>
             )}
             <div style={{minWidth: '240px', maxWidth: '400px'}}>
               <Select
@@ -369,17 +618,67 @@ export default function Tracking() {
         <Modal.Section>
           <ImportHistoryTable
             importHistory={importHistory}
-            onViewDetails={imp => { setSelectedImport(imp); setShowDetailsModal(true); setHistoryModalOpen(false); }}
+            loading={importFetching}
+            onViewDetails={imp => {
+              setSelectedImport(imp);
+              setShowDetailsModal(true);
+              setHistoryModalOpen(false);
+            }}
             onRefresh={fetchImportHistory}
+            pagination={importPagination}
+            page={importPage}
+            perPage={importPerPage}
+            search={importSearch}
+            onPageChange={setImportPage}
+            onPerPageChange={setImportPerPage}
+            onSearchChange={setImportSearch}
           />
         </Modal.Section>
       </Modal>
 
       <ImportDetailsModal
         isOpen={showDetailsModal}
-        onClose={() => { setShowDetailsModal(false); setHistoryModalOpen(true); }}
+        onClose={() => {
+          setShowDetailsModal(false);
+          setHistoryModalOpen(true);
+        }}
         selectedImport={selectedImport}
       />
+
+      <Modal
+        open={recheckModalOpen}
+        onClose={() => setRecheckModalOpen(false)}
+        title="Recheck Tracking Status"
+        primaryAction={{
+          content: `Recheck (${recheckStatuses.length} status${
+            recheckStatuses.length !== 1 ? 'es' : ''
+          })`,
+          onAction: () => {
+            handleRecheck(recheckStatuses);
+            setRecheckModalOpen(false);
+          },
+          loading: triggering,
+          disabled: recheckStatuses.length === 0
+        }}
+        secondaryActions={[{content: 'Cancel', onAction: () => setRecheckModalOpen(false)}]}
+      >
+        <Modal.Section>
+          <ChoiceList
+            allowMultiple
+            title="Select statuses to recheck via 17TRACK"
+            choices={[
+              {label: 'Pending', value: 'pending'},
+              {label: 'In Transit', value: 'in_transit'},
+              {label: 'Not Found', value: 'not_found'},
+              {label: 'Pick Up', value: 'pick_up'},
+              {label: 'Undelivered', value: 'undelivered'},
+              {label: 'Alert', value: 'alert'}
+            ]}
+            selected={recheckStatuses}
+            onChange={setRecheckStatuses}
+          />
+        </Modal.Section>
+      </Modal>
     </Page>
   );
 }

@@ -1,9 +1,10 @@
 import axios from 'axios';
 
-const BASE_URL = 'https://api.17track.net/track/v2.2';
+const BASE_URL = 'https://api.17track.net/track/v2.4';
 const BATCH_SIZE = 40;
 
-// Map 17TRACK v2.2 status strings to internal status codes
+// Map 17TRACK v2.4 status strings to internal status codes
+// See: https://api.17track.net/track/v2.4 status enum
 const STATUS_STRING_MAP = {
   'NotFound': 'not_found',
   'InTransit': 'in_transit',
@@ -12,7 +13,12 @@ const STATUS_STRING_MAP = {
   'Undelivered': 'undelivered',
   'Delivered': 'delivered',
   'Alert': 'alert',
-  'InfoReceived': 'in_transit'
+  'InfoReceived': 'info_received',
+  'OutForDelivery': 'in_transit',
+  'AvailableForPickup': 'in_transit',
+  'Exception': 'alert',
+  'ReturnToSender': 'alert',
+  'Customs': 'in_transit'
 };
 
 const USER_AGENTS = [
@@ -38,17 +44,20 @@ export class SeventeenTrackService {
    * Chunks into batches of 40 with key rotation per batch.
    * @returns {{ accepted: string[], rejected: string[] }}
    */
-  async registerTrackings(trackingNumbers) {
+  async registerTrackings(trackingNumbers, {keyId} = {}) {
     const accepted = [];
     const rejected = [];
     const usedKeys = [];
+    // Per-number key mapping: { trackingNumber: { keyId, keyName } }
+    const keyMap = {};
     let error = null;
     const batches = this._chunkArray(trackingNumbers, BATCH_SIZE);
+    const fixedKey = keyId ? await this.keyRepo.getById(keyId) : null;
 
     for (const batch of batches) {
       let key;
       try {
-        key = await this._getNextKey();
+        key = fixedKey || (await this._getNextKey());
       } catch (err) {
         rejected.push(...batch);
         error = err.message;
@@ -58,14 +67,24 @@ export class SeventeenTrackService {
 
       try {
         const body = batch.map(n => ({number: String(n), carrier: 0}));
-        const res = await this._makeRequest('/register', body, key.apiKey);
-        console.log(`[17TRACK] Register response (key=${key.name}):`, JSON.stringify(res));
+        const res = await this._makeRequest('/register', body, key.apiKey, {isFreeOp: false});
+        const regAccepted = res?.data?.accepted?.length || 0;
+        const regRejected = res?.data?.rejected?.length || 0;
+        console.log(
+          `[17TRACK] Register (key=${key.name}): ${regAccepted} accepted, ${regRejected} rejected`
+        );
         const accepted17 = res?.data?.accepted || [];
         // Use original batch numbers for rejected (API may corrupt large numeric strings)
         const acceptedSet = new Set(accepted17.map(i => String(i.number)));
-        accepted.push(...batch.filter(n => acceptedSet.has(String(n))));
+        const batchAccepted = batch.filter(n => acceptedSet.has(String(n)));
+        accepted.push(...batchAccepted);
         rejected.push(...batch.filter(n => !acceptedSet.has(String(n))));
         usedKeys.push({id: key.id, name: key.name});
+
+        // Map each accepted number to the key that registered it
+        for (const n of batchAccepted) {
+          keyMap[String(n)] = {keyId: key.id, keyName: key.name};
+        }
 
         // Only increment quota by actually accepted count
         if (accepted17.length > 0) {
@@ -82,24 +101,25 @@ export class SeventeenTrackService {
       await this._rateLimitDelay();
     }
 
-    return { accepted, rejected, usedKeys, error };
+    return { accepted, rejected, usedKeys, keyMap, error };
   }
 
   /**
    * Query tracking status for existing numbers (no quota cost).
    * @returns {Array<NormalizedTrackInfo>}
    */
-  async getTrackInfo(trackingNumbers) {
+  async getTrackInfo(trackingNumbers, {keyId} = {}) {
     const results = [];
     const rejected = [];
     const usedKeys = [];
     let error = null;
     const batches = this._chunkArray(trackingNumbers, BATCH_SIZE);
+    const fixedKey = keyId ? await this.keyRepo.getById(keyId) : null;
 
     for (const batch of batches) {
       let key;
       try {
-        key = await this._getAnyKey();
+        key = fixedKey || (await this._getAnyKey());
       } catch (err) {
         error = err.message;
         console.error('[17TRACK] No key for getTrackInfo:', err.message);
@@ -108,14 +128,29 @@ export class SeventeenTrackService {
 
       try {
         const body = batch.map(n => ({number: String(n)}));
-        const res = await this._makeRequest('/gettrackinfo', body, key.apiKey);
-        console.log(`[17TRACK] GetTrackInfo response (key=${key.name}):`, JSON.stringify(res));
+        const res = await this._makeRequest('/gettrackinfo', body, key.apiKey, {isFreeOp: true});
+        const rejectedCount = res?.data?.rejected?.length || 0;
+        const acceptedCount = res?.data?.accepted?.length || 0;
+        if (rejectedCount > 0) {
+          console.log(`[17TRACK] GetTrackInfo (key=${key.name}): ${acceptedCount} ok, ${rejectedCount} rejected`);
+        }
         const accepted = res?.data?.accepted || [];
+        const apiRejected = res?.data?.rejected || [];
         results.push(...accepted.map(item => this._normalizeTrackInfo(item)));
+        // Build rejection map from API response (preserve actual error messages)
+        const rejectionMap = {};
+        apiRejected.forEach(r => {
+          rejectionMap[String(r.number)] = r.error?.message || 'rejected by 17TRACK';
+        });
         // Use original batch numbers for rejected (API may corrupt large numeric strings)
         const acceptedSet = new Set(accepted.map(i => String(i.number)));
         const batchRejected = batch.filter(n => !acceptedSet.has(String(n)));
-        rejected.push(...batchRejected.map(n => ({number: n, error: 'rejected by 17TRACK'})));
+        rejected.push(
+          ...batchRejected.map(n => ({
+            number: n,
+            error: rejectionMap[String(n)] || 'rejected by 17TRACK'
+          }))
+        );
         usedKeys.push({id: key.id, name: key.name});
         await this.keyRepo.markSuccess(key.id);
       } catch (err) {
@@ -169,7 +204,7 @@ export class SeventeenTrackService {
   // --- Internal helpers ---
 
   /** POST to 17TRACK endpoint, handles 429 key-switch retry once */
-  async _makeRequest(endpoint, body, apiKey, isRetry = false) {
+  async _makeRequest(endpoint, body, apiKey, {isRetry = false, isFreeOp = false} = {}) {
     try {
       const res = await axios.post(`${BASE_URL}${endpoint}`, body, {
         headers: {
@@ -184,9 +219,9 @@ export class SeventeenTrackService {
       const status = err.response?.status;
 
       if (status === 429 && !isRetry) {
-        // Rate limited: get a fresh key and retry once
-        const freshKey = await this._getNextKey();
-        return this._makeRequest(endpoint, body, freshKey.apiKey, true);
+        // Rate limited: use appropriate key getter based on operation type
+        const freshKey = isFreeOp ? await this._getAnyKey() : await this._getNextKey();
+        return this._makeRequest(endpoint, body, freshKey.apiKey, {isRetry: true, isFreeOp});
       }
 
       if (status === 401 || status === 403) {
@@ -242,6 +277,9 @@ export class SeventeenTrackService {
 
     const statusStr = latestStatus.status || '';
     const status = STATUS_STRING_MAP[statusStr] ?? 'not_found';
+    if (statusStr && !STATUS_STRING_MAP[statusStr]) {
+      console.warn(`[17TRACK] Unknown status "${statusStr}" for ${item.number}, defaulting to not_found`);
+    }
 
     const events = providerEvents.map(e => ({
       date: e.time_iso || '',
@@ -249,6 +287,9 @@ export class SeventeenTrackService {
       location: e.location || '',
       stage: e.stage || ''
     }));
+
+    // 17TRACK returns events newest-first; last item = oldest = first carrier scan (supplier handoff)
+    const firstEventDate = events.length > 0 ? events[events.length - 1].date : '';
 
     return {
       trackingNumber: item.number,
@@ -260,6 +301,7 @@ export class SeventeenTrackService {
       lastEvent: latestEvent.description || '',
       lastEventDate: latestEvent.time_iso || '',
       lastEventLocation: latestEvent.location || '',
+      firstEventDate,
       daysInTransit: info.time_metrics?.days_of_transit || 0,
       serviceType: info.misc_info?.service_type || '',
       events

@@ -10,7 +10,8 @@ import {
   Badge,
   Modal,
   TextField,
-  SkeletonBodyText
+  SkeletonBodyText,
+  Pagination
 } from '@shopify/polaris';
 
 function formatDate(dateStr) {
@@ -22,7 +23,7 @@ function formatDate(dateStr) {
   }
 }
 
-export default function ApiKeysTab({apiKeys, loading, onCreate, onUpdate, onDelete, onRefresh, onSyncQuota}) {
+export default function ApiKeysTab({apiKeys, loading, onCreate, onUpdate, onDelete, onRefresh, onSyncQuota, onSyncAll}) {
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState('');
   const [newApiKey, setNewApiKey] = useState('');
@@ -30,6 +31,8 @@ export default function ApiKeysTab({apiKeys, loading, onCreate, onUpdate, onDele
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [editingQuota, setEditingQuota] = useState(null); // {id, value}
   const [syncingId, setSyncingId] = useState(null);
+  const [syncingAll, setSyncingAll] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
 
   if (loading && !apiKeys.length) {
     return (
@@ -73,9 +76,34 @@ export default function ApiKeysTab({apiKeys, loading, onCreate, onUpdate, onDele
     try { await onSyncQuota(id); } finally { setSyncingId(null); }
   };
 
+  const handleSyncAll = async () => {
+    if (!onSyncAll) return;
+    setSyncingAll(true);
+    try { await onSyncAll(); } finally { setSyncingAll(false); }
+  };
+
+  const perPage = 10;
+
+  const totalRemain = apiKeys.reduce((sum, k) => sum + (k.quotaRemain ?? 0), 0);
+  const totalUsed = apiKeys.reduce((sum, k) => sum + (k.quotaUsed ?? 0), 0);
+  const totalQuota = apiKeys.reduce((sum, k) => sum + (k.quotaTotal ?? 0), 0);
+  const totalToday = apiKeys.reduce((sum, k) => sum + (k.todayUsed ?? 0), 0);
+
+  // Sort: keys with remaining quota first, exhausted keys at bottom
+  const sortedKeys = [...apiKeys].sort((a, b) => {
+    const aRemain = (a.quotaTotal ?? 0) - (a.quotaUsed ?? 0);
+    const bRemain = (b.quotaTotal ?? 0) - (b.quotaUsed ?? 0);
+    if (aRemain <= 0 && bRemain > 0) return 1;
+    if (aRemain > 0 && bRemain <= 0) return -1;
+    return bRemain - aRemain;
+  });
+
+  const totalPages = Math.ceil(sortedKeys.length / perPage);
+  const pagedKeys = sortedKeys.slice((currentPage - 1) * perPage, currentPage * perPage);
+
   const resourceName = {singular: 'API key', plural: 'API keys'};
 
-  const rowMarkup = apiKeys.map((key, index) => (
+  const rowMarkup = pagedKeys.map((key, index) => (
     <IndexTable.Row id={key.id} key={key.id} position={index}>
       <IndexTable.Cell>
         <Text variant="bodyMd" fontWeight="semibold">{key.name}</Text>
@@ -145,11 +173,19 @@ export default function ApiKeysTab({apiKeys, loading, onCreate, onUpdate, onDele
       <BlockStack gap="400">
         {/* Header */}
         <InlineStack align="space-between" blockAlign="center">
-          <Text variant="headingMd" fontWeight="semibold">
-            API Keys ({apiKeys.length})
-          </Text>
+          <BlockStack gap="100">
+            <Text variant="headingMd" fontWeight="semibold">
+              API Keys ({apiKeys.length})
+            </Text>
+            {apiKeys.length > 0 && (
+              <Text variant="bodySm" tone="subdued">
+                Total: {totalUsed}/{totalQuota} used — {totalRemain} remaining — {totalToday} today
+              </Text>
+            )}
+          </BlockStack>
           <InlineStack gap="300">
             <Button onClick={onRefresh} disabled={loading}>Refresh</Button>
+            <Button onClick={handleSyncAll} loading={syncingAll} disabled={!apiKeys.length}>Sync All</Button>
             <Button variant="primary" onClick={() => setShowCreate(true)}>Add API Key</Button>
           </InlineStack>
         </InlineStack>
@@ -158,7 +194,7 @@ export default function ApiKeysTab({apiKeys, loading, onCreate, onUpdate, onDele
         <Card padding="0">
           <IndexTable
             resourceName={resourceName}
-            itemCount={apiKeys.length}
+            itemCount={pagedKeys.length}
             headings={[
               {title: 'Name'},
               {title: 'Key'},
@@ -173,6 +209,19 @@ export default function ApiKeysTab({apiKeys, loading, onCreate, onUpdate, onDele
             {rowMarkup}
           </IndexTable>
         </Card>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <InlineStack align="center">
+            <Pagination
+              hasPrevious={currentPage > 1}
+              hasNext={currentPage < totalPages}
+              onPrevious={() => setCurrentPage(p => p - 1)}
+              onNext={() => setCurrentPage(p => p + 1)}
+              label={`${currentPage} / ${totalPages}`}
+            />
+          </InlineStack>
+        )}
 
         {/* Create Modal */}
         <Modal

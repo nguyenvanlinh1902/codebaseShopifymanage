@@ -38,7 +38,7 @@ export async function getOrderData(req, res) {
       queryParams.name = orderNumber.startsWith('#') ? orderNumber : `#${orderNumber}`;
     }
 
-    const orders = await shopifyService.getOrders(queryParams);
+    const {orders} = await shopifyService.getOrders(queryParams);
 
     // Return only fields relevant for debugging: id, name, line_items (with properties), note
     const debugData = orders.map(o => ({

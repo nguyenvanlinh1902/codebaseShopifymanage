@@ -1,4 +1,4 @@
-import React, {useState, useEffect} from 'react';
+import React, {useState, useEffect, useRef} from 'react';
 import {
   Page,
   Layout,
@@ -15,6 +15,7 @@ import {
 } from '@shopify/polaris';
 import {api} from '../helpers/api';
 import {usePermittedStores} from '../hooks/usePermittedStores';
+import PaginationControls from '../components/pagination-controls';
 
 /**
  * Orders Sync Page - Setup which Google Sheet to sync orders to.
@@ -36,6 +37,11 @@ export default function Orders() {
   const [showSetupModal, setShowSetupModal] = useState(false);
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
+  const [pagination, setPagination] = useState({page: 1, perPage: 10, total: 0, totalPages: 1});
+  const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(10);
+  const [search, setSearch] = useState('');
+  const [fetching, setFetching] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -49,6 +55,24 @@ export default function Orders() {
       setSelectedTab('');
     }
   }, [selectedSheet]);
+
+  // Single effect: fetch on any pagination/filter change, auto-reset page when filters change
+  const filtersRef = useRef({perPage, search, filterStore, filterStatus});
+  useEffect(() => {
+    const prev = filtersRef.current;
+    const filtersChanged =
+      prev.perPage !== perPage ||
+      prev.search !== search ||
+      prev.filterStore !== filterStore ||
+      prev.filterStatus !== filterStatus;
+    filtersRef.current = {perPage, search, filterStore, filterStatus};
+
+    if (filtersChanged && page !== 1) {
+      setPage(1);
+      return; // page change will re-trigger this effect
+    }
+    fetchAllSyncConfigs();
+  }, [page, perPage, search, filterStore, filterStatus]);
 
   const fetchData = async () => {
     try {
@@ -69,11 +93,20 @@ export default function Orders() {
 
   const fetchAllSyncConfigs = async () => {
     try {
-      const response = await api('/api/orders/sync-configs');
+      setFetching(true);
+      const params = new URLSearchParams({page, perPage, search});
+      if (filterStore) params.set('storeId', filterStore);
+      if (filterStatus) params.set('status', filterStatus);
+      const response = await api(`/api/orders/sync-configs?${params}`);
       const result = await response.json();
-      if (result.success) setSyncConfigs(result.data);
+      if (result.success) {
+        setSyncConfigs(result.data);
+        if (result.pagination) setPagination(result.pagination);
+      }
     } catch (err) {
       console.error('Error fetching sync configs:', err);
+    } finally {
+      setFetching(false);
     }
   };
 
@@ -165,14 +198,7 @@ export default function Orders() {
     {label: 'Inactive', value: 'inactive'}
   ];
 
-  // Filter configs by store and status
-  const filteredConfigs = syncConfigs.filter(c => {
-    if (filterStore && c.storeId !== filterStore) return false;
-    if (filterStatus && c.status !== filterStatus) return false;
-    return true;
-  });
-
-  const configRows = filteredConfigs.map(config => [
+  const configRows = syncConfigs.map(config => [
     config.storeName || 'N/A',
     config.spreadsheetId ? (
       <a
@@ -254,25 +280,40 @@ export default function Orders() {
 
               {loading ? (
                 <SkeletonBodyText lines={5} />
-              ) : filteredConfigs.length === 0 ? (
+              ) : fetching ? (
+                <SkeletonBodyText lines={3} />
+              ) : syncConfigs.length === 0 ? (
                 <Banner tone="info">
                   {syncConfigs.length === 0
                     ? 'No sync configurations yet. Click "Setup Sync" to get started.'
                     : 'No configurations match the selected store filter.'}
                 </Banner>
               ) : (
-                <DataTable
-                  columnContentTypes={['text', 'text', 'text', 'text', 'numeric', 'text']}
-                  headings={[
-                    'Store',
-                    'Google Sheet',
-                    'Tab',
-                    'Status',
-                    'Orders Synced',
-                    'Last Sync'
-                  ]}
-                  rows={configRows}
-                />
+                <>
+                  <PaginationControls
+                    page={page}
+                    totalPages={pagination.totalPages}
+                    totalItems={pagination.total}
+                    perPage={perPage}
+                    onPageChange={setPage}
+                    onPerPageChange={setPerPage}
+                    search={search}
+                    onSearchChange={setSearch}
+                    searchPlaceholder="Search by store, sheet, or tab..."
+                  />
+                  <DataTable
+                    columnContentTypes={['text', 'text', 'text', 'text', 'numeric', 'text']}
+                    headings={[
+                      'Store',
+                      'Google Sheet',
+                      'Tab',
+                      'Status',
+                      'Orders Synced',
+                      'Last Sync'
+                    ]}
+                    rows={configRows}
+                  />
+                </>
               )}
             </BlockStack>
           </Card>

@@ -328,6 +328,7 @@ export default function Products() {
   return (
     <Page
       title="Product Management"
+      fullWidth
       subtitle="Import products from CSV to multiple Shopify stores"
       primaryAction={{
         content: 'Import CSV',

@@ -49,6 +49,7 @@ initializeApp();
 
 const app = express();
 app.set('trust proxy', true);
+app.use(express.json());
 
 // ============ HEALTH CHECK ============
 app.get('/', (req, res) => {
@@ -155,6 +156,14 @@ export const processCheckStoreTracking = onMessagePublished(
   }
 );
 
+/** PubSub: Recheck Tracking Group (per-key background processing) */
+export const processRecheckTrackingGroup = onMessagePublished(
+  {topic: 'recheck-tracking-group', memory: '256MiB', cpu: 1, timeoutSeconds: 540, retry: true},
+  async event => {
+    await trackingStatusController.processTrackingGroup(event.data);
+  }
+);
+
 /** Cron: Process Product Queue (every 1 min) */
 export const productQueueCron = onSchedule(
   {
@@ -183,11 +192,11 @@ export const orderSyncQueueCron = onSchedule(
   }
 );
 
-/** Cron: Check tracking statuses via 17TRACK (every hour) */
+/** Cron: Check tracking statuses via 17TRACK (daily at 6 AM UTC) */
 export const trackingStatusCron = onSchedule(
   {
-    schedule: 'every 60 minutes',
-    memory: '256MiB',
+    schedule: '0 6 * * *',
+    memory: '512MiB',
     cpu: 1,
     timeoutSeconds: 540,
     retryConfig: {retryCount: 2, maxRetrySeconds: 600}

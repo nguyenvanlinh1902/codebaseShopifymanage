@@ -15,6 +15,7 @@ router.get('/store-stats', analyticsStoreController.getStoreAnalytics);
 router.get('/campaign-ads', shopifyqlCampaignController.getCampaignAds);
 router.get('/campaign-ads/all-stores', shopifyqlCampaignController.getCampaignAdsAllStores);
 router.get('/order-analytics', orderAnalyticsController.getOrderAnalytics);
+router.get('/order-analytics-batch', orderAnalyticsController.getOrderAnalyticsBatch);
 router.get('/order-search', orderSearchController.searchOrders);
 router.get('/disputes', disputeController.getDisputes);
 

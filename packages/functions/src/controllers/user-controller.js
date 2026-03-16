@@ -1,5 +1,6 @@
 import bcrypt from 'bcryptjs';
 import {AdminUserRepository} from '../repositories/adminUserRepository.js';
+import {paginateArray, parsePaginationParams} from '../utils/paginate-array.js';
 
 const adminUserRepo = new AdminUserRepository();
 
@@ -10,14 +11,19 @@ function sanitizeUser(user) {
   return safe;
 }
 
-/** GET /api/users — list all users (admin only) */
+/** GET /api/users — list all users (admin only), with server-side pagination */
 export async function listUsers(req, res) {
   try {
     if (req.userRole !== 'admin') {
       return res.status(403).json({success: false, error: 'Admin access required'});
     }
     const users = await adminUserRepo.getAll();
-    return res.json({success: true, data: users.map(sanitizeUser)});
+    const {page, perPage, search} = parsePaginationParams(req.query);
+    const result = paginateArray(users.map(sanitizeUser), {
+      page, perPage, search,
+      searchKeys: ['username', 'displayName', 'role']
+    });
+    return res.json({success: true, ...result});
   } catch (error) {
     console.error('listUsers error:', error);
     return res.status(500).json({success: false, error: error.message});

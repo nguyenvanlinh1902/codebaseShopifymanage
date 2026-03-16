@@ -1,4 +1,4 @@
-import React from 'react';
+import React, {useState} from 'react';
 import {
   Card,
   BlockStack,
@@ -9,17 +9,23 @@ import {
   InlineGrid,
   SkeletonBodyText,
   Divider,
-  Badge
+  Badge,
+  Modal,
+  ChoiceList
 } from '@shopify/polaris';
 
 const STAT_CARDS = [
   {key: 'total', label: 'Total Trackings', tone: undefined},
+  {key: 'info_received', label: 'Info Received', tone: 'info'},
   {key: 'in_transit', label: 'In Transit', tone: 'info'},
   {key: 'delivered', label: 'Delivered', tone: 'success'},
   {key: 'pending', label: 'Pending', tone: 'attention'},
   {key: 'not_found', label: 'Not Found', tone: 'warning'},
+  {key: 'pick_up', label: 'Pick Up', tone: 'info'},
+  {key: 'undelivered', label: 'Undelivered', tone: 'warning'},
   {key: 'expired', label: 'Expired', tone: undefined},
-  {key: 'alert', label: 'Alert', tone: 'critical'}
+  {key: 'alert', label: 'Alert', tone: 'critical'},
+  {key: 'stale', label: 'Stale (7d+)', tone: 'critical'}
 ];
 
 const KEY_STAT_CARDS = [
@@ -43,7 +49,22 @@ function StatCard({label, value, tone}) {
   );
 }
 
+const RECHECK_STATUS_OPTIONS = [
+  {label: 'Pending', value: 'pending'},
+  {label: 'Info Received', value: 'info_received'},
+  {label: 'In Transit', value: 'in_transit'},
+  {label: 'Not Found', value: 'not_found'},
+  {label: 'Pick Up', value: 'pick_up'},
+  {label: 'Undelivered', value: 'undelivered'},
+  {label: 'Alert', value: 'alert'}
+];
+
 export default function DashboardStatsTab({stats, loading, triggering, onTrigger, onRefresh}) {
+  const [modalOpen, setModalOpen] = useState(false);
+  const [recheckStatuses, setRecheckStatuses] = useState([
+    'pending', 'info_received', 'in_transit', 'not_found'
+  ]);
+
   if (loading && !stats) {
     return (
       <Box padding="400">
@@ -66,9 +87,9 @@ export default function DashboardStatsTab({stats, loading, triggering, onTrigger
       <BlockStack gap="600">
         {/* Actions */}
         <InlineStack gap="300" align="end">
-          <Button onClick={onRefresh} disabled={loading}>Refresh</Button>
-          <Button variant="primary" onClick={onTrigger} loading={triggering}>
-            Recheck Existing
+          <Button onClick={onRefresh} disabled={loading}>Refresh Stats</Button>
+          <Button variant="primary" onClick={() => setModalOpen(true)} loading={triggering}>
+            Recheck All
           </Button>
         </InlineStack>
 
@@ -131,6 +152,39 @@ export default function DashboardStatsTab({stats, loading, triggering, onTrigger
           </Card>
         </BlockStack>
       </BlockStack>
+
+      {/* Recheck Modal */}
+      <Modal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        title="Recheck Tracking Status"
+        primaryAction={{
+          content: `Recheck (${recheckStatuses.length} status${recheckStatuses.length !== 1 ? 'es' : ''})`,
+          onAction: () => {
+            onTrigger(recheckStatuses);
+            setModalOpen(false);
+          },
+          loading: triggering,
+          disabled: recheckStatuses.length === 0
+        }}
+        secondaryActions={[
+          {content: 'Cancel', onAction: () => setModalOpen(false)}
+        ]}
+      >
+        <Modal.Section>
+          <BlockStack gap="300">
+            <Text>Select which statuses to recheck via 17TRACK:</Text>
+            <ChoiceList
+              allowMultiple
+              title="Statuses"
+              titleHidden
+              choices={RECHECK_STATUS_OPTIONS}
+              selected={recheckStatuses}
+              onChange={setRecheckStatuses}
+            />
+          </BlockStack>
+        </Modal.Section>
+      </Modal>
     </Box>
   );
 }

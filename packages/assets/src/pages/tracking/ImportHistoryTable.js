@@ -1,6 +1,7 @@
 import React from 'react';
-import {Card, Text, Badge, ProgressBar, Button, BlockStack, InlineStack, Box, Divider} from '@shopify/polaris';
+import {Card, Text, Badge, ProgressBar, Button, BlockStack, InlineStack, Box, Divider, SkeletonBodyText} from '@shopify/polaris';
 import {RefreshIcon} from '@shopify/polaris-icons';
+import PaginationControls from '../../components/pagination-controls';
 
 const STATUS_TONE = {
   completed: 'success',
@@ -72,25 +73,63 @@ function ImportRow({imp, onViewDetails}) {
   );
 }
 
-export default function ImportHistoryTable({importHistory, onViewDetails, onRefresh}) {
+export default function ImportHistoryTable({
+  importHistory,
+  loading,
+  onViewDetails,
+  onRefresh,
+  pagination,
+  page,
+  perPage,
+  search,
+  onPageChange,
+  onPerPageChange,
+  onSearchChange
+}) {
+  const totalItems = pagination?.total ?? importHistory.length;
+
   return (
     <Card padding="0">
       <Box padding="400">
         <InlineStack align="space-between" blockAlign="center">
           <BlockStack gap="050">
             <Text as="h2" variant="headingMd">Import History</Text>
-            {importHistory.length > 0 && (
-              <Text tone="subdued" variant="bodySm">{importHistory.length} job{importHistory.length !== 1 ? 's' : ''}</Text>
+            {totalItems > 0 && (
+              <Text tone="subdued" variant="bodySm">{totalItems} job{totalItems !== 1 ? 's' : ''}</Text>
             )}
           </BlockStack>
           <Button icon={RefreshIcon} size="slim" onClick={onRefresh}>Refresh</Button>
         </InlineStack>
       </Box>
 
-      {importHistory.length === 0 ? (
+      <Box paddingInlineStart="400" paddingInlineEnd="400" paddingBlockEnd="300">
+        <PaginationControls
+          page={page}
+          totalPages={pagination?.totalPages || 1}
+          totalItems={totalItems}
+          perPage={perPage}
+          onPageChange={onPageChange}
+          onPerPageChange={onPerPageChange}
+          search={search}
+          onSearchChange={onSearchChange}
+          searchPlaceholder="Search by file, store, or status..."
+        />
+      </Box>
+
+      {loading ? (
+        <Box padding="400">
+          <SkeletonBodyText lines={3} />
+        </Box>
+      ) : totalItems === 0 && !search ? (
         <Box padding="1000">
           <Text tone="subdued" alignment="center" variant="bodySm">
             No import history yet — import your first tracking data to get started
+          </Text>
+        </Box>
+      ) : importHistory.length === 0 ? (
+        <Box padding="1000">
+          <Text tone="subdued" alignment="center" variant="bodySm">
+            No results match your search
           </Text>
         </Box>
       ) : (

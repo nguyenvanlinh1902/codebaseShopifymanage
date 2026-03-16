@@ -11,6 +11,7 @@ import {GoogleAuthRepository} from '../repositories/googleAuthRepository.js';
 import crypto from 'crypto';
 import shopifyConfig from '../config/shopify.js';
 import {extractStoreIds, hasStoreAccess} from '../utils/store-access.js';
+import {paginateArray, parsePaginationParams} from '../utils/paginate-array.js';
 
 const orderSyncRepo = new OrderSyncRepository();
 const orderRepo = new OrderRepository();
@@ -356,11 +357,14 @@ async function fetchNextPage(syncJobId) {
       accessToken: store.accessToken
     });
 
-    // Fetch next page using cursor-based pagination (page_info from previous response)
-    const orders = await shopifyService.getOrders(job.nextPageParams);
+    // Fetch next page using cursor-based pagination (cursor from previous response)
+    const result = await shopifyService.getOrders(job.nextPageParams);
+    const orders = result.orders;
 
-    const hasNextPage = !!orders.nextPageParameters;
-    const nextPageParams = orders.nextPageParameters || null;
+    const hasNextPage = result.pageInfo.hasNextPage;
+    const nextPageParams = hasNextPage
+      ? {cursor: result.pageInfo.endCursor, limit: job.nextPageParams?.limit}
+      : null;
     const nextPage = (job.currentPage || 1) + 1;
     // Track max order ID for saving lastSyncedOrderId after completion
     const pageMaxId =
@@ -621,10 +625,18 @@ export async function getSyncConfigs(req, res) {
       }
     }
 
-    return res.json({
-      success: true,
-      data: configs
+    // Filter by status if provided
+    const {status} = req.query;
+    if (status) {
+      configs = configs.filter(c => c.status === status);
+    }
+
+    const {page, perPage, search} = parsePaginationParams(req.query);
+    const result = paginateArray(configs, {
+      page, perPage, search,
+      searchKeys: ['storeName', 'sheetName', 'targetSheet']
     });
+    return res.json({success: true, ...result});
   } catch (error) {
     console.error('Get sync configs error:', error);
     return res.status(500).json({

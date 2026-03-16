@@ -1,6 +1,8 @@
 import {TrackingHistoryRepository} from '../repositories/trackingHistoryRepository.js';
 import {StoreRepository} from '../repositories/storeRepository.js';
+import {TrackingStatusRepository} from '../repositories/tracking-status-repository.js';
 import {ShopifyService} from '../services/shopifyService.js';
+import {paginateArray, parsePaginationParams} from '../utils/paginate-array.js';
 import {
   parseTrackingExcel,
   validateTrackingRecord,
@@ -11,6 +13,35 @@ import {getOrCreateTopic, publishMessage} from '../helpers/pubsubHelper.js';
 
 const trackingHistoryRepo = new TrackingHistoryRepository();
 const storeRepo = new StoreRepository();
+const trackingStatusRepo = new TrackingStatusRepository();
+
+const delay = ms => new Promise(r => setTimeout(r, ms));
+// ~1.4 req/sec — safely under Shopify Basic plan limit (2 req/sec)
+const THROTTLE_MS = 700;
+// Max records per PubSub message (CF timeout = 540s; ~3.5s/record → ~150 max)
+const BATCH_SIZE = 100;
+
+/**
+ * Retry a fn on Shopify 429 with Retry-After-aware backoff.
+ * Max 6 attempts; respects Retry-After header, caps at 60s.
+ */
+async function retryOnRateLimit(fn, maxRetries = 6) {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      const is429 =
+        err.statusCode === 429 ||
+        err.message?.includes('429') ||
+        err.message?.includes('Too Many Requests');
+      if (!is429 || attempt === maxRetries - 1) throw err;
+      const retryAfterMs = err.retryAfter ? err.retryAfter * 1000 : Math.pow(2, attempt + 1) * 1000;
+      const waitMs = Math.min(retryAfterMs, 60000);
+      console.warn(`[TrackingImport] 429 rate limit, retrying in ${waitMs}ms (attempt ${attempt + 1}/${maxRetries})`);
+      await delay(waitMs);
+    }
+  }
+}
 
 const TRACKING_IMPORT_TOPIC = 'tracking-import';
 
@@ -102,24 +133,24 @@ export async function uploadAndImport(req, res) {
       invalidRecords: invalidRecords.length > 0 ? invalidRecords : []
     });
 
-    // Task 6: Publish tracking records to PubSub queue for background processing
-    // Auto-creates topic if it doesn't exist (useful for local emulator)
+    // Task 6: Publish records in batches to PubSub (sequential processing per batch)
+    // Batch size capped at BATCH_SIZE to stay within CF timeout (540s)
     await getOrCreateTopic(TRACKING_IMPORT_TOPIC);
 
-    // Publish each record as a separate message for parallel processing
-    const publishPromises = validRecords.map((record, index) => {
-      const message = {
-        importId: importJob.id,
-        storeId,
-        shopDomain: store.shopDomain,
-        accessToken: store.accessToken,
-        trackingData: record,
-        recordIndex: index,
-        totalRecords: validRecords.length
-      };
-
-      return publishMessage(TRACKING_IMPORT_TOPIC, message);
-    });
+    const publishPromises = [];
+    for (let i = 0; i < validRecords.length; i += BATCH_SIZE) {
+      const batch = validRecords.slice(i, i + BATCH_SIZE);
+      publishPromises.push(
+        publishMessage(TRACKING_IMPORT_TOPIC, {
+          importId: importJob.id,
+          storeId,
+          shopDomain: store.shopDomain,
+          accessToken: store.accessToken,
+          records: batch,
+          totalRecords: validRecords.length
+        })
+      );
+    }
 
     await Promise.all(publishPromises);
 
@@ -160,10 +191,12 @@ export async function getImportHistory(req, res) {
       imports = await trackingHistoryRepo.getAll();
     }
 
-    return res.json({
-      success: true,
-      data: imports
+    const {page, perPage, search} = parsePaginationParams(req.query);
+    const result = paginateArray(imports, {
+      page, perPage, search,
+      searchKeys: ['fileName', 'storeName', 'status']
     });
+    return res.json({success: true, ...result});
   } catch (error) {
     console.error('Get import history error:', error);
     return res.status(500).json({
@@ -262,11 +295,12 @@ export async function getTrackingRecords(req, res) {
     // Sort by updatedAt desc
     records.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
 
-    return res.json({
-      success: true,
-      data: records,
-      total: records.length
+    const {page, perPage, search} = parsePaginationParams(req.query);
+    const result = paginateArray(records, {
+      page, perPage, search,
+      searchKeys: ['orderNumber', 'trackingNumber', 'carrier', 'storeName']
     });
+    return res.json({success: true, ...result});
   } catch (error) {
     console.error('Get tracking records error:', error);
     return res.status(500).json({success: false, error: error.message});
@@ -274,94 +308,93 @@ export async function getTrackingRecords(req, res) {
 }
 
 /**
- * Background handler: Process tracking import from PubSub
- * This runs in a separate Cloud Function triggered by PubSub
+ * Background handler: Process tracking import batch from PubSub.
+ * Processes records sequentially with throttling to avoid Shopify 429s.
+ * Backward compatible: supports both batch format {records:[]} and legacy {trackingData:{}}.
  */
 export async function processTrackingImport(messageData) {
-  // Firebase v2 onMessagePublished: event.data = {message: {json: ...}}
   const data = messageData.message.json;
-  const {importId, shopDomain, accessToken, trackingData, totalRecords} = data;
+  const {importId, storeId, shopDomain, accessToken, totalRecords} = data;
 
-  // Create Shopify service
-  const shopifyService = new ShopifyService({
-    shopDomain,
-    accessToken
-  });
+  // Support both new batch format and legacy single-record format
+  const records = data.records || [data.trackingData];
 
-  // Update order with tracking info
-  try {
+  const shopifyService = new ShopifyService({shopDomain, accessToken});
+  let successCount = 0;
+  let failedCount = 0;
+
+  for (const trackingData of records) {
     const {orderNumber, trackingNumber, trackingCompany, trackingUrl} = trackingData;
 
-    // Find order by order number
-    const order = await shopifyService.getOrderByNumber(orderNumber);
+    try {
+      // Throttle before each Shopify API call group (~1.4 req/sec)
+      await delay(THROTTLE_MS);
+      const order = await retryOnRateLimit(() => shopifyService.getOrderByNumber(orderNumber));
+      if (!order) throw new Error(`Order ${orderNumber} not found`);
 
-    if (!order) {
-      throw new Error(`Order ${orderNumber} not found`);
+      await delay(THROTTLE_MS);
+      await retryOnRateLimit(() =>
+        shopifyService.addOrderTracking(order.id, {trackingNumber, trackingCompany, trackingUrl})
+      );
+
+      await trackingHistoryRepo.addTrackingDetail(importId, {
+        orderNumber,
+        trackingNumber,
+        carrier: trackingCompany || '',
+        success: true,
+        updatedAt: new Date().toISOString()
+      });
+      successCount++;
+
+      // Auto-push to tracking-status (non-blocking)
+      try {
+        const existing = await trackingStatusRepo.getByTrackingNumber(trackingNumber);
+        if (!existing) {
+          await trackingStatusRepo.create({
+            trackingNumber,
+            orderNumber: orderNumber || '',
+            storeId: storeId || '',
+            carrier: trackingCompany || '',
+            status: 'pending',
+            isRegistered: false,
+            isDelivered: false
+          });
+        }
+      } catch (pushErr) {
+        console.error(`[TrackingImport] Auto-push failed for ${trackingNumber}:`, pushErr.message);
+      }
+    } catch (error) {
+      console.error(`[TrackingImport] Failed order ${orderNumber}:`, error.message);
+      await trackingHistoryRepo.addTrackingDetail(importId, {
+        orderNumber,
+        trackingNumber,
+        carrier: trackingCompany || '',
+        success: false,
+        error: error.message || 'Unknown error',
+        updatedAt: new Date().toISOString()
+      });
+      failedCount++;
     }
 
-    // Update order with tracking
-    await shopifyService.addOrderTracking(order.id, {
-      trackingNumber,
-      trackingCompany,
-      trackingUrl
-    });
-
-    // Store per-order tracking detail
-    await trackingHistoryRepo.addTrackingDetail(importId, {
-      orderNumber,
-      trackingNumber,
-      carrier: trackingCompany || '',
-      success: true,
-      updatedAt: new Date().toISOString()
-    });
-
-    // Update import progress (success)
-    const importJob = await trackingHistoryRepo.getById(importId);
+    // Update progress after each record (no race conditions — sequential execution)
     await trackingHistoryRepo.updateProgress(importId, {
-      processedRecords: (importJob.processedRecords || 0) + 1,
-      successCount: (importJob.successCount || 0) + 1
+      processedRecords: successCount + failedCount,
+      successCount,
+      failedCount
     });
+  }
 
-    // Check if this is the last record
-    if ((importJob.processedRecords || 0) + 1 >= totalRecords) {
+  // Mark job complete after all records in this batch are processed
+  const importJob = await trackingHistoryRepo.getById(importId);
+  const totalProcessed = (importJob.processedRecords || 0);
+  if (totalProcessed >= (totalRecords || records.length)) {
+    if (successCount === 0 && failedCount > 0) {
+      await trackingHistoryRepo.markFailed(importId, 'All tracking updates failed');
+    } else {
       await trackingHistoryRepo.markCompleted(importId, {
-        successCount: (importJob.successCount || 0) + 1,
+        successCount: importJob.successCount || 0,
         failedCount: importJob.failedCount || 0
       });
     }
-  } catch (error) {
-    console.error(`Failed to update tracking for order ${trackingData.orderNumber}:`, error);
-
-    // Store per-order tracking detail (failure)
-    await trackingHistoryRepo.addTrackingDetail(importId, {
-      orderNumber: trackingData.orderNumber,
-      trackingNumber: trackingData.trackingNumber,
-      carrier: trackingData.trackingCompany || '',
-      success: false,
-      error: error.message || 'Unknown error',
-      updatedAt: new Date().toISOString()
-    });
-
-    // Update import progress (failure)
-    const importJob = await trackingHistoryRepo.getById(importId);
-    await trackingHistoryRepo.updateProgress(importId, {
-      processedRecords: (importJob.processedRecords || 0) + 1,
-      failedCount: (importJob.failedCount || 0) + 1
-    });
-
-    // Check if this is the last record
-    if ((importJob.processedRecords || 0) + 1 >= totalRecords) {
-      if ((importJob.failedCount || 0) + 1 >= totalRecords) {
-        await trackingHistoryRepo.markFailed(importId, 'All tracking updates failed');
-      } else {
-        await trackingHistoryRepo.markCompleted(importId, {
-          successCount: importJob.successCount || 0,
-          failedCount: (importJob.failedCount || 0) + 1
-        });
-      }
-    }
-
-    // Don't rethrow - treat individual record failures as handled
-    // (avoid PubSub retrying the same failed record)
   }
 }

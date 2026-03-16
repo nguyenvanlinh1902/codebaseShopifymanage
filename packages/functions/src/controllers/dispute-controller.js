@@ -2,6 +2,7 @@ import {StoreRepository} from '../repositories/storeRepository.js';
 import {AdminUserRepository} from '../repositories/adminUserRepository.js';
 import shopifyConfig from '../config/shopify.js';
 import {extractStoreIds, hasStoreAccess} from '../utils/store-access.js';
+import {paginateArray, parsePaginationParams} from '../utils/paginate-array.js';
 
 const storeRepo = new StoreRepository();
 const adminUserRepo = new AdminUserRepository();
@@ -50,14 +51,10 @@ export async function getDisputes(req, res) {
       ? status.split(',').filter(s => VALID_STATUSES.includes(s.trim()))
       : [];
 
-    console.log(`[Disputes] Fetching for ${activeStores.length} stores, status: ${statusFilter.join(',') || 'all'}`);
-
     const results = await Promise.all(
       activeStores.map(async store => {
         try {
-          const storeDisputes = await fetchStoreDisputes(store, statusFilter);
-          console.log(`[Disputes] ${store.shopDomain}: ${storeDisputes.length} disputes`);
-          return storeDisputes;
+          return await fetchStoreDisputes(store, statusFilter);
         } catch (err) {
           console.error(`[Disputes] Error for ${store.shopDomain}:`, err.message);
           return [];
@@ -65,12 +62,28 @@ export async function getDisputes(req, res) {
       })
     );
 
-    const disputes = results.flat().sort((a, b) =>
+    let disputes = results.flat().sort((a, b) =>
       new Date(b.initiatedAt || 0) - new Date(a.initiatedAt || 0)
     );
 
-    console.log(`[Disputes] Total disputes: ${disputes.length}`);
-    return res.json({success: true, data: disputes});
+    // Date range filter (server-side)
+    const {dateFrom, dateTo} = req.query;
+    if (dateFrom) {
+      const from = new Date(dateFrom);
+      disputes = disputes.filter(d => d.initiatedAt && new Date(d.initiatedAt) >= from);
+    }
+    if (dateTo) {
+      const to = new Date(dateTo);
+      to.setHours(23, 59, 59, 999);
+      disputes = disputes.filter(d => d.initiatedAt && new Date(d.initiatedAt) <= to);
+    }
+
+    const {page, perPage, search} = parsePaginationParams(req.query);
+    const result = paginateArray(disputes, {
+      page, perPage, search,
+      searchKeys: ['orderName', 'email', 'reason', 'store']
+    });
+    return res.json({success: true, ...result});
   } catch (error) {
     console.error('Disputes error:', error);
     return res.status(500).json({success: false, error: error.message});
@@ -105,17 +118,14 @@ async function fetchDisputesPage(baseUrl, headers, status = null) {
   const response = await fetch(url, {method: 'GET', headers});
 
   if (!response.ok) {
-    const text = await response.text();
-    if (response.status === 404) {
-      console.log(`[Disputes] ${url} → 404 (Shopify Payments not enabled), skipping`);
-    } else {
+    if (response.status !== 404) {
+      const text = await response.text();
       console.error(`[Disputes] ${url} → HTTP ${response.status}: ${text.slice(0, 500)}`);
     }
     return [];
   }
 
   const json = await response.json();
-  console.log(`[Disputes] ${url} → ${(json.disputes || []).length} disputes`);
   return json.disputes || [];
 }
 
@@ -126,14 +136,8 @@ async function mapDisputes(disputes, store) {
     'Content-Type': 'application/json'
   };
 
-  // Log raw dispute data for debugging
-  console.log(`[Disputes][${store.shopDomain}] Raw disputes (${disputes.length}):`, JSON.stringify(
-    disputes.map(d => ({id: d.id, order_id: d.order_id, status: d.status, reason: d.reason, amount: d.amount, currency: d.currency}))
-  ));
-
   // Fetch order details (number + email) for disputes that have order_id
   const orderIds = [...new Set(disputes.filter(d => d.order_id).map(d => d.order_id))];
-  console.log(`[Disputes][${store.shopDomain}] Fetching ${orderIds.length} orders for email: ${orderIds.join(', ')}`);
 
   const orderMap = {};
   await Promise.all(
@@ -146,14 +150,10 @@ async function mapDisputes(disputes, store) {
         if (res.ok) {
           const json = await res.json();
           orderMap[orderId] = {name: json.order?.name, email: json.order?.email};
-          console.log(`[Disputes][${store.shopDomain}] Order ${orderId}: name=${json.order?.name} email=${json.order?.email}`);
         } else if (res.status === 404) {
-          // Order was deleted from Shopify — dispute still references old order_id
           orderMap[orderId] = {name: null, email: '', deleted: true};
-          console.warn(`[Disputes][${store.shopDomain}] Order ${orderId} was deleted (404)`);
         } else {
-          const text = await res.text();
-          console.error(`[Disputes][${store.shopDomain}] Order ${orderId} fetch failed: HTTP ${res.status} - ${text.slice(0, 300)}`);
+          console.error(`[Disputes][${store.shopDomain}] Order ${orderId} fetch failed: HTTP ${res.status}`);
         }
       } catch (err) {
         console.error(`[Disputes][${store.shopDomain}] Order ${orderId} fetch error:`, err.message);

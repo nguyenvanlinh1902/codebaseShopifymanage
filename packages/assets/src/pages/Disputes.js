@@ -1,4 +1,4 @@
-import React, {useState, useEffect, useMemo, useCallback} from 'react';
+import React, {useState, useEffect, useRef} from 'react';
 import {
   Page,
   Layout,
@@ -17,6 +17,7 @@ import {AlertDiamondIcon, DeleteIcon} from '@shopify/polaris-icons';
 import {api} from '../helpers/api';
 import {usePermittedStores} from '../hooks/usePermittedStores';
 import {formatDate, formatDateTime} from '../helpers/format-date';
+import PaginationControls from '../components/pagination-controls';
 
 const STATUS_TONES = {
   needs_response: 'critical',
@@ -52,6 +53,10 @@ export default function Disputes() {
   const [statusFilter, setStatusFilter] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [pagination, setPagination] = useState({page: 1, perPage: 10, total: 0, totalPages: 1});
+  const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(10);
+  const [search, setSearch] = useState('');
 
   const storeOptions = [
     ...(stores.length > 1
@@ -71,53 +76,53 @@ export default function Disputes() {
     }
   }, [stores]);
 
-  const fetchDisputes = useCallback(
-    async storeId => {
-      setLoading(true);
-      setDisputes([]);
-      try {
-        const query = new URLSearchParams();
-        if (storeId && storeId !== ALL_STORES_VALUE) query.set('storeId', storeId);
-        if (statusFilter) query.set('status', statusFilter);
-        const qs = query.toString();
-        const res = await api(`/api/analytics/disputes${qs ? `?${qs}` : ''}`);
-        const result = await res.json();
-        if (result.success) {
-          setDisputes(result.data || []);
-        }
-      } catch (err) {
-        console.error('[Disputes] fetch error:', err);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [statusFilter]
-  );
-
-  // Fetch when store selection changes
-  useEffect(() => {
+  const fetchDisputes = async () => {
     if (!selectedStoreId || stores.length === 0) return;
-    fetchDisputes(selectedStoreId);
-  }, [selectedStoreId, statusFilter, fetchDisputes, stores.length]);
+    setLoading(true);
+    try {
+      const query = new URLSearchParams({page, perPage, search});
+      if (selectedStoreId && selectedStoreId !== ALL_STORES_VALUE) query.set('storeId', selectedStoreId);
+      if (statusFilter) query.set('status', statusFilter);
+      if (dateFrom) query.set('dateFrom', dateFrom);
+      if (dateTo) query.set('dateTo', dateTo);
+      const res = await api(`/api/analytics/disputes?${query}`);
+      const result = await res.json();
+      if (result.success) {
+        setDisputes(result.data || []);
+        if (result.pagination) setPagination(result.pagination);
+      }
+    } catch (err) {
+      console.error('[Disputes] fetch error:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  // Filter by date (client-side)
-  const filtered = useMemo(() => {
-    let result = disputes;
-    if (dateFrom) {
-      const from = new Date(dateFrom);
-      result = result.filter(d => d.initiatedAt && new Date(d.initiatedAt) >= from);
+  // Single effect: fetch + auto-reset page when filters change
+  const filtersRef = useRef({
+    selectedStoreId, statusFilter, dateFrom, dateTo, perPage, search
+  });
+  useEffect(() => {
+    const prev = filtersRef.current;
+    const filtersChanged =
+      prev.selectedStoreId !== selectedStoreId ||
+      prev.statusFilter !== statusFilter ||
+      prev.dateFrom !== dateFrom ||
+      prev.dateTo !== dateTo ||
+      prev.perPage !== perPage ||
+      prev.search !== search;
+    filtersRef.current = {selectedStoreId, statusFilter, dateFrom, dateTo, perPage, search};
+
+    if (filtersChanged && page !== 1) {
+      setPage(1);
+      return;
     }
-    if (dateTo) {
-      const to = new Date(dateTo);
-      to.setHours(23, 59, 59, 999);
-      result = result.filter(d => d.initiatedAt && new Date(d.initiatedAt) <= to);
-    }
-    return result;
-  }, [disputes, dateFrom, dateTo]);
+    fetchDisputes();
+  }, [page, perPage, search, selectedStoreId, statusFilter, dateFrom, dateTo, stores.length]);
 
   const resourceName = {singular: 'dispute', plural: 'disputes'};
 
-  const rowMarkup = filtered.map((d, idx) => (
+  const rowMarkup = disputes.map((d, idx) => (
     <IndexTable.Row id={`${d.disputeId}-${idx}`} key={`${d.disputeId}-${idx}`} position={idx}>
       <IndexTable.Cell>
         <Text variant="bodyMd" fontWeight="semibold">
@@ -197,7 +202,7 @@ export default function Disputes() {
             <Card>
               <SkeletonBodyText lines={8} />
             </Card>
-          ) : filtered.length === 0 ? (
+          ) : disputes.length === 0 && !search ? (
             <Card>
               <BlockStack align="center" inlineAlign="center" gap="200">
                 <div style={{padding: '32px 0 4px'}}>
@@ -216,7 +221,7 @@ export default function Disputes() {
             <Card padding="0">
               <IndexTable
                 resourceName={resourceName}
-                itemCount={filtered.length}
+                itemCount={disputes.length}
                 headings={[
                   {title: 'Store'},
                   {title: 'Order'},
@@ -231,6 +236,17 @@ export default function Disputes() {
               >
                 {rowMarkup}
               </IndexTable>
+              <PaginationControls
+                page={page}
+                totalPages={pagination.totalPages}
+                totalItems={pagination.total}
+                perPage={perPage}
+                onPageChange={setPage}
+                onPerPageChange={setPerPage}
+                search={search}
+                onSearchChange={setSearch}
+                searchPlaceholder="Search order, email, reason..."
+              />
             </Card>
           )}
         </Layout.Section>

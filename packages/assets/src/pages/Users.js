@@ -1,4 +1,4 @@
-import React, {useState, useEffect, useCallback} from 'react';
+import React, {useState, useEffect, useRef} from 'react';
 import {
   Page,
   Card,
@@ -17,6 +17,7 @@ import {PlusIcon, EditIcon, PlayIcon, PauseCircleIcon, DeleteIcon} from '@shopif
 import {useApi} from '../hooks/useApi';
 import {useAuth} from '../context/AuthContext';
 import {usePermittedStores} from '../hooks/usePermittedStores';
+import PaginationControls from '../components/pagination-controls';
 import UserManagementModal from './users/user-management-modal';
 
 const ROLE_TONES = {admin: 'info', manager: 'attention', staff: 'new'};
@@ -25,18 +26,38 @@ export default function Users() {
   const {user: currentUser} = useAuth();
   const {loading, error, clearError, get, post, put, del} = useApi();
   const [users, setUsers] = useState([]);
+  const [pagination, setPagination] = useState({page: 1, perPage: 10, total: 0, totalPages: 1});
+  const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(10);
+  const [search, setSearch] = useState('');
   const {stores} = usePermittedStores();
-  const [modalUser, setModalUser] = useState(undefined); // undefined = closed, null = create, object = edit
+  const [modalUser, setModalUser] = useState(undefined);
   const [actionLoading, setActionLoading] = useState('');
 
-  const fetchUsers = useCallback(async () => {
-    const data = await get('/api/users');
-    setUsers(data || []);
-  }, [get]);
+  const fetchUsers = async () => {
+    const params = new URLSearchParams({page, perPage, search});
+    const json = await get(`/api/users?${params}`);
+    if (json) {
+      setUsers(json.data || json || []);
+      if (json.pagination) setPagination(json.pagination);
+    }
+  };
 
+  // Single effect: fetch + auto-reset page when filters change
+  const filtersRef = useRef({perPage, search});
   useEffect(() => {
+    const prev = filtersRef.current;
+    const filtersChanged =
+      prev.perPage !== perPage ||
+      prev.search !== search;
+    filtersRef.current = {perPage, search};
+
+    if (filtersChanged && page !== 1) {
+      setPage(1);
+      return;
+    }
     fetchUsers();
-  }, [fetchUsers]);
+  }, [page, perPage, search]);
 
   const handleSave = async form => {
     const isEdit = !!modalUser;
@@ -167,7 +188,7 @@ export default function Users() {
             <div style={{padding: '40px', textAlign: 'center'}}>
               <Spinner size="large" />
             </div>
-          ) : users.length === 0 ? (
+          ) : users.length === 0 && !search ? (
             <EmptyState
               heading="No users found"
               action={{content: 'Create User', onAction: () => setModalUser(null)}}
@@ -178,6 +199,17 @@ export default function Users() {
           ) : (
             <div style={{overflowX: 'hidden'}}>
               <style>{`.Polaris-DataTable__Cell { white-space: normal !important; }`}</style>
+              <PaginationControls
+                page={page}
+                totalPages={pagination.totalPages}
+                totalItems={pagination.total}
+                perPage={perPage}
+                onPageChange={setPage}
+                onPerPageChange={setPerPage}
+                search={search}
+                onSearchChange={setSearch}
+                searchPlaceholder="Search username, name, role..."
+              />
               <DataTable
                 columnContentTypes={['text', 'text', 'text', 'text', 'text', 'text']}
                 headings={['Username', 'Display Name', 'Role', 'Status', 'Stores', 'Actions']}

@@ -57,7 +57,6 @@ export class TrackingStatusRepository {
       isRegistered: data.isRegistered ?? false,
       isDelivered: data.isDelivered ?? false,
       lastCheckedAt: data.lastCheckedAt || now,
-      statusChangedAt: now,
       isStale: false,
       createdAt: now,
       updatedAt: now
@@ -183,16 +182,13 @@ export class TrackingStatusRepository {
         const existing = existingMap[status.trackingNumber];
         if (existing) {
           const existingData = existing.data();
-          const statusChanged = status.status && status.status !== existingData.status;
-          const statusChangedAt = statusChanged
-            ? now
-            : (existingData.statusChangedAt || status.firstEventDate || existingData.firstEventDate || existingData.createdAt || now);
           const effectiveStatus = status.status || existingData.status;
+          const lastEventRef = status.lastEventDate || existingData.lastEventDate
+            || status.firstEventDate || existingData.firstEventDate || existingData.createdAt || now;
           const isStale = RECHECKABLE_STATUSES.includes(effectiveStatus)
-            && (Date.now() - new Date(statusChangedAt).getTime()) > STALE_THRESHOLD_MS;
+            && (Date.now() - new Date(lastEventRef).getTime()) > STALE_THRESHOLD_MS;
           batch.update(existing.ref, {
             ...status,
-            statusChangedAt,
             isStale,
             updatedAt: now
           });
@@ -201,7 +197,6 @@ export class TrackingStatusRepository {
           batch.set(docRef, {
             id: docRef.id,
             ...status,
-            statusChangedAt: now,
             isStale: false,
             createdAt: now,
             updatedAt: now
@@ -339,11 +334,11 @@ export class TrackingStatusRepository {
     await snap.docs[0].ref.update({isHidden, updatedAt: new Date().toISOString()});
   }
 
-  /** Get stale trackings (no status change for 7+ days, not final) */
+  /** Get stale trackings (no event update for 7+ days, not final) */
   async getStaleTrackings(limit = 500) {
     const snapshot = await this.collection
       .where('isStale', '==', true)
-      .orderBy('statusChangedAt', 'asc')
+      .orderBy('lastEventDate', 'asc')
       .limit(limit)
       .get();
     return snapshot.docs.map(d => d.data());

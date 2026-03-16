@@ -787,7 +787,7 @@
           "order": "ASCENDING"
         },
         {
-          "fieldPath": "statusChangedAt",
+          "fieldPath": "lastEventDate",
           "order": "ASCENDING"
         }
       ]

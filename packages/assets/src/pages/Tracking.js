@@ -47,6 +47,7 @@ function StatCard({label, value, tone}) {
 
 const STAT_CARDS = [
   {key: 'total', label: 'Total', tone: undefined},
+  {key: 'info_received', label: 'Info Received', tone: 'info'},
   {key: 'in_transit', label: 'In Transit', tone: 'info'},
   {key: 'delivered', label: 'Delivered', tone: 'success'},
   {key: 'pending', label: 'Pending', tone: 'attention'},
@@ -117,7 +118,11 @@ export default function Tracking() {
       perPage: historyPerPage,
       search: historySearch
     });
-    if (historyStatusFilter) params.set('status', historyStatusFilter);
+    if (historyStatusFilter === '__stale__') {
+      params.set('stale', '1');
+    } else if (historyStatusFilter) {
+      params.set('status', historyStatusFilter);
+    }
 
     if (historyFilterType === 'all') {
       params.set('all', 'true');
@@ -668,6 +673,7 @@ export default function Tracking() {
             title="Select statuses to recheck via 17TRACK"
             choices={[
               {label: 'Pending', value: 'pending'},
+              {label: 'Info Received', value: 'info_received'},
               {label: 'In Transit', value: 'in_transit'},
               {label: 'Not Found', value: 'not_found'},
               {label: 'Pick Up', value: 'pick_up'},

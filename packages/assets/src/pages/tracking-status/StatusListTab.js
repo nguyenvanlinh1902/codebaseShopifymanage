@@ -20,8 +20,6 @@ const STATUS_TABS = [
   {id: 'delivered', content: 'Delivered'},
   {id: 'expired', content: 'Expired'},
   {id: 'not_found', content: 'Not Found'},
-  {id: 'pick_up', content: 'Pick Up'},
-  {id: 'undelivered', content: 'Undelivered'},
   {id: 'alert', content: 'Alert'},
   {id: '__stale__', content: 'Stale (7d+)'}
 ];

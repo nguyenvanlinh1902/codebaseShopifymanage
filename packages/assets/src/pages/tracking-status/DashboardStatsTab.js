@@ -96,7 +96,7 @@ export default function DashboardStatsTab({stats, loading, triggering, onTrigger
         {/* Tracking Status Stats */}
         <BlockStack gap="300">
           <Text variant="headingMd" fontWeight="semibold">Tracking Statuses</Text>
-          <InlineGrid columns={{xs: 2, sm: 3, md: 4, lg: 4}} gap="300">
+          <InlineGrid columns={{xs: 2, sm: 3, md: 4, lg: 6}} gap="300">
             {STAT_CARDS.map(({key, label, tone}) => (
               <StatCard key={key} label={label} value={statusStats[key]} tone={tone} />
             ))}

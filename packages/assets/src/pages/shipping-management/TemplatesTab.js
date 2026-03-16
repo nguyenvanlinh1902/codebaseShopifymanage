@@ -140,13 +140,16 @@ export default function TemplatesTab({templates, loading, stores, onCreate, onDe
                                   <Text variant="bodySm">{rate.name}:</Text>
                                   <Badge>{rate.price} {rate.currencyCode}</Badge>
                                   {!rate.active && <Badge tone="warning">Inactive</Badge>}
-                                  {rate.conditions?.map((c, ci) => (
-                                    <Badge key={ci} tone="info">
-                                      {c.field === 'TOTAL_PRICE'
-                                        ? `Order ≥ ${c.criteria?.amount} ${c.criteria?.currencyCode || ''}`
-                                        : `Weight ≥ ${c.criteria?.value} ${c.criteria?.unit || ''}`}
-                                    </Badge>
-                                  ))}
+                                  {rate.conditions?.map((c, ci) => {
+                                    const op = c.operator === 'LESS_THAN_OR_EQUAL_TO' ? '≤' : '≥';
+                                    return (
+                                      <Badge key={ci} tone="info">
+                                        {c.field === 'TOTAL_PRICE'
+                                          ? `Order ${op} ${c.criteria?.amount} ${c.criteria?.currencyCode || ''}`
+                                          : `Weight ${op} ${c.criteria?.value} ${c.criteria?.unit || ''}`}
+                                      </Badge>
+                                    );
+                                  })}
                                 </InlineStack>
                               ))}
                             </BlockStack>

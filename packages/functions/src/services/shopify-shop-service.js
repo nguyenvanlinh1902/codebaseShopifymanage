@@ -11,8 +11,13 @@ export async function getShopInfo(shopify) {
     const result = await shopify.graphql(query);
     return result.shop;
   } catch (error) {
-    console.error('Error getting shop info:', error);
-    throw new Error(`Failed to get shop info: ${error.message}`);
+    const statusCode = error.response?.statusCode || error.statusCode;
+    const body = error.response?.body;
+    const detail = statusCode
+      ? `HTTP ${statusCode}${body ? ` — ${typeof body === 'string' ? body.slice(0, 200) : JSON.stringify(body).slice(0, 200)}` : ''}`
+      : error.message || error.code || 'Unknown error';
+    console.error('Error getting shop info:', detail, error);
+    throw new Error(`Failed to get shop info: ${detail}`);
   }
 }
 

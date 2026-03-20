@@ -52,6 +52,7 @@ export async function uploadAndImport(req, res) {
   try {
     const {storeId, excelBuffer, fileName} = req.body;
     const userId = req.body.userId || 'default-user';
+    const trackingMode = req.body.trackingMode || 'add'; // 'add' or 'replace'
 
     // Task 1: Validate input
     if (!storeId || !excelBuffer) {
@@ -130,6 +131,7 @@ export async function uploadAndImport(req, res) {
       successCount: 0,
       failedCount: 0,
       status: 'pending',
+      trackingMode,
       invalidRecords: invalidRecords.length > 0 ? invalidRecords : []
     });
 
@@ -147,6 +149,7 @@ export async function uploadAndImport(req, res) {
           shopDomain: store.shopDomain,
           accessToken: store.accessToken,
           records: batch,
+          trackingMode,
           totalRecords: validRecords.length
         })
       );
@@ -314,7 +317,7 @@ export async function getTrackingRecords(req, res) {
  */
 export async function processTrackingImport(messageData) {
   const data = messageData.message.json;
-  const {importId, storeId, shopDomain, accessToken, totalRecords} = data;
+  const {importId, storeId, shopDomain, accessToken, totalRecords, trackingMode} = data;
 
   // Support both new batch format and legacy single-record format
   const records = data.records || [data.trackingData];
@@ -334,7 +337,7 @@ export async function processTrackingImport(messageData) {
 
       await delay(THROTTLE_MS);
       await retryOnRateLimit(() =>
-        shopifyService.addOrderTracking(order.id, {trackingNumber, trackingCompany, trackingUrl})
+        shopifyService.addOrderTracking(order.id, {trackingNumber, trackingCompany, trackingUrl}, trackingMode || 'add')
       );
 
       await trackingHistoryRepo.addTrackingDetail(importId, {

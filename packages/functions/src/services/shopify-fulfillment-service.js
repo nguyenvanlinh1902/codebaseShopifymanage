@@ -4,22 +4,25 @@
 import {toGid, fromGid} from './shopify-helpers.js';
 
 /**
- * Add tracking to order — updates existing fulfillment or creates a new one.
+ * Add tracking to order.
+ * @param {string} mode - 'add' creates new fulfillment (multi-pack), 'replace' updates existing.
  */
-export async function addOrderTracking(shopify, orderId, trackingInfo) {
+export async function addOrderTracking(shopify, orderId, trackingInfo, mode = 'add') {
   try {
-    const orderGid = toGid('Order', orderId);
-    const query = `query($id: ID!) {
-      order(id: $id) {
-        fulfillments(first: 5) { id status }
-      }
-    }`;
-    const res = await shopify.graphql(query, {id: orderGid});
-    const fulfillments = res?.order?.fulfillments || [];
+    if (mode === 'replace') {
+      const orderGid = toGid('Order', orderId);
+      const query = `query($id: ID!) {
+        order(id: $id) {
+          fulfillments(first: 5) { id status }
+        }
+      }`;
+      const res = await shopify.graphql(query, {id: orderGid});
+      const fulfillments = res?.order?.fulfillments || [];
 
-    if (fulfillments.length > 0) {
-      const fulfillmentId = fromGid(fulfillments[0].id);
-      return await updateFulfillmentTracking(shopify, orderId, fulfillmentId, trackingInfo);
+      if (fulfillments.length > 0) {
+        const fulfillmentId = fromGid(fulfillments[0].id);
+        return await updateFulfillmentTracking(shopify, orderId, fulfillmentId, trackingInfo);
+      }
     }
     return await createFulfillment(shopify, orderId, trackingInfo);
   } catch (error) {

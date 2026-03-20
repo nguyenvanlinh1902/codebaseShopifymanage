@@ -26,6 +26,10 @@ import userRoutes from './routes/user-routes.js';
 import * as devOrderInspectorController from './controllers/dev-order-inspector-controller.js';
 import trackingStatusRoutes from './routes/tracking-status-routes.js';
 import shippingTemplateRoutes from './routes/shipping-template-routes.js';
+import gmailRoutes from './routes/gmail-routes.js';
+import {exchangeGmailCode as gmailAuthExchange} from './controllers/gmail/gmail-auth-handler.js';
+import discordRoutes from './routes/discord-routes.js';
+import emailRuleRoutes from './routes/email-rule-routes.js';
 import * as trackingStatusController from './controllers/tracking-status-controller.js';
 // Middleware
 import {authentication} from './middleware/authentication.js';
@@ -35,6 +39,10 @@ import * as webhookController from './controllers/webhookController.js';
 import * as orderSyncController from './controllers/orderSyncController.js';
 import * as productImportController from './controllers/productImportController.js';
 import * as trackingImportController from './controllers/trackingImportController.js';
+
+// Gmail push handlers
+import {processPushNotification} from './handlers/gmail-push-handler.js';
+import {processWatchRenewal} from './handlers/gmail-watch-renewal-handler.js';
 
 // BigQuery Firestore triggers
 import {
@@ -80,9 +88,12 @@ app.all('/embed/api/gdpr*', (_req, res) => {
   });
 });
 
-// Google OAuth exchange
+// Google OAuth exchange (public — called from popup callback before JWT is available)
 app.post('/api/google/exchange', googleAuthController.exchangeGoogleCode);
 app.post('/api/google/exchange-temp', googleAuthController.exchangeGoogleCodeTemp);
+
+// Gmail OAuth exchange (public — separate from Google Sheets)
+app.post('/api/gmail/auth/exchange', gmailAuthExchange);
 
 // ============ EMBEDDED APP ROUTES (session token auth) ============
 app.use('/api/embed', embedRoutes);
@@ -100,6 +111,9 @@ app.use('/api/orders', orderRoutes);
 app.use('/api/tracking', trackingRoutes);
 app.use('/api/tracking-status', trackingStatusRoutes);
 app.use('/api/shipping', shippingTemplateRoutes);
+app.use('/api/gmail', gmailRoutes);
+app.use('/api/discord', discordRoutes);
+app.use('/api/email-rules', emailRuleRoutes);
 app.use('/api/themes', themeRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/setup', setupRoutes);
@@ -203,6 +217,28 @@ export const trackingStatusCron = onSchedule(
   },
   async () => {
     await trackingStatusController.processTrackingStatusQueue();
+  }
+);
+
+/** PubSub: Gmail Push Notifications */
+export const gmailPushHandler = onMessagePublished(
+  {topic: 'gmail-notifications', memory: '256MiB', cpu: 1, timeoutSeconds: 540, retry: true},
+  async event => {
+    await processPushNotification(event.data);
+  }
+);
+
+/** Cron: Gmail Watch Renewal (daily at 2 AM UTC) */
+export const gmailWatchRenewalCron = onSchedule(
+  {
+    schedule: '0 2 * * *',
+    memory: '256MiB',
+    cpu: 1,
+    timeoutSeconds: 540,
+    retryConfig: {retryCount: 3, maxRetrySeconds: 600}
+  },
+  async () => {
+    await processWatchRenewal();
   }
 );
 

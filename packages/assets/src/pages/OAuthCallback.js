@@ -3,7 +3,8 @@ import {useNavigate} from 'react-router-dom';
 import {Page, Layout, Card, Banner, Text, Spinner, BlockStack} from '@shopify/polaris';
 import {
   handleGoogleCallback,
-  handleGoogleCallbackTemp
+  handleGoogleCallbackTemp,
+  handleGmailCallback
 } from './oauth-callback/oauth-handlers';
 
 /**
@@ -42,6 +43,8 @@ export default function OAuthCallback() {
 
     if (code && mode === 'temp') {
       handleGoogleCallbackTemp(code, handlers);
+    } else if (code && mode === 'gmail') {
+      handleGmailCallback(code, stateUserId, stateStoreId, handlers);
     } else if (code) {
       handleGoogleCallback(code, stateUserId, stateStoreId, handlers);
     } else {

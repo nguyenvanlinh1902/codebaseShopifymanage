@@ -68,6 +68,7 @@ export default function Tracking() {
   // Import modal
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [importStore, setImportStore] = useState('');
+  const [trackingMode, setTrackingMode] = useState('add');
 
   // Import history
   const [historyModalOpen, setHistoryModalOpen] = useState(false);
@@ -358,7 +359,8 @@ export default function Tracking() {
           body: JSON.stringify({
             storeId: importStore,
             excelBuffer: e.target.result.split(',')[1],
-            fileName: file.name
+            fileName: file.name,
+            trackingMode
           })
         });
         const data = await res.json();
@@ -600,6 +602,15 @@ export default function Tracking() {
                 disabled={loading}
               />
             </div>
+            <ChoiceList
+              title="Tracking Mode"
+              choices={[
+                {label: 'Add tracking — keep existing, add new (multi-pack)', value: 'add'},
+                {label: 'Replace tracking — overwrite existing tracking', value: 'replace'}
+              ]}
+              selected={[trackingMode]}
+              onChange={v => setTrackingMode(v[0])}
+            />
             <ExcelUploadTab
               file={file}
               uploading={uploading}

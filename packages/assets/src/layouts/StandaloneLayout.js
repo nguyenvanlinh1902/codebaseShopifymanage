@@ -105,7 +105,19 @@ export default function StandaloneLayout({children}) {
 
   const mainNavItems = [
     ...filterNavItems(allNavItems),
-    ...(isAdmin ? [{label: 'Users', icon: PersonIcon, url: '/users'}] : [])
+    ...(isAdmin ? [
+      {label: 'Users', icon: PersonIcon, url: '/users'},
+      {
+        label: 'Email Management',
+        icon: NoteIcon,
+        url: '/emails',
+        subNavigationItems: [
+          {label: 'Accounts', url: '/email-accounts'},
+          {label: 'Emails', url: '/emails'},
+          {label: 'Discord Settings', url: '/discord-settings'}
+        ]
+      }
+    ] : [])
   ];
 
   const devNavItems = isAdmin

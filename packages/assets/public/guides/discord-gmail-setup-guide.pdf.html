@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Discord & Gmail Integration - Setup Guide</title>
+<style>
+  @media print {
+    .no-print { display: none !important; }
+    body { font-size: 11pt; }
+    .page-break { page-break-before: always; }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    color: #1a1a2e;
+    line-height: 1.7;
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 40px 24px;
+    background: #fff;
+  }
+  .no-print {
+    position: fixed; top: 16px; right: 16px; z-index: 100;
+    display: flex; gap: 8px;
+  }
+  .btn {
+    padding: 10px 20px; border: none; border-radius: 8px;
+    font-size: 14px; font-weight: 600; cursor: pointer;
+    text-decoration: none; display: inline-block;
+  }
+  .btn-primary { background: #5865F2; color: #fff; }
+  .btn-secondary { background: #e8e8e8; color: #333; }
+  .btn:hover { opacity: 0.9; }
+
+  h1 { font-size: 28px; margin-bottom: 8px; color: #5865F2; }
+  h2 { font-size: 22px; margin: 40px 0 16px; padding-bottom: 8px; border-bottom: 2px solid #5865F2; color: #1a1a2e; }
+  h3 { font-size: 17px; margin: 24px 0 12px; color: #333; }
+  p { margin-bottom: 12px; }
+  .subtitle { color: #666; font-size: 16px; margin-bottom: 32px; }
+
+  ol, ul { padding-left: 24px; margin-bottom: 16px; }
+  li { margin-bottom: 8px; }
+
+  .step-box {
+    background: #f8f9ff; border: 1px solid #e0e4ff; border-radius: 12px;
+    padding: 20px 24px; margin: 16px 0;
+  }
+  .step-num {
+    display: inline-block; width: 28px; height: 28px; line-height: 28px;
+    text-align: center; background: #5865F2; color: #fff; border-radius: 50%;
+    font-weight: 700; font-size: 14px; margin-right: 8px;
+  }
+  .warning {
+    background: #fff8e1; border-left: 4px solid #ffa000; padding: 12px 16px;
+    border-radius: 0 8px 8px 0; margin: 16px 0;
+  }
+  .tip {
+    background: #e8f5e9; border-left: 4px solid #4caf50; padding: 12px 16px;
+    border-radius: 0 8px 8px 0; margin: 16px 0;
+  }
+  .danger {
+    background: #fce4ec; border-left: 4px solid #e53935; padding: 12px 16px;
+    border-radius: 0 8px 8px 0; margin: 16px 0;
+  }
+  code {
+    background: #f0f0f5; padding: 2px 8px; border-radius: 4px;
+    font-family: 'SF Mono', Monaco, monospace; font-size: 13px;
+  }
+  .code-block {
+    background: #1e1e2e; color: #cdd6f4; padding: 16px 20px;
+    border-radius: 8px; font-family: monospace; font-size: 13px;
+    overflow-x: auto; margin: 12px 0; line-height: 1.5;
+  }
+  table {
+    width: 100%; border-collapse: collapse; margin: 16px 0;
+    font-size: 14px;
+  }
+  th, td { padding: 10px 14px; text-align: left; border: 1px solid #e0e0e0; }
+  th { background: #f5f5fa; font-weight: 600; }
+  .badge {
+    display: inline-block; padding: 2px 10px; border-radius: 12px;
+    font-size: 12px; font-weight: 600;
+  }
+  .badge-required { background: #fce4ec; color: #c62828; }
+  .badge-optional { background: #e3f2fd; color: #1565c0; }
+  .toc { background: #f8f9ff; padding: 20px 24px; border-radius: 12px; margin: 24px 0; }
+  .toc a { color: #5865F2; text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+  .toc li { margin-bottom: 4px; }
+  .footer { margin-top: 48px; padding-top: 16px; border-top: 1px solid #eee; color: #999; font-size: 13px; text-align: center; }
+</style>
+</head>
+<body>
+
+<div class="no-print">
+  <button class="btn btn-primary" onclick="window.print()">📥 Download PDF</button>
+  <button class="btn btn-secondary" onclick="window.close()">Close</button>
+</div>
+
+<h1>🔗 Discord & Gmail Integration</h1>
+<p class="subtitle">Setup Guide — Auto-forward Gmail emails to Discord channel</p>
+
+<div class="toc">
+  <strong>Mục lục</strong>
+  <ol>
+    <li><a href="#overview">Tổng quan</a></li>
+    <li><a href="#step1">Bước 1: Tạo Discord Bot</a></li>
+    <li><a href="#step2">Bước 2: Invite Bot vào Server</a></li>
+    <li><a href="#step3">Bước 3: Lấy Channel ID</a></li>
+    <li><a href="#step4">Bước 4: Config trong App</a></li>
+    <li><a href="#step5">Bước 5: Setup Gmail Watch</a></li>
+    <li><a href="#step6">Bước 6: Tạo Filter Rules</a></li>
+    <li><a href="#rules">Cách Rules hoạt động</a></li>
+    <li><a href="#examples">Ví dụ Filter Rules</a></li>
+    <li><a href="#troubleshoot">Xử lý lỗi</a></li>
+  </ol>
+</div>
+
+<!-- OVERVIEW -->
+<h2 id="overview">Tổng quan</h2>
+<p>Hệ thống tự động forward email từ Gmail sang Discord channel thông qua Google Cloud Pub/Sub push notifications.</p>
+
+<div class="step-box">
+  <strong>Flow hoạt động:</strong><br>
+  Gmail nhận email mới → Google Pub/Sub push → Firebase Function xử lý → Filter Rules đánh giá → Discord Bot gửi embed message (~2-5 giây)
+</div>
+
+<table>
+  <tr><th>Thành phần</th><th>Mô tả</th><th>Yêu cầu</th></tr>
+  <tr><td>Gmail Account</td><td>Account cần theo dõi email</td><td class="badge badge-required">Bắt buộc</td></tr>
+  <tr><td>Discord Bot</td><td>Bot gửi message vào channel</td><td class="badge badge-required">Bắt buộc</td></tr>
+  <tr><td>Discord Channel</td><td>Channel nhận email notifications</td><td class="badge badge-required">Bắt buộc</td></tr>
+  <tr><td>Filter Rules</td><td>Lọc email nào forward/bỏ qua</td><td class="badge badge-optional">Tùy chọn</td></tr>
+</table>
+
+<!-- STEP 1 -->
+<h2 id="step1">Bước 1: Tạo Discord Bot</h2>
+
+<div class="step-box">
+  <p><span class="step-num">1</span> Truy cập <strong>https://discord.com/developers/applications</strong></p>
+  <p><span class="step-num">2</span> Click <strong>"New Application"</strong> → đặt tên (vd: "Email Forwarder") → Create</p>
+  <p><span class="step-num">3</span> Vào tab <strong>"Bot"</strong> bên trái sidebar</p>
+  <p><span class="step-num">4</span> Click <strong>"Reset Token"</strong> → <strong>Copy token</strong></p>
+  <p><span class="step-num">5</span> Tắt <strong>"Public Bot"</strong></p>
+  <p><span class="step-num">6</span> Bật <strong>"Message Content Intent"</strong></p>
+</div>
+
+<div class="danger">
+  <strong>⚠️ Quan trọng:</strong> Bot Token chỉ hiện 1 lần duy nhất. Hãy copy và lưu ngay. Nếu mất, phải Reset Token tạo mới.
+</div>
+
+<!-- STEP 2 -->
+<h2 id="step2">Bước 2: Invite Bot vào Server</h2>
+
+<div class="step-box">
+  <p><span class="step-num">1</span> Trong Discord Developer Portal, vào tab <strong>"OAuth2"</strong> → <strong>"URL Generator"</strong></p>
+  <p><span class="step-num">2</span> Mục <strong>Scopes</strong>: tick <code>bot</code></p>
+  <p><span class="step-num">3</span> Mục <strong>Bot Permissions</strong>: tick <code>Send Messages</code> và <code>Embed Links</code></p>
+  <p><span class="step-num">4</span> Copy <strong>Generated URL</strong> ở dưới → paste vào browser</p>
+  <p><span class="step-num">5</span> Chọn server → <strong>Authorize</strong></p>
+</div>
+
+<!-- STEP 3 -->
+<h2 id="step3">Bước 3: Lấy Channel ID</h2>
+
+<div class="step-box">
+  <p><span class="step-num">1</span> Mở Discord app → <strong>Settings</strong> → <strong>Advanced</strong> → bật <strong>"Developer Mode"</strong></p>
+  <p><span class="step-num">2</span> Right-click vào channel muốn nhận email → <strong>"Copy Channel ID"</strong></p>
+</div>
+
+<div class="tip">
+  <strong>💡 Tip:</strong> Nên tạo channel riêng cho email notifications (vd: #email-alerts) để không lẫn với chat thường.
+</div>
+
+<!-- STEP 4 -->
+<h2 id="step4">Bước 4: Config trong App</h2>
+
+<div class="step-box">
+  <p><span class="step-num">1</span> Vào <strong>Discord Settings</strong> trong app</p>
+  <p><span class="step-num">2</span> Tab <strong>"Bot Config"</strong>:</p>
+  <ul>
+    <li>Dán <strong>Bot Token</strong> vào ô Bot Token</li>
+    <li>Dán <strong>Channel ID</strong> vào ô Channel ID</li>
+    <li>Click <strong>"Save Config"</strong></li>
+  </ul>
+  <p><span class="step-num">3</span> Click <strong>"Test Connection"</strong></p>
+</div>
+
+<div class="tip">
+  <strong>✅ Thành công:</strong> Bạn sẽ thấy message test xuất hiện trong Discord channel. Nếu không thấy, kiểm tra lại Bot Token và Channel ID.
+</div>
+
+<!-- STEP 5 -->
+<div class="page-break"></div>
+<h2 id="step5">Bước 5: Setup Gmail Watch</h2>
+
+<div class="warning">
+  <strong>⚙️ Yêu cầu GCP (Admin setup 1 lần):</strong><br>
+  Trước khi dùng Gmail Watch, admin cần setup trên Google Cloud Console:
+  <ol style="margin-top:8px">
+    <li>Enable <strong>Gmail API</strong> cho project</li>
+    <li>Tạo Pub/Sub topic: <code>gmail-notifications</code></li>
+    <li>Cấp quyền <strong>Pub/Sub Publisher</strong> cho <code>gmail-api-push@system.gserviceaccount.com</code></li>
+    <li>Deploy Firebase Functions</li>
+  </ol>
+</div>
+
+<div class="step-box">
+  <p><span class="step-num">1</span> Vào <strong>Discord Settings</strong> → tab <strong>"Watch Status"</strong></p>
+  <p><span class="step-num">2</span> Click <strong>"Start"</strong> cho Gmail account muốn theo dõi</p>
+  <p><span class="step-num">3</span> Status chuyển thành <strong>"Active"</strong> (badge xanh)</p>
+</div>
+
+<table>
+  <tr><th>Status</th><th>Ý nghĩa</th><th>Hành động</th></tr>
+  <tr><td>🟢 Active</td><td>Đang theo dõi email mới</td><td>Có thể Stop</td></tr>
+  <tr><td>🟡 Expiring</td><td>Sắp hết hạn (&lt;24h)</td><td>Tự động renew 2AM UTC</td></tr>
+  <tr><td>⚪ Expired</td><td>Đã hết hạn</td><td>Click Start lại</td></tr>
+  <tr><td>🔴 Error</td><td>Lỗi renewal</td><td>Kiểm tra token, Start lại</td></tr>
+</table>
+
+<!-- STEP 6 -->
+<h2 id="step6">Bước 6: Tạo Filter Rules</h2>
+
+<div class="step-box">
+  <p><span class="step-num">1</span> Vào <strong>Discord Settings</strong> → tab <strong>"Filter Rules"</strong></p>
+  <p><span class="step-num">2</span> Click <strong>"Add Rule"</strong></p>
+  <p><span class="step-num">3</span> Điền thông tin rule → <strong>"Save"</strong></p>
+</div>
+
+<h3>Các trường của Rule</h3>
+<table>
+  <tr><th>Trường</th><th>Mô tả</th><th>Giá trị</th></tr>
+  <tr><td><strong>Name</strong></td><td>Tên rule</td><td>Tên mô tả (vd: "Boss emails")</td></tr>
+  <tr><td><strong>Field</strong></td><td>Trường email cần check</td><td><code>From</code> / <code>Subject</code> / <code>Label</code></td></tr>
+  <tr><td><strong>Operator</strong></td><td>Cách so sánh</td><td><code>Equals</code> / <code>Contains</code> / <code>Starts with</code> / <code>Regex</code></td></tr>
+  <tr><td><strong>Value</strong></td><td>Giá trị cần match</td><td>Text hoặc regex pattern</td></tr>
+  <tr><td><strong>Logic</strong></td><td>Khi có nhiều conditions</td><td><code>All (AND)</code> / <code>Any (OR)</code></td></tr>
+  <tr><td><strong>Action</strong></td><td>Hành động khi match</td><td><code>Forward</code> / <code>Ignore</code></td></tr>
+  <tr><td><strong>Priority</strong></td><td>Thứ tự đánh giá</td><td>Số nhỏ = đánh giá trước</td></tr>
+</table>
+
+<!-- RULES -->
+<h2 id="rules">Cách Rules hoạt động</h2>
+
+<div class="step-box">
+  <strong>Quy tắc quan trọng:</strong>
+  <ul>
+    <li><strong>Không có rules</strong> → Forward TẤT CẢ email</li>
+    <li><strong>Có rules</strong> → Đánh giá theo priority (số nhỏ trước)</li>
+    <li><strong>Rule match đầu tiên thắng</strong> → thực hiện action của rule đó</li>
+    <li><strong>Không match rule nào</strong> → Ignore (chế độ whitelist)</li>
+  </ul>
+</div>
+
+<div class="warning">
+  <strong>💡 Lưu ý:</strong> Khi bạn tạo rules, hệ thống chuyển sang chế độ <strong>whitelist</strong>. Chỉ email match rule có action "Forward" mới được gửi qua Discord. Còn lại bị bỏ qua.
+</div>
+
+<!-- EXAMPLES -->
+<div class="page-break"></div>
+<h2 id="examples">Ví dụ Filter Rules</h2>
+
+<h3>Ví dụ 1: Chỉ forward email từ sếp</h3>
+<div class="code-block">
+Name:      Boss emails
+Field:     From
+Operator:  Contains
+Value:     boss@company.com
+Action:    Forward
+Priority:  1
+</div>
+
+<h3>Ví dụ 2: Bỏ qua email marketing (promotions)</h3>
+<div class="code-block">
+Name:      Skip promotions
+Field:     Label
+Operator:  Equals
+Value:     CATEGORY_PROMOTIONS
+Action:    Ignore
+Priority:  0  ← đánh giá trước rule khác
+</div>
+
+<h3>Ví dụ 3: Forward email có "urgent" trong tiêu đề</h3>
+<div class="code-block">
+Name:      Urgent emails
+Field:     Subject
+Operator:  Contains
+Value:     urgent
+Action:    Forward
+Priority:  2
+</div>
+
+<h3>Ví dụ 4: Multi-condition — Email từ domain cụ thể VÀ có keyword</h3>
+<div class="code-block">
+Name:       Important partner emails
+Conditions:
+  1. Field: From     | Operator: Contains | Value: @partner.com
+  2. Field: Subject  | Operator: Contains | Value: invoice
+Logic:     All (AND) ← cả 2 điều kiện phải match
+Action:    Forward
+Priority:  1
+</div>
+
+<h3>Gmail Labels phổ biến</h3>
+<table>
+  <tr><th>Label ID</th><th>Mô tả</th></tr>
+  <tr><td><code>INBOX</code></td><td>Inbox</td></tr>
+  <tr><td><code>UNREAD</code></td><td>Chưa đọc</td></tr>
+  <tr><td><code>STARRED</code></td><td>Có gắn sao</td></tr>
+  <tr><td><code>IMPORTANT</code></td><td>Quan trọng</td></tr>
+  <tr><td><code>CATEGORY_PROMOTIONS</code></td><td>Quảng cáo</td></tr>
+  <tr><td><code>CATEGORY_SOCIAL</code></td><td>Mạng xã hội</td></tr>
+  <tr><td><code>CATEGORY_UPDATES</code></td><td>Cập nhật</td></tr>
+  <tr><td><code>CATEGORY_FORUMS</code></td><td>Diễn đàn</td></tr>
+</table>
+
+<!-- TROUBLESHOOT -->
+<h2 id="troubleshoot">Xử lý lỗi</h2>
+
+<table>
+  <tr><th>Lỗi</th><th>Nguyên nhân</th><th>Cách fix</th></tr>
+  <tr>
+    <td>Test Connection failed</td>
+    <td>Bot token sai hoặc bot chưa được invite vào server</td>
+    <td>Kiểm tra token, invite lại bot</td>
+  </tr>
+  <tr>
+    <td>Cannot access channel</td>
+    <td>Bot không có quyền trong channel</td>
+    <td>Kiểm tra bot permissions trong server settings</td>
+  </tr>
+  <tr>
+    <td>Watch Start failed</td>
+    <td>Gmail API chưa enable hoặc Pub/Sub topic chưa tạo</td>
+    <td>Enable Gmail API, tạo topic trên GCP</td>
+  </tr>
+  <tr>
+    <td>Watch Expired</td>
+    <td>Watch hết hạn 7 ngày, renewal cron thất bại</td>
+    <td>Click "Start" lại, kiểm tra Gmail token</td>
+  </tr>
+  <tr>
+    <td>Email không forward</td>
+    <td>Filter rule chặn hoặc không match</td>
+    <td>Kiểm tra rules, thử tắt tất cả rules (forward all)</td>
+  </tr>
+  <tr>
+    <td>Duplicate messages</td>
+    <td>Pub/Sub gửi lại message</td>
+    <td>Bình thường — hệ thống tự dedup</td>
+  </tr>
+</table>
+
+<div class="footer">
+  Discord & Gmail Integration Guide • ToolShopify • Last updated: March 2026
+</div>
+
+</body>
+</html>

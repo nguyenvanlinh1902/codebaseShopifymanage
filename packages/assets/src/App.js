@@ -43,6 +43,9 @@ import DevTestImport from './pages/DevTestImport';
 import Guide from './pages/Guide';
 import OrderSearch from './pages/OrderSearch';
 import ShippingManagement from './pages/ShippingManagement';
+import EmailManagement from './loadables/EmailManagement';
+import DiscordSettings from './loadables/DiscordSettings';
+import EmailAccounts from './pages/EmailAccounts';
 import NotFound from './pages/NotFound';
 import LoginPage from './pages/LoginPage';
 import SetupAdminPage from './pages/SetupAdminPage';
@@ -194,6 +197,9 @@ function StandaloneFrame() {
         <Route path="/disputes" element={<FeatureGuard feature="dispute"><Disputes /></FeatureGuard>} />
         <Route path="/order-search" element={<FeatureGuard feature="order-search"><OrderSearch /></FeatureGuard>} />
         <Route path="/shipping-management" element={<FeatureGuard feature="shipping"><ShippingManagement /></FeatureGuard>} />
+        <Route path="/emails" element={isAdmin ? <EmailManagement /> : <NotFound />} />
+        <Route path="/email-accounts" element={isAdmin ? <EmailAccounts /> : <NotFound />} />
+        <Route path="/discord-settings" element={isAdmin ? <DiscordSettings /> : <NotFound />} />
         <Route path="/setup" element={<FeatureGuard feature="setup"><SetupStore /></FeatureGuard>} />
         <Route path="/users" element={isAdmin ? <Users /> : <NotFound />} />
         <Route path="/dev/webhooks" element={isAdmin ? <DevWebhooks /> : <NotFound />} />

@@ -38,7 +38,7 @@ export class ShopifyService {
   getOrders(params) { return orderSvc.getOrders(this.shopify, params); }
   getOrder(orderId) { return orderSvc.getOrder(this.shopify, orderId); }
   getOrderByNumber(orderNumber) { return orderSvc.getOrderByNumber(this.shopify, orderNumber); }
-  addOrderTracking(orderId, trackingInfo) { return orderSvc.addOrderTracking(this.shopify, orderId, trackingInfo); }
+  addOrderTracking(orderId, trackingInfo, mode) { return orderSvc.addOrderTracking(this.shopify, orderId, trackingInfo, mode); }
   updateFulfillmentTracking(orderId, fulfillmentId, trackingInfo) { return orderSvc.updateFulfillmentTracking(this.shopify, orderId, fulfillmentId, trackingInfo); }
   createFulfillment(orderId, trackingInfo) { return orderSvc.createFulfillment(this.shopify, orderId, trackingInfo); }
   getOrdersWithFulfillments(opts) { return orderSvc.getOrdersWithFulfillments(this.shopify, opts); }

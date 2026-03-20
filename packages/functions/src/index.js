@@ -28,6 +28,9 @@ import trackingStatusRoutes from './routes/tracking-status-routes.js';
 import shippingTemplateRoutes from './routes/shipping-template-routes.js';
 import gmailRoutes from './routes/gmail-routes.js';
 import {exchangeGmailCode as gmailAuthExchange} from './controllers/gmail/gmail-auth-handler.js';
+import outlookRoutes from './routes/outlook-routes.js';
+import {exchangeOutlookCode as outlookAuthExchange} from './controllers/outlook/outlook-auth-handler.js';
+import {handleOutlookWebhook} from './handlers/outlook-push-handler.js';
 import discordRoutes from './routes/discord-routes.js';
 import emailRuleRoutes from './routes/email-rule-routes.js';
 import * as trackingStatusController from './controllers/tracking-status-controller.js';
@@ -43,6 +46,8 @@ import * as trackingImportController from './controllers/trackingImportControlle
 // Gmail push handlers
 import {processPushNotification} from './handlers/gmail-push-handler.js';
 import {processWatchRenewal} from './handlers/gmail-watch-renewal-handler.js';
+// Outlook watch renewal
+import {processOutlookWatchRenewal} from './handlers/outlook-watch-renewal-handler.js';
 
 // BigQuery Firestore triggers
 import {
@@ -95,6 +100,12 @@ app.post('/api/google/exchange-temp', googleAuthController.exchangeGoogleCodeTem
 // Gmail OAuth exchange (public — separate from Google Sheets)
 app.post('/api/gmail/auth/exchange', gmailAuthExchange);
 
+// Outlook OAuth exchange (public — called from popup callback)
+app.post('/api/outlook/auth/exchange', outlookAuthExchange);
+
+// Outlook webhook (public — called by Microsoft Graph change notifications)
+app.post('/api/outlook/webhook', handleOutlookWebhook);
+
 // ============ EMBEDDED APP ROUTES (session token auth) ============
 app.use('/api/embed', embedRoutes);
 // ============ AUTH MIDDLEWARE (JWT verification for all app routes) ============
@@ -112,6 +123,7 @@ app.use('/api/tracking', trackingRoutes);
 app.use('/api/tracking-status', trackingStatusRoutes);
 app.use('/api/shipping', shippingTemplateRoutes);
 app.use('/api/gmail', gmailRoutes);
+app.use('/api/outlook', outlookRoutes);
 app.use('/api/discord', discordRoutes);
 app.use('/api/email-rules', emailRuleRoutes);
 app.use('/api/themes', themeRoutes);
@@ -239,6 +251,20 @@ export const gmailWatchRenewalCron = onSchedule(
   },
   async () => {
     await processWatchRenewal();
+  }
+);
+
+/** Cron: Outlook Watch Renewal (daily at 3 AM UTC) */
+export const outlookWatchRenewalCron = onSchedule(
+  {
+    schedule: '0 3 * * *',
+    memory: '256MiB',
+    cpu: 1,
+    timeoutSeconds: 540,
+    retryConfig: {retryCount: 3, maxRetrySeconds: 600}
+  },
+  async () => {
+    await processOutlookWatchRenewal();
   }
 );
 

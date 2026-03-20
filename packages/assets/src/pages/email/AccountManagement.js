@@ -1,13 +1,22 @@
 import React, {useState, useEffect, useCallback} from 'react';
 import PropTypes from 'prop-types';
 import {
-  Card, IndexTable, Text, Badge, Button, InlineStack, BlockStack,
-  Banner, EmptyState, Modal, Spinner
+  Card,
+  IndexTable,
+  Text,
+  Badge,
+  Button,
+  InlineStack,
+  BlockStack,
+  Banner,
+  EmptyState,
+  Modal,
+  Spinner
 } from '@shopify/polaris';
 import {api} from '../../helpers/api';
 
 /**
- * Account management tab — list connected Gmail accounts with connect/delete
+ * Account management — list connected Gmail + Outlook accounts with connect/delete
  */
 export default function AccountManagement({onAccountChange}) {
   const [accounts, setAccounts] = useState([]);
@@ -20,9 +29,17 @@ export default function AccountManagement({onAccountChange}) {
   const fetchAccounts = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await api('/api/gmail/accounts');
-      const result = await res.json();
-      if (result.success) setAccounts(result.data || []);
+      const [gmailRes, outlookRes] = await Promise.all([
+        api('/api/gmail/accounts').then(r => r.json()),
+        api('/api/outlook/accounts').then(r => r.json())
+      ]);
+
+      const gmail = (gmailRes.success ? gmailRes.data : []).map(a => ({...a, provider: 'gmail'}));
+      const outlook = (outlookRes.success ? outlookRes.data : []).map(a => ({
+        ...a,
+        provider: 'outlook'
+      }));
+      setAccounts([...gmail, ...outlook]);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -30,49 +47,64 @@ export default function AccountManagement({onAccountChange}) {
     }
   }, []);
 
-  useEffect(() => { fetchAccounts(); }, [fetchAccounts]);
+  useEffect(() => {
+    fetchAccounts();
+  }, [fetchAccounts]);
 
-  const connectGmail = useCallback(async () => {
-    try {
-      setError(null);
-      const res = await api('/api/gmail/auth-url');
-      const result = await res.json();
-      if (!result.success) throw new Error(result.error);
+  const connectAccount = useCallback(
+    async provider => {
+      try {
+        setError(null);
+        const endpoint = provider === 'outlook' ? '/api/outlook/auth-url' : '/api/gmail/auth-url';
+        const res = await api(endpoint);
+        const result = await res.json();
+        if (!result.success) throw new Error(result.error);
 
-      const w = 500, h = 600;
-      const left = window.screenX + (window.outerWidth - w) / 2;
-      const top = window.screenY + (window.outerHeight - h) / 2;
-      window.open(result.data.authUrl, 'gmail-auth',
-        `width=${w},height=${h},left=${left},top=${top},scrollbars=yes`);
+        const w = 500;
+        const h = 600;
+        const left = window.screenX + (window.outerWidth - w) / 2;
+        const top = window.screenY + (window.outerHeight - h) / 2;
+        window.open(
+          result.data.authUrl,
+          `${provider}-auth`,
+          `width=${w},height=${h},left=${left},top=${top},scrollbars=yes`
+        );
 
-      const handleMessage = event => {
-        if (event.data?.type === 'google-auth-callback') {
-          window.removeEventListener('message', handleMessage);
-          if (event.data.success) {
-            setSuccess(`Connected ${event.data.googleEmail || 'account'}`);
-            fetchAccounts();
-            onAccountChange?.();
-          } else {
-            setError(event.data.error || 'Failed to connect Gmail');
+        const handleMessage = event => {
+          if (
+            event.data?.type === 'google-auth-callback' ||
+            event.data?.type === 'outlook-auth-callback'
+          ) {
+            window.removeEventListener('message', handleMessage);
+            if (event.data.success) {
+              setSuccess(`Connected ${event.data.googleEmail || event.data.email || 'account'}`);
+              fetchAccounts();
+              onAccountChange?.();
+            } else {
+              setError(event.data.error || `Failed to connect ${provider}`);
+            }
           }
-        }
-      };
-      window.addEventListener('message', handleMessage);
-    } catch (err) {
-      setError(err.message);
-    }
-  }, [fetchAccounts, onAccountChange]);
+        };
+        window.addEventListener('message', handleMessage);
+      } catch (err) {
+        setError(err.message);
+      }
+    },
+    [fetchAccounts, onAccountChange]
+  );
 
-  const handleDelete = async (email) => {
+  const handleDelete = async account => {
     try {
       setActionLoading(true);
-      const res = await api('/api/gmail/disconnect', {
+      const endpoint =
+        account.provider === 'outlook' ? '/api/outlook/disconnect' : '/api/gmail/disconnect';
+      const res = await api(endpoint, {
         method: 'POST',
-        body: JSON.stringify({email})
+        body: JSON.stringify({email: account.email})
       });
       const result = await res.json();
       if (!result.success) throw new Error(result.error);
-      setSuccess(`Deleteed ${email}`);
+      setSuccess(`Deleted ${account.email}`);
       setDeleteConfirm(null);
       fetchAccounts();
       onAccountChange?.();
@@ -88,33 +120,52 @@ export default function AccountManagement({onAccountChange}) {
       <Card>
         <BlockStack gap="400" inlineAlign="center">
           <Spinner size="small" />
-          <Text as="p" tone="subdued">Loading accounts...</Text>
+          <Text as="p" tone="subdued">
+            Loading accounts...
+          </Text>
         </BlockStack>
       </Card>
     );
   }
 
   const resourceName = {singular: 'account', plural: 'accounts'};
+  const providerBadge = provider => {
+    if (provider === 'outlook') return <Badge tone="attention">Outlook</Badge>;
+    return <Badge tone="info">Gmail</Badge>;
+  };
 
   return (
     <>
       <Card>
         <BlockStack gap="400">
           <InlineStack align="space-between">
-            <Text as="h2" variant="headingMd">Connected Gmail Accounts</Text>
-            <Button onClick={connectGmail} variant="primary">Connect Gmail Account</Button>
+            <Text as="h2" variant="headingMd">
+              Connected Email Accounts
+            </Text>
+            <InlineStack gap="200">
+              <Button onClick={() => connectAccount('gmail')}>Connect Gmail</Button>
+              <Button onClick={() => connectAccount('outlook')} variant="primary">
+                Connect Outlook
+              </Button>
+            </InlineStack>
           </InlineStack>
 
-          {error && <Banner tone="critical" onDismiss={() => setError(null)}>{error}</Banner>}
-          {success && <Banner tone="success" onDismiss={() => setSuccess(null)}>{success}</Banner>}
+          {error && (
+            <Banner tone="critical" onDismiss={() => setError(null)}>
+              {error}
+            </Banner>
+          )}
+          {success && (
+            <Banner tone="success" onDismiss={() => setSuccess(null)}>
+              {success}
+            </Banner>
+          )}
 
           {accounts.length === 0 ? (
-            <EmptyState
-              heading="No Gmail accounts connected"
-              image=""
-              action={{content: 'Connect Gmail', onAction: connectGmail}}
-            >
-              <p>Connect a Gmail account to browse emails and set up Discord forwarding.</p>
+            <EmptyState heading="No email accounts connected" image="">
+              <p>
+                Connect a Gmail or Outlook account to browse emails and set up Discord forwarding.
+              </p>
             </EmptyState>
           ) : (
             <IndexTable
@@ -122,7 +173,7 @@ export default function AccountManagement({onAccountChange}) {
               itemCount={accounts.length}
               headings={[
                 {title: 'Email'},
-                {title: 'Type'},
+                {title: 'Provider'},
                 {title: 'Connected'},
                 {title: 'Actions'}
               ]}
@@ -133,22 +184,16 @@ export default function AccountManagement({onAccountChange}) {
                   <IndexTable.Cell>
                     <Text fontWeight="bold">{account.email}</Text>
                   </IndexTable.Cell>
-                  <IndexTable.Cell>
-                    <Badge tone={account.authType === 'gmail' ? 'info' : undefined}>
-                      {account.authType === 'gmail' ? 'Gmail' : 'Shared'}
-                    </Badge>
-                  </IndexTable.Cell>
+                  <IndexTable.Cell>{providerBadge(account.provider)}</IndexTable.Cell>
                   <IndexTable.Cell>
                     <Text as="span" tone="subdued" variant="bodySm">
-                      {account.connectedAt ? new Date(account.connectedAt).toLocaleDateString() : '-'}
+                      {account.connectedAt
+                        ? new Date(account.connectedAt).toLocaleDateString()
+                        : '-'}
                     </Text>
                   </IndexTable.Cell>
                   <IndexTable.Cell>
-                    <Button
-                      onClick={() => setDeleteConfirm(account)}
-                      size="slim"
-                      tone="critical"
-                    >
+                    <Button onClick={() => setDeleteConfirm(account)} size="slim" tone="critical">
                       Delete
                     </Button>
                   </IndexTable.Cell>
@@ -163,19 +208,19 @@ export default function AccountManagement({onAccountChange}) {
         <Modal
           open
           onClose={() => setDeleteConfirm(null)}
-          title="Delete Gmail account?"
+          title={`Delete ${deleteConfirm.provider === 'outlook' ? 'Outlook' : 'Gmail'} account?`}
           primaryAction={{
             content: 'Delete',
             destructive: true,
             loading: actionLoading,
-            onAction: () => handleDelete(deleteConfirm.email)
+            onAction: () => handleDelete(deleteConfirm)
           }}
           secondaryActions={[{content: 'Cancel', onAction: () => setDeleteConfirm(null)}]}
         >
           <Modal.Section>
             <Text as="p">
-              Are you sure you want to delete <strong>{deleteConfirm.email}</strong>?
-              This will remove the account, stop any active email watches and Discord forwarding.
+              Are you sure you want to delete <strong>{deleteConfirm.email}</strong>? This will
+              remove the account, stop any active email watches and Discord forwarding.
             </Text>
           </Modal.Section>
         </Modal>

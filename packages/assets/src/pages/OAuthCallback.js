@@ -4,7 +4,8 @@ import {Page, Layout, Card, Banner, Text, Spinner, BlockStack} from '@shopify/po
 import {
   handleGoogleCallback,
   handleGoogleCallbackTemp,
-  handleGmailCallback
+  handleGmailCallback,
+  handleOutlookCallback
 } from './oauth-callback/oauth-handlers';
 
 /**
@@ -43,6 +44,8 @@ export default function OAuthCallback() {
 
     if (code && mode === 'temp') {
       handleGoogleCallbackTemp(code, handlers);
+    } else if (code && mode === 'outlook') {
+      handleOutlookCallback(code, stateUserId, stateStoreId, handlers);
     } else if (code && mode === 'gmail') {
       handleGmailCallback(code, stateUserId, stateStoreId, handlers);
     } else if (code) {

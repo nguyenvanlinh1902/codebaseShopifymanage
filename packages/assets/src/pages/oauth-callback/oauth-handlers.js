@@ -96,6 +96,51 @@ export async function handleGmailCallback(code, userId, storeId, {setError, setS
   }
 }
 
+/**
+ * Handle Outlook OAuth callback
+ */
+export async function handleOutlookCallback(code, userId, storeId, {setError, setStatus}) {
+  try {
+    const response = await fetch('/api/outlook/auth/exchange', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({code, state: JSON.stringify({userId, storeId, mode: 'outlook'})})
+    });
+
+    const result = await response.json();
+
+    if (result.success) {
+      setStatus('success');
+      if (window.opener) {
+        window.opener.postMessage(
+          {type: 'outlook-auth-callback', success: true, email: result.data?.googleEmail || ''},
+          '*'
+        );
+        setTimeout(() => window.close(), 1500);
+      }
+    } else {
+      setError(result.error || 'Failed to connect Outlook');
+      setStatus('error');
+      if (window.opener) {
+        window.opener.postMessage(
+          {type: 'outlook-auth-callback', success: false, error: result.error},
+          '*'
+        );
+      }
+    }
+  } catch (err) {
+    console.error('Outlook OAuth callback error:', err);
+    setError('Failed to connect Outlook');
+    setStatus('error');
+    if (window.opener) {
+      window.opener.postMessage(
+        {type: 'outlook-auth-callback', success: false, error: 'Failed to connect Outlook'},
+        '*'
+      );
+    }
+  }
+}
+
 export async function handleGoogleCallbackTemp(code, {setError, setStatus}) {
   try {
     const response = await fetch('/api/google/exchange-temp', {

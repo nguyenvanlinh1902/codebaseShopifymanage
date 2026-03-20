@@ -11,11 +11,25 @@ import {useGmailEmails} from '../hooks/useGmailEmails';
  */
 export default function EmailManagement() {
   const [selectedEmail, setSelectedEmail] = useState('');
+  const [provider, setProvider] = useState('gmail');
   const {
-    emails, loading, error, hasMore,
-    selectedMessage, setSelectedMessage, labels,
-    fetchEmails, fetchMore, fetchMessage, fetchLabels
-  } = useGmailEmails(selectedEmail);
+    emails,
+    loading,
+    error,
+    hasMore,
+    selectedMessage,
+    setSelectedMessage,
+    labels,
+    fetchEmails,
+    fetchMore,
+    fetchMessage,
+    fetchLabels
+  } = useGmailEmails(selectedEmail, provider);
+
+  const handleAccountSelect = useCallback((email, prov) => {
+    setSelectedEmail(email);
+    setProvider(prov || 'gmail');
+  }, []);
 
   useEffect(() => {
     if (selectedEmail) {
@@ -24,13 +38,19 @@ export default function EmailManagement() {
     }
   }, [selectedEmail, fetchEmails, fetchLabels]);
 
-  const handleFilter = useCallback(({query, label}) => {
-    fetchEmails(query, label);
-  }, [fetchEmails]);
+  const handleFilter = useCallback(
+    ({query, label}) => {
+      fetchEmails(query, label);
+    },
+    [fetchEmails]
+  );
 
-  const handleSelectMessage = useCallback((messageId) => {
-    fetchMessage(messageId);
-  }, [fetchMessage]);
+  const handleSelectMessage = useCallback(
+    messageId => {
+      fetchMessage(messageId);
+    },
+    [fetchMessage]
+  );
 
   const showInitialState = !selectedEmail && !loading;
   const showListSkeleton = loading && emails.length === 0;
@@ -41,7 +61,7 @@ export default function EmailManagement() {
         <Layout.Section variant="oneThird">
           <BlockStack gap="400">
             <Card>
-              <AccountSelector selectedEmail={selectedEmail} onSelect={setSelectedEmail} />
+              <AccountSelector selectedEmail={selectedEmail} onSelect={handleAccountSelect} />
             </Card>
 
             {selectedEmail && (
@@ -53,7 +73,7 @@ export default function EmailManagement() {
             {showInitialState && (
               <Card>
                 <Banner tone="info">
-                  Select a Gmail account to browse emails, or go to Accounts to connect one.
+                  Select an email account to browse emails, or go to Accounts to connect one.
                 </Banner>
               </Card>
             )}

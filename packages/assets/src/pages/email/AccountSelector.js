@@ -4,7 +4,7 @@ import {Select} from '@shopify/polaris';
 import {api} from '../../helpers/api';
 
 /**
- * Dropdown selector for connected Gmail accounts
+ * Dropdown selector for connected email accounts (Gmail + Outlook)
  */
 export default function AccountSelector({selectedEmail, onSelect}) {
   const [accounts, setAccounts] = useState([]);
@@ -13,36 +13,59 @@ export default function AccountSelector({selectedEmail, onSelect}) {
   const fetchAccounts = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await api('/api/gmail/accounts');
-      const result = await res.json();
-      if (result.success) {
-        setAccounts(result.data || []);
-        if (!selectedEmail && result.data?.length > 0) {
-          onSelect(result.data[0].email);
-        }
+      const [gmailRes, outlookRes] = await Promise.all([
+        api('/api/gmail/accounts').then(r => r.json()),
+        api('/api/outlook/accounts').then(r => r.json())
+      ]);
+
+      const gmail = (gmailRes.success ? gmailRes.data : []).map(a => ({
+        ...a,
+        provider: 'gmail'
+      }));
+      const outlook = (outlookRes.success ? outlookRes.data : []).map(a => ({
+        ...a,
+        provider: 'outlook'
+      }));
+      const all = [...gmail, ...outlook];
+      setAccounts(all);
+
+      if (!selectedEmail && all.length > 0) {
+        onSelect(all[0].email, all[0].provider);
       }
     } catch (err) {
-      console.error('Failed to fetch Gmail accounts:', err);
+      console.error('Failed to fetch email accounts:', err);
     } finally {
       setLoading(false);
     }
   }, [selectedEmail, onSelect]);
 
-  useEffect(() => { fetchAccounts(); }, [fetchAccounts]);
+  useEffect(() => {
+    fetchAccounts();
+  }, [fetchAccounts]);
 
   const options = [
-    {label: 'Select a Gmail account...', value: ''},
-    ...accounts.map(a => ({label: a.email, value: a.email}))
+    {label: 'Select an email account...', value: ''},
+    ...accounts.map(a => ({
+      label: `${a.email} (${a.provider === 'outlook' ? 'Outlook' : 'Gmail'})`,
+      value: a.email
+    }))
   ];
+
+  const handleChange = value => {
+    const account = accounts.find(a => a.email === value);
+    onSelect(value, account?.provider || 'gmail');
+  };
 
   return (
     <Select
-      label="Gmail Account"
+      label="Email Account"
       options={options}
       value={selectedEmail || ''}
-      onChange={onSelect}
+      onChange={handleChange}
       disabled={loading}
-      helpText={accounts.length === 0 && !loading ? 'No accounts connected. Go to Accounts tab.' : ''}
+      helpText={
+        accounts.length === 0 && !loading ? 'No accounts connected. Go to Accounts tab.' : ''
+      }
     />
   );
 }

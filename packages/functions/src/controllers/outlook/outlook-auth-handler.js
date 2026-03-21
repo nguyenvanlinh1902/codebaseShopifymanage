@@ -1,39 +1,53 @@
 import crypto from 'crypto';
+import {getFirestore} from 'firebase-admin/firestore';
 import {OUTLOOK_OAUTH_CONFIG, OUTLOOK_SCOPES} from '../../config/outlook-oauth.js';
 import {GoogleAuthRepository} from '../../repositories/googleAuthRepository.js';
 import {OutlookService} from '../../services/outlook-service.js';
 import {OutlookWatchRepository} from '../../repositories/outlook-watch-repository.js';
 
-// In-memory store for PKCE code verifiers (short-lived, cleared after use)
-const pkceStore = new Map();
+const PKCE_COLLECTION = 'pkce_verifiers';
+const PKCE_TTL_MS = 10 * 60 * 1000;
 
 function generateCodeVerifier() {
   return crypto.randomBytes(32).toString('base64url');
 }
 
 function generateCodeChallenge(verifier) {
-  return crypto.createHash('sha256').update(verifier).digest('base64url');
+  return crypto
+    .createHash('sha256')
+    .update(verifier)
+    .digest('base64url');
 }
 
 /**
  * GET /api/outlook/auth-url — generate Outlook OAuth URL with PKCE
+ * Cross-origin redemption (frontend redirect → backend exchange) requires PKCE
  */
 export async function getOutlookAuthUrl(req, res) {
   try {
     const codeVerifier = generateCodeVerifier();
     const codeChallenge = generateCodeChallenge(codeVerifier);
 
+    // Use a unique key for Firestore lookup (not the full state JSON)
+    const pkceKey = crypto.randomBytes(16).toString('hex');
+
     const stateObj = {
+      pkceKey,
       userId: req.userId || '',
       storeId: req.query.storeId || 'default',
       mode: 'outlook'
     };
     const state = JSON.stringify(stateObj);
 
-    // Store code_verifier keyed by state for retrieval during token exchange
-    pkceStore.set(state, codeVerifier);
-    // Auto-cleanup after 10 minutes
-    setTimeout(() => pkceStore.delete(state), 10 * 60 * 1000);
+    // Persist code_verifier in Firestore (survives cold starts & multi-instance)
+    const db = getFirestore();
+    await db
+      .collection(PKCE_COLLECTION)
+      .doc(pkceKey)
+      .set({
+        codeVerifier,
+        expiresAt: Date.now() + PKCE_TTL_MS
+      });
 
     const params = new URLSearchParams({
       client_id: OUTLOOK_OAUTH_CONFIG.clientId,
@@ -55,13 +69,6 @@ export async function getOutlookAuthUrl(req, res) {
   }
 }
 
-/** Retrieve and consume PKCE code_verifier for a given state */
-export function consumeCodeVerifier(state) {
-  const verifier = pkceStore.get(state);
-  if (verifier) pkceStore.delete(state);
-  return verifier;
-}
-
 /**
  * POST /api/outlook/auth/exchange — exchange code for Outlook tokens
  */
@@ -76,16 +83,28 @@ export async function exchangeOutlookCode(req, res) {
     const storeId = parsedState.storeId || req.storeId || 'default';
     const userId = parsedState.userId || req.userId || 'default-user';
 
-    // Retrieve PKCE code_verifier for this state
-    const codeVerifier = consumeCodeVerifier(state);
+    // Retrieve and consume PKCE code_verifier from Firestore
+    let codeVerifier = '';
+    if (parsedState.pkceKey) {
+      const db = getFirestore();
+      const docRef = db.collection(PKCE_COLLECTION).doc(parsedState.pkceKey);
+      const doc = await docRef.get();
+      if (doc.exists) {
+        const data = doc.data();
+        if (data.expiresAt > Date.now()) {
+          codeVerifier = data.codeVerifier;
+        }
+        await docRef.delete();
+      }
+    }
 
-    // Exchange code for tokens (SPA platform — public client with PKCE + Origin header)
+    // Exchange code for tokens (public client — PKCE only, no client_secret)
     const tokenParams = {
       client_id: OUTLOOK_OAUTH_CONFIG.clientId,
       code,
       redirect_uri: OUTLOOK_OAUTH_CONFIG.redirectUri,
       grant_type: 'authorization_code',
-      code_verifier: codeVerifier || ''
+      code_verifier: codeVerifier
     };
     const body = new URLSearchParams(tokenParams);
 
@@ -93,7 +112,7 @@ export async function exchangeOutlookCode(req, res) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
-        'Origin': OUTLOOK_OAUTH_CONFIG.redirectUri
+        Origin: OUTLOOK_OAUTH_CONFIG.redirectUri
       },
       body
     });
@@ -112,7 +131,7 @@ export async function exchangeOutlookCode(req, res) {
     const profile = await profileRes.json();
     const email = profile.mail || profile.userPrincipalName;
 
-    // Store in google_auth collection with outlook authType
+    // Store in google_auth collection with outlook authType (multiple accounts allowed)
     const authRepo = new GoogleAuthRepository();
     await authRepo.upsertByStoreAndEmail(storeId, userId, email, {
       accessToken: tokens.access_token,
@@ -123,7 +142,8 @@ export async function exchangeOutlookCode(req, res) {
     });
 
     // Auto-start Outlook watch after connecting (skip in local/emulator)
-    const isLocal = process.env.FUNCTIONS_EMULATOR === 'true' || process.env.NODE_ENV === 'development';
+    const isLocal =
+      process.env.FUNCTIONS_EMULATOR === 'true' || process.env.NODE_ENV === 'development';
     try {
       if (isLocal) throw new Error('Skipping watch in local environment');
       const webhookUrl = `https://us-central1-${process.env.GCLOUD_PROJECT}.cloudfunctions.net/api/api/outlook/webhook`;
@@ -156,14 +176,20 @@ export async function exchangeOutlookCode(req, res) {
 
 /**
  * GET /api/outlook/accounts — list Outlook-connected accounts
+ * Admin sees all accounts, regular users see only their own
  */
 export async function getOutlookAccounts(req, res) {
   try {
     const authRepo = new GoogleAuthRepository();
-    const allAccounts = await authRepo.getAllByStoreAndUser(
-      req.query.storeId || 'default',
-      req.userId
-    );
+    const isAdmin = req.userRole === 'admin';
+    const storeId = req.query.storeId || 'default';
+
+    let allAccounts;
+    if (isAdmin) {
+      allAccounts = await authRepo.getAllByStore(storeId);
+    } else {
+      allAccounts = await authRepo.getAllByStoreAndUser(storeId, req.userId);
+    }
     const outlookAccounts = allAccounts.filter(a => a.authType === 'outlook');
 
     return res.json({
@@ -171,6 +197,7 @@ export async function getOutlookAccounts(req, res) {
       data: outlookAccounts.map(a => ({
         email: a.googleEmail,
         authType: 'outlook',
+        userId: isAdmin ? a.userId : undefined,
         connectedAt: a.createdAt
       }))
     });
@@ -208,7 +235,11 @@ export async function disconnectOutlookAccount(req, res) {
     }
 
     const authRepo = new GoogleAuthRepository();
-    await authRepo.deleteByStoreAndEmail(req.body.storeId || 'default', req.userId, email);
+    const storeId = req.body.storeId || 'default';
+    // Find and delete by store + email (no userId restriction)
+    const allInStore = await authRepo.getAllByStore(storeId);
+    const record = allInStore.find(a => a.googleEmail === email && a.authType === 'outlook');
+    if (record) await authRepo.collection.doc(record.id).delete();
 
     return res.json({success: true, data: {message: `Disconnected ${email}`}});
   } catch (error) {

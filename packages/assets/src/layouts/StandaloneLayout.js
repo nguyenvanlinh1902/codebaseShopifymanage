@@ -44,6 +44,7 @@ const NAV_FEATURE_MAP = {
   '/disputes': 'dispute',
   '/shipping-management': 'shipping',
   '/themes': 'themes',
+  '/my-email': 'my-email',
   '/setup': 'setup'
 };
 
@@ -55,16 +56,21 @@ export default function StandaloneLayout({children}) {
 
   const toggleUserMenu = useCallback(() => setUserMenuActive(v => !v), []);
 
-  const handleTimezoneChange = useCallback(async (tz) => {
-    updateUser({timezone: tz});
-    try {
-      await api('/api/users/me/preferences', {
-        method: 'PUT',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({timezone: tz})
-      });
-    } catch { /* silent — already saved locally */ }
-  }, [updateUser]);
+  const handleTimezoneChange = useCallback(
+    async tz => {
+      updateUser({timezone: tz});
+      try {
+        await api('/api/users/me/preferences', {
+          method: 'PUT',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({timezone: tz})
+        });
+      } catch {
+        /* silent — already saved locally */
+      }
+    },
+    [updateUser]
+  );
 
   const allNavItems = [
     {label: 'Dashboard', icon: HomeIcon, url: '/', exactMatch: true},
@@ -89,7 +95,8 @@ export default function StandaloneLayout({children}) {
     {label: 'Disputes', icon: AlertDiamondIcon, url: '/disputes'},
     {label: 'Shipping', icon: DeliveryIcon, url: '/shipping-management'},
     {label: 'Themes', icon: ThemeIcon, url: '/themes'},
-    {label: 'Setup Store', icon: SettingsIcon, url: '/setup'}
+    {label: 'Setup Store', icon: SettingsIcon, url: '/setup'},
+    {label: 'My Email', icon: NoteIcon, url: '/my-email'}
   ];
 
   const filterNavItems = items => {
@@ -105,19 +112,21 @@ export default function StandaloneLayout({children}) {
 
   const mainNavItems = [
     ...filterNavItems(allNavItems),
-    ...(isAdmin ? [
-      {label: 'Users', icon: PersonIcon, url: '/users'},
-      {
-        label: 'Email Management',
-        icon: NoteIcon,
-        url: '/emails',
-        subNavigationItems: [
-          {label: 'Accounts', url: '/email-accounts'},
-          {label: 'Emails', url: '/emails'},
-          {label: 'Discord Settings', url: '/discord-settings'}
+    ...(isAdmin
+      ? [
+          {label: 'Users', icon: PersonIcon, url: '/users'},
+          {
+            label: 'Email Management',
+            icon: NoteIcon,
+            url: '/emails',
+            subNavigationItems: [
+              {label: 'Accounts', url: '/email-accounts'},
+              {label: 'Emails', url: '/emails'},
+              {label: 'Discord Settings', url: '/discord-settings'}
+            ]
+          }
         ]
-      }
-    ] : [])
+      : [])
   ];
 
   const devNavItems = isAdmin

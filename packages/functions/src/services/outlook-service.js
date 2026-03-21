@@ -17,11 +17,13 @@ export class OutlookService {
     return new OutlookService(token);
   }
 
-  /** Factory: create for a specific email by store+user lookup */
+  /** Factory: create for a specific email by store lookup */
   static async createForEmail(storeId, userId, email) {
     const {GoogleAuthRepository} = await import('../repositories/googleAuthRepository.js');
     const authRepo = new GoogleAuthRepository();
-    const authRecord = await authRepo.getByStoreUserAndEmail(storeId, userId, email);
+    // Lookup by store + email — no userId restriction
+    const allInStore = await authRepo.getAllByStore(storeId);
+    const authRecord = allInStore.find(a => a.googleEmail === email && a.authType === 'outlook');
     if (!authRecord) throw new Error(`No Outlook auth found for ${email}`);
     return OutlookService.createFromAuthRecord(authRecord);
   }
@@ -179,6 +181,7 @@ async function refreshIfExpired(authRecord) {
     return authRecord.accessToken;
   }
 
+  // Public client (PKCE) — never send client_secret for refresh
   const body = new URLSearchParams({
     client_id: OUTLOOK_OAUTH_CONFIG.clientId,
     refresh_token: authRecord.refreshToken,
@@ -187,11 +190,18 @@ async function refreshIfExpired(authRecord) {
 
   const res = await fetch(OUTLOOK_OAUTH_CONFIG.tokenUrl, {
     method: 'POST',
-    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Origin: OUTLOOK_OAUTH_CONFIG.redirectUri
+    },
     body
   });
 
-  if (!res.ok) throw new Error('Failed to refresh Outlook token');
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => ({}));
+    console.error('[Outlook:Refresh] Failed:', errBody.error, errBody.error_description);
+    throw new Error(`Failed to refresh Outlook token: ${errBody.error_description || errBody.error || res.status}`);
+  }
   const tokens = await res.json();
 
   // Update stored tokens

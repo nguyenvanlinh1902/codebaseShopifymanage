@@ -10,25 +10,93 @@ import {toGid, fromGid} from './shopify-helpers.js';
 export async function addOrderTracking(shopify, orderId, trackingInfo, mode = 'add') {
   try {
     if (mode === 'replace') {
-      const orderGid = toGid('Order', orderId);
-      const query = `query($id: ID!) {
-        order(id: $id) {
-          fulfillments(first: 5) { id status }
-        }
-      }`;
-      const res = await shopify.graphql(query, {id: orderGid});
-      const fulfillments = res?.order?.fulfillments || [];
-
+      const fulfillments = await getOrderFulfillments(shopify, orderId);
       if (fulfillments.length > 0) {
         const fulfillmentId = fromGid(fulfillments[0].id);
         return await updateFulfillmentTracking(shopify, orderId, fulfillmentId, trackingInfo);
       }
     }
-    return await createFulfillment(shopify, orderId, trackingInfo);
+
+    // Try creating a new fulfillment first (works when there are unfulfilled items)
+    try {
+      return await createFulfillment(shopify, orderId, trackingInfo);
+    } catch (createErr) {
+      // If no open fulfillment orders, append tracking to existing fulfillment
+      if (createErr.message.includes('No open fulfillment orders')) {
+        const fulfillments = await getOrderFulfillments(shopify, orderId);
+        if (fulfillments.length > 0) {
+          return await appendTrackingToFulfillment(shopify, fulfillments[0], trackingInfo);
+        }
+      }
+      throw createErr;
+    }
   } catch (error) {
     console.error('Error adding order tracking:', error);
     throw new Error(`Failed to add order tracking: ${error.message}`);
   }
+}
+
+/**
+ * Get fulfillments with tracking info for an order.
+ */
+async function getOrderFulfillments(shopify, orderId) {
+  const orderGid = toGid('Order', orderId);
+  const query = `query($id: ID!) {
+    order(id: $id) {
+      fulfillments(first: 10) {
+        id status
+        trackingInfo { number company url }
+      }
+    }
+  }`;
+  const res = await shopify.graphql(query, {id: orderGid});
+  return res?.order?.fulfillments || [];
+}
+
+/**
+ * Append a new tracking number to an existing fulfillment using the numbers[] array.
+ * Preserves existing tracking numbers and adds the new one.
+ */
+async function appendTrackingToFulfillment(shopify, fulfillment, trackingInfo) {
+  const existingNumbers = (fulfillment.trackingInfo || []).map(t => t.number).filter(Boolean);
+  const existingUrls = (fulfillment.trackingInfo || []).map(t => t.url).filter(Boolean);
+
+  // Skip if tracking number already exists on this fulfillment
+  if (existingNumbers.includes(trackingInfo.trackingNumber)) {
+    console.log(`Tracking ${trackingInfo.trackingNumber} already exists on fulfillment, skipping`);
+    return {id: fulfillment.id, status: fulfillment.status, skipped: true};
+  }
+
+  const allNumbers = [...existingNumbers, trackingInfo.trackingNumber];
+  const allUrls = [...existingUrls, ...(trackingInfo.trackingUrl ? [trackingInfo.trackingUrl] : [])];
+
+  const mutation = `mutation fulfillmentTrackingInfoUpdate(
+    $fulfillmentId: ID!, $trackingInfoInput: FulfillmentTrackingInput!, $notifyCustomer: Boolean
+  ) {
+    fulfillmentTrackingInfoUpdate(
+      fulfillmentId: $fulfillmentId, trackingInfoInput: $trackingInfoInput, notifyCustomer: $notifyCustomer
+    ) {
+      fulfillment { id status }
+      userErrors { field message }
+    }
+  }`;
+
+  const trackingInfoInput = {
+    numbers: allNumbers,
+    company: trackingInfo.trackingCompany || fulfillment.trackingInfo?.[0]?.company || 'Other'
+  };
+  if (allUrls.length > 0) trackingInfoInput.urls = allUrls;
+
+  const result = await shopify.graphql(mutation, {
+    fulfillmentId: fulfillment.id,
+    trackingInfoInput,
+    notifyCustomer: true
+  });
+
+  if (result.fulfillmentTrackingInfoUpdate.userErrors?.length > 0) {
+    throw new Error(result.fulfillmentTrackingInfoUpdate.userErrors[0].message);
+  }
+  return result.fulfillmentTrackingInfoUpdate.fulfillment;
 }
 
 /**
@@ -97,12 +165,18 @@ export async function createFulfillment(shopify, orderId, trackingInfo) {
 
     if (openOrders.length === 0) throw new Error('No open fulfillment orders found');
 
-    const lineItemsByFulfillmentOrder = openOrders.map(fo => ({
-      fulfillmentOrderId: fo.id,
-      fulfillmentOrderLineItems: fo.lineItems.edges
-        .filter(e => e.node.remainingQuantity > 0)
-        .map(e => ({id: e.node.id, quantity: e.node.remainingQuantity}))
-    }));
+    const lineItemsByFulfillmentOrder = openOrders
+      .map(fo => ({
+        fulfillmentOrderId: fo.id,
+        fulfillmentOrderLineItems: fo.lineItems.edges
+          .filter(e => e.node.remainingQuantity > 0)
+          .map(e => ({id: e.node.id, quantity: e.node.remainingQuantity}))
+      }))
+      .filter(fo => fo.fulfillmentOrderLineItems.length > 0);
+
+    if (lineItemsByFulfillmentOrder.length === 0) {
+      throw new Error('No open fulfillment orders found');
+    }
 
     const mutation = `mutation fulfillmentCreate($fulfillment: FulfillmentInput!) {
       fulfillmentCreate(fulfillment: $fulfillment) {

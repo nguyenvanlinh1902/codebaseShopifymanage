@@ -14,28 +14,20 @@ import {
 import {api} from '../../helpers/api';
 
 /**
- * Watch status — shows all Gmail accounts with Start/Stop watch controls
- * Fetches Gmail accounts list + existing watch records to show combined view
+ * Watch status — shows Outlook accounts with Start/Stop watch controls
+ * Fetches Outlook accounts list + existing watch records to show combined view
  */
 export default function WatchStatusContent({watchStatuses, onRefresh}) {
   const [accounts, setAccounts] = useState([]);
   const [loadingAccounts, setLoadingAccounts] = useState(true);
   const [actionLoading, setActionLoading] = useState(null);
 
-  // Fetch Gmail + Outlook accounts to show all (not just watched ones)
   const fetchAccounts = useCallback(async () => {
     try {
       setLoadingAccounts(true);
-      const [gmailRes, outlookRes] = await Promise.all([
-        api('/api/gmail/accounts').then(r => r.json()),
-        api('/api/outlook/accounts').then(r => r.json())
-      ]);
-      const gmail = (gmailRes.success ? gmailRes.data : []).map(a => ({...a, provider: 'gmail'}));
-      const outlook = (outlookRes.success ? outlookRes.data : []).map(a => ({
-        ...a,
-        provider: 'outlook'
-      }));
-      setAccounts([...gmail, ...outlook]);
+      const res = await api('/api/outlook/accounts');
+      const result = await res.json();
+      if (result.success) setAccounts(result.data || []);
     } catch (err) {
       console.error('Failed to fetch accounts:', err);
     } finally {
@@ -47,11 +39,10 @@ export default function WatchStatusContent({watchStatuses, onRefresh}) {
     fetchAccounts();
   }, [fetchAccounts]);
 
-  const handleStartWatch = async (email, provider) => {
+  const handleStartWatch = async email => {
     try {
       setActionLoading(email);
-      const endpoint = provider === 'outlook' ? '/api/outlook/watch' : '/api/gmail/watch';
-      const res = await api(endpoint, {
+      const res = await api('/api/outlook/watch', {
         method: 'POST',
         body: JSON.stringify({email})
       });
@@ -66,11 +57,10 @@ export default function WatchStatusContent({watchStatuses, onRefresh}) {
     }
   };
 
-  const handleStopWatch = async (email, provider) => {
+  const handleStopWatch = async email => {
     try {
       setActionLoading(email);
-      const endpoint = provider === 'outlook' ? '/api/outlook/watch/stop' : '/api/gmail/watch/stop';
-      await api(endpoint, {
+      await api('/api/outlook/watch/stop', {
         method: 'POST',
         body: JSON.stringify({email})
       });
@@ -82,11 +72,8 @@ export default function WatchStatusContent({watchStatuses, onRefresh}) {
     }
   };
 
-  const getWatchForEmail = (email, provider) => {
-    if (provider === 'outlook') {
-      return watchStatuses.find(w => w.email === email);
-    }
-    return watchStatuses.find(w => w.googleEmail === email);
+  const getWatchForEmail = email => {
+    return watchStatuses.find(w => w.email === email);
   };
 
   const getStatusBadge = watch => {
@@ -130,19 +117,13 @@ export default function WatchStatusContent({watchStatuses, onRefresh}) {
   const hasErrors = watchStatuses.some(w => w.status === 'error');
 
   const rowMarkup = accounts.map((account, index) => {
-    const watch = getWatchForEmail(account.email, account.provider);
+    const watch = getWatchForEmail(account.email);
     const isActive = watch?.status === 'active';
-    const providerLabel = account.provider === 'outlook' ? 'Outlook' : 'Gmail';
 
     return (
       <IndexTable.Row id={account.email} key={account.email} position={index}>
         <IndexTable.Cell>
           <Text fontWeight="bold">{account.email}</Text>
-        </IndexTable.Cell>
-        <IndexTable.Cell>
-          <Badge tone={account.provider === 'outlook' ? 'attention' : 'info'}>
-            {providerLabel}
-          </Badge>
         </IndexTable.Cell>
         <IndexTable.Cell>{getStatusBadge(watch)}</IndexTable.Cell>
         <IndexTable.Cell>
@@ -165,7 +146,7 @@ export default function WatchStatusContent({watchStatuses, onRefresh}) {
         <IndexTable.Cell>
           {isActive ? (
             <Button
-              onClick={() => handleStopWatch(account.email, account.provider)}
+              onClick={() => handleStopWatch(account.email)}
               size="slim"
               tone="critical"
               loading={actionLoading === account.email}
@@ -175,7 +156,7 @@ export default function WatchStatusContent({watchStatuses, onRefresh}) {
             </Button>
           ) : (
             <Button
-              onClick={() => handleStartWatch(account.email, account.provider)}
+              onClick={() => handleStartWatch(account.email)}
               size="slim"
               variant="primary"
               loading={actionLoading === account.email}
@@ -223,7 +204,6 @@ export default function WatchStatusContent({watchStatuses, onRefresh}) {
           itemCount={accounts.length}
           headings={[
             {title: 'Email'},
-            {title: 'Provider'},
             {title: 'Status'},
             {title: 'Expires'},
             {title: 'Last Sync'},

@@ -4,7 +4,7 @@ import {Select} from '@shopify/polaris';
 import {api} from '../../helpers/api';
 
 /**
- * Dropdown selector for connected email accounts (Gmail + Outlook)
+ * Dropdown selector for connected Outlook/Hotmail accounts
  */
 export default function AccountSelector({selectedEmail, onSelect}) {
   const [accounts, setAccounts] = useState([]);
@@ -13,24 +13,14 @@ export default function AccountSelector({selectedEmail, onSelect}) {
   const fetchAccounts = useCallback(async () => {
     try {
       setLoading(true);
-      const [gmailRes, outlookRes] = await Promise.all([
-        api('/api/gmail/accounts').then(r => r.json()),
-        api('/api/outlook/accounts').then(r => r.json())
-      ]);
-
-      const gmail = (gmailRes.success ? gmailRes.data : []).map(a => ({
-        ...a,
-        provider: 'gmail'
-      }));
-      const outlook = (outlookRes.success ? outlookRes.data : []).map(a => ({
-        ...a,
-        provider: 'outlook'
-      }));
-      const all = [...gmail, ...outlook];
-      setAccounts(all);
-
-      if (!selectedEmail && all.length > 0) {
-        onSelect(all[0].email, all[0].provider);
+      const res = await api('/api/outlook/accounts');
+      const result = await res.json();
+      if (result.success) {
+        const all = result.data || [];
+        setAccounts(all);
+        if (!selectedEmail && all.length > 0) {
+          onSelect(all[0].email, 'outlook');
+        }
       }
     } catch (err) {
       console.error('Failed to fetch email accounts:', err);
@@ -45,15 +35,11 @@ export default function AccountSelector({selectedEmail, onSelect}) {
 
   const options = [
     {label: 'Select an email account...', value: ''},
-    ...accounts.map(a => ({
-      label: `${a.email} (${a.provider === 'outlook' ? 'Outlook' : 'Gmail'})`,
-      value: a.email
-    }))
+    ...accounts.map(a => ({label: a.email, value: a.email}))
   ];
 
   const handleChange = value => {
-    const account = accounts.find(a => a.email === value);
-    onSelect(value, account?.provider || 'gmail');
+    onSelect(value, 'outlook');
   };
 
   return (

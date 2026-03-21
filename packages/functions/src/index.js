@@ -26,8 +26,6 @@ import userRoutes from './routes/user-routes.js';
 import * as devOrderInspectorController from './controllers/dev-order-inspector-controller.js';
 import trackingStatusRoutes from './routes/tracking-status-routes.js';
 import shippingTemplateRoutes from './routes/shipping-template-routes.js';
-import gmailRoutes from './routes/gmail-routes.js';
-import {exchangeGmailCode as gmailAuthExchange} from './controllers/gmail/gmail-auth-handler.js';
 import outlookRoutes from './routes/outlook-routes.js';
 import {exchangeOutlookCode as outlookAuthExchange} from './controllers/outlook/outlook-auth-handler.js';
 import {handleOutlookWebhook} from './handlers/outlook-push-handler.js';
@@ -43,9 +41,6 @@ import * as orderSyncController from './controllers/orderSyncController.js';
 import * as productImportController from './controllers/productImportController.js';
 import * as trackingImportController from './controllers/trackingImportController.js';
 
-// Gmail push handlers
-import {processPushNotification} from './handlers/gmail-push-handler.js';
-import {processWatchRenewal} from './handlers/gmail-watch-renewal-handler.js';
 // Outlook watch renewal
 import {processOutlookWatchRenewal} from './handlers/outlook-watch-renewal-handler.js';
 
@@ -97,9 +92,6 @@ app.all('/embed/api/gdpr*', (_req, res) => {
 app.post('/api/google/exchange', googleAuthController.exchangeGoogleCode);
 app.post('/api/google/exchange-temp', googleAuthController.exchangeGoogleCodeTemp);
 
-// Gmail OAuth exchange (public — separate from Google Sheets)
-app.post('/api/gmail/auth/exchange', gmailAuthExchange);
-
 // Outlook OAuth exchange (public — called from popup callback)
 app.post('/api/outlook/auth/exchange', outlookAuthExchange);
 
@@ -122,7 +114,6 @@ app.use('/api/orders', orderRoutes);
 app.use('/api/tracking', trackingRoutes);
 app.use('/api/tracking-status', trackingStatusRoutes);
 app.use('/api/shipping', shippingTemplateRoutes);
-app.use('/api/gmail', gmailRoutes);
 app.use('/api/outlook', outlookRoutes);
 app.use('/api/discord', discordRoutes);
 app.use('/api/email-rules', emailRuleRoutes);
@@ -154,7 +145,7 @@ export const api = onRequest(
 
 /** PubSub: Product Import */
 export const processProductImportQueue = onMessagePublished(
-  {topic: 'product-import', memory: '256MiB', cpu: 1, timeoutSeconds: 540, retry: true},
+  {topic: 'product-import', memory: '256MiB', timeoutSeconds: 540, retry: true},
   async event => {
     await productImportController.processProductImport(event.data);
   }
@@ -165,7 +156,6 @@ export const processTrackingImportQueue = onMessagePublished(
   {
     topic: 'tracking-import',
     memory: '256MiB',
-    cpu: 1,
     timeoutSeconds: 540,
     retry: true
   },
@@ -176,7 +166,7 @@ export const processTrackingImportQueue = onMessagePublished(
 
 /** PubSub: Check Store Tracking (per-store background processing) */
 export const processCheckStoreTracking = onMessagePublished(
-  {topic: 'check-store-tracking', memory: '256MiB', cpu: 1, timeoutSeconds: 540, retry: true},
+  {topic: 'check-store-tracking', memory: '256MiB', timeoutSeconds: 540, retry: true},
   async event => {
     await trackingStatusController.processStoreTracking(event.data);
   }
@@ -184,7 +174,7 @@ export const processCheckStoreTracking = onMessagePublished(
 
 /** PubSub: Recheck Tracking Group (per-key background processing) */
 export const processRecheckTrackingGroup = onMessagePublished(
-  {topic: 'recheck-tracking-group', memory: '256MiB', cpu: 1, timeoutSeconds: 540, retry: true},
+  {topic: 'recheck-tracking-group', memory: '256MiB', timeoutSeconds: 540, retry: true},
   async event => {
     await trackingStatusController.processTrackingGroup(event.data);
   }
@@ -195,7 +185,6 @@ export const productQueueCron = onSchedule(
   {
     schedule: 'every 1 minutes',
     memory: '256MiB',
-    cpu: 1,
     timeoutSeconds: 540,
     retryConfig: {retryCount: 3, maxRetrySeconds: 600}
   },
@@ -209,7 +198,6 @@ export const orderSyncQueueCron = onSchedule(
   {
     schedule: 'every 1 minutes',
     memory: '256MiB',
-    cpu: 1,
     timeoutSeconds: 540,
     retryConfig: {retryCount: 3, maxRetrySeconds: 600}
   },
@@ -223,7 +211,6 @@ export const trackingStatusCron = onSchedule(
   {
     schedule: '0 6 * * *',
     memory: '512MiB',
-    cpu: 1,
     timeoutSeconds: 540,
     retryConfig: {retryCount: 2, maxRetrySeconds: 600}
   },
@@ -232,34 +219,11 @@ export const trackingStatusCron = onSchedule(
   }
 );
 
-/** PubSub: Gmail Push Notifications */
-export const gmailPushHandler = onMessagePublished(
-  {topic: 'gmail-notifications', memory: '256MiB', cpu: 1, timeoutSeconds: 540, retry: true},
-  async event => {
-    await processPushNotification(event.data);
-  }
-);
-
-/** Cron: Gmail Watch Renewal (daily at 2 AM UTC) */
-export const gmailWatchRenewalCron = onSchedule(
-  {
-    schedule: '0 2 * * *',
-    memory: '256MiB',
-    cpu: 1,
-    timeoutSeconds: 540,
-    retryConfig: {retryCount: 3, maxRetrySeconds: 600}
-  },
-  async () => {
-    await processWatchRenewal();
-  }
-);
-
 /** Cron: Outlook Watch Renewal (daily at 3 AM UTC) */
 export const outlookWatchRenewalCron = onSchedule(
   {
     schedule: '0 3 * * *',
     memory: '256MiB',
-    cpu: 1,
     timeoutSeconds: 540,
     retryConfig: {retryCount: 3, maxRetrySeconds: 600}
   },
@@ -270,18 +234,18 @@ export const outlookWatchRenewalCron = onSchedule(
 
 /** Firestore Triggers -> BigQuery */
 export const onWriteStores = onDocumentWritten(
-  {document: 'shopify_stores/{docId}', memory: '256MiB', cpu: 1},
+  {document: 'shopify_stores/{docId}', memory: '256MiB'},
   onTriggerStores
 );
 export const onWriteGoogleAuth = onDocumentWritten(
-  {document: 'google_auth/{docId}', memory: '256MiB', cpu: 1},
+  {document: 'google_auth/{docId}', memory: '256MiB'},
   onTriggerGoogleAuth
 );
 export const onWriteGoogleSheets = onDocumentWritten(
-  {document: 'google_sheets/{docId}', memory: '256MiB', cpu: 1},
+  {document: 'google_sheets/{docId}', memory: '256MiB'},
   onTriggerGoogleSheets
 );
 export const onWriteProducts = onDocumentWritten(
-  {document: 'products/{docId}', memory: '256MiB', cpu: 1},
+  {document: 'products/{docId}', memory: '256MiB'},
   onTriggerProducts
 );

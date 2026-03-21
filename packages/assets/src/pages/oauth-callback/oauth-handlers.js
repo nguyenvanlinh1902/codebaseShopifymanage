@@ -52,59 +52,23 @@ export async function handleGoogleCallback(code, userId, storeId, {setError, set
 }
 
 /**
- * Handle Gmail OAuth callback (separate from Google Sheets)
- */
-export async function handleGmailCallback(code, userId, storeId, {setError, setStatus}) {
-  try {
-    const response = await fetch('/api/gmail/auth/exchange', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({code, state: JSON.stringify({userId, storeId, mode: 'gmail'})})
-    });
-
-    const result = await response.json();
-
-    if (result.success) {
-      setStatus('success');
-      if (window.opener) {
-        window.opener.postMessage(
-          {type: 'google-auth-callback', success: true, googleEmail: result.data?.googleEmail || ''},
-          '*'
-        );
-        setTimeout(() => window.close(), 1500);
-      }
-    } else {
-      setError(result.error || 'Failed to connect Gmail');
-      setStatus('error');
-      if (window.opener) {
-        window.opener.postMessage(
-          {type: 'google-auth-callback', success: false, error: result.error},
-          '*'
-        );
-      }
-    }
-  } catch (err) {
-    console.error('Gmail OAuth callback error:', err);
-    setError('Failed to connect Gmail');
-    setStatus('error');
-    if (window.opener) {
-      window.opener.postMessage(
-        {type: 'google-auth-callback', success: false, error: 'Failed to connect Gmail'},
-        '*'
-      );
-    }
-  }
-}
-
-/**
  * Handle Outlook OAuth callback
  */
-export async function handleOutlookCallback(code, userId, storeId, {setError, setStatus}) {
+export async function handleOutlookCallback(
+  code,
+  userId,
+  storeId,
+  {setError, setStatus},
+  originalState
+) {
   try {
     const response = await fetch('/api/outlook/auth/exchange', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({code, state: JSON.stringify({userId, storeId, mode: 'outlook'})})
+      body: JSON.stringify({
+        code,
+        state: originalState || JSON.stringify({userId, storeId, mode: 'outlook'})
+      })
     });
 
     const result = await response.json();

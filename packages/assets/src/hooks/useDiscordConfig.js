@@ -2,12 +2,12 @@ import {useState, useCallback} from 'react';
 import {api} from '../helpers/api';
 
 /**
- * Hook for Discord config, rules, and watch status management
+ * Hook for Discord config and filter rules management
+ * Watch is fully automatic — no manual management needed
  */
 export function useDiscordConfig() {
   const [config, setConfig] = useState(null);
   const [rules, setRules] = useState([]);
-  const [watchStatuses, setWatchStatuses] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -117,24 +117,9 @@ export function useDiscordConfig() {
     [fetchRules]
   );
 
-  const fetchWatchStatus = useCallback(async () => {
-    try {
-      const [gmailRes, outlookRes] = await Promise.all([
-        api('/api/gmail/watch/status').then(r => r.json()),
-        api('/api/outlook/watch/status').then(r => r.json())
-      ]);
-      const gmailWatches = gmailRes.success ? gmailRes.data : [];
-      const outlookWatches = outlookRes.success ? outlookRes.data : [];
-      setWatchStatuses([...gmailWatches, ...outlookWatches]);
-    } catch (err) {
-      setError(err.message);
-    }
-  }, []);
-
   return {
     config,
     rules,
-    watchStatuses,
     loading,
     error,
     setError,
@@ -145,7 +130,6 @@ export function useDiscordConfig() {
     createRule,
     updateRule,
     deleteRule,
-    toggleRule,
-    fetchWatchStatus
+    toggleRule
   };
 }

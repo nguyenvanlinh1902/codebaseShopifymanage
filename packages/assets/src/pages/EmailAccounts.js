@@ -3,11 +3,11 @@ import {Page} from '@shopify/polaris';
 import AccountManagement from './email/AccountManagement';
 
 /**
- * Email Accounts page — standalone route for managing Gmail connections
+ * Email Accounts page — standalone route for managing Outlook/Hotmail connections
  */
 export default function EmailAccounts() {
   return (
-    <Page title="Email Accounts" subtitle="Manage connected Gmail accounts">
+    <Page title="Email Accounts" subtitle="Manage connected email accounts">
       <AccountManagement />
     </Page>
   );

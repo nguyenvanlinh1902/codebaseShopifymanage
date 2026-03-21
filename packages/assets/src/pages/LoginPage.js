@@ -1,4 +1,4 @@
-import React, {useState} from 'react';
+import React, {useState, useEffect, useRef} from 'react';
 import {useNavigate} from 'react-router-dom';
 import {
   Page,
@@ -21,6 +21,30 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const usernameRef = useRef(null);
+  const passwordRef = useRef(null);
+
+  // Keyboard shortcuts: Ctrl+L=focus username, Ctrl+P=focus password, Ctrl+Enter=submit, Escape=clear
+  useEffect(() => {
+    const handleGlobalKeyDown = e => {
+      if (e.ctrlKey && e.key === 'l') {
+        e.preventDefault();
+        usernameRef.current?.querySelector('input')?.focus();
+      } else if (e.ctrlKey && e.key === 'p') {
+        e.preventDefault();
+        passwordRef.current?.querySelector('input')?.focus();
+      } else if (e.ctrlKey && e.key === 'Enter') {
+        e.preventDefault();
+        handleSubmit();
+      } else if (e.key === 'Escape') {
+        setUsername('');
+        setPassword('');
+        setError('');
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  });
 
   const handleSubmit = async () => {
     setError('');
@@ -90,22 +114,26 @@ export default function LoginPage() {
               )}
 
               <FormLayout>
-                <TextField
-                  label="Username"
-                  value={username}
-                  onChange={setUsername}
-                  onKeyDown={handleKeyDown}
-                  autoComplete="username"
-                  autoFocus
-                />
-                <TextField
-                  label="Password"
-                  type="password"
-                  value={password}
-                  onChange={setPassword}
-                  onKeyDown={handleKeyDown}
-                  autoComplete="current-password"
-                />
+                <div ref={usernameRef}>
+                  <TextField
+                    label="Username"
+                    value={username}
+                    onChange={setUsername}
+                    onKeyDown={handleKeyDown}
+                    autoComplete="username"
+                    autoFocus
+                  />
+                </div>
+                <div ref={passwordRef}>
+                  <TextField
+                    label="Password"
+                    type="password"
+                    value={password}
+                    onChange={setPassword}
+                    onKeyDown={handleKeyDown}
+                    autoComplete="current-password"
+                  />
+                </div>
                 <Button
                   variant="primary"
                   icon={LockIcon}

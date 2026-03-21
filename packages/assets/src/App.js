@@ -46,6 +46,7 @@ import ShippingManagement from './pages/ShippingManagement';
 import EmailManagement from './loadables/EmailManagement';
 import DiscordSettings from './loadables/DiscordSettings';
 import EmailAccounts from './pages/EmailAccounts';
+import MyEmailAccount from './pages/MyEmailAccount';
 import NotFound from './pages/NotFound';
 import LoginPage from './pages/LoginPage';
 import SetupAdminPage from './pages/SetupAdminPage';
@@ -127,11 +128,13 @@ function AuthGate() {
       <Route
         path="*"
         element={
-          isAuthenticated
-            ? syncing
-              ? null /* wait for /me sync before rendering — prevents stale-permission flash */
-              : <StandaloneFrame />
-            : <LoginPage />
+          isAuthenticated ? (
+            syncing ? null /* wait for /me sync before rendering — prevents stale-permission flash */ : (
+              <StandaloneFrame />
+            )
+          ) : (
+            <LoginPage />
+          )
         }
       />
     </Routes>
@@ -150,12 +153,22 @@ function FeatureGuard({feature, children}) {
   if (!allowed.includes(feature)) return <NotFound />;
   return children;
 }
-FeatureGuard.propTypes = {feature: PropTypes.string.isRequired, children: PropTypes.node.isRequired};
+FeatureGuard.propTypes = {
+  feature: PropTypes.string.isRequired,
+  children: PropTypes.node.isRequired
+};
 
 const FEATURE_ROUTE_MAP = {
-  stores: '/stores', sheets: '/sheets', products: '/products', orders: '/orders',
-  'order-search': '/order-search', tracking: '/tracking', analytics: '/analytics',
-  dispute: '/disputes', themes: '/themes', setup: '/setup'
+  stores: '/stores',
+  sheets: '/sheets',
+  products: '/products',
+  orders: '/orders',
+  'order-search': '/order-search',
+  tracking: '/tracking',
+  analytics: '/analytics',
+  dispute: '/disputes',
+  themes: '/themes',
+  setup: '/setup'
 };
 
 /**
@@ -180,34 +193,140 @@ function StandaloneFrame() {
 
   return (
     <StoreProvider>
-    <StandaloneLayout>
-      <Routes>
-        <Route path="/" element={<DashboardOrRedirect />} />
-        <Route path="/stores" element={<FeatureGuard feature="stores"><Stores /></FeatureGuard>} />
-        <Route path="/sheets" element={<FeatureGuard feature="sheets"><Sheets /></FeatureGuard>} />
-        <Route path="/products" element={<FeatureGuard feature="products"><Products /></FeatureGuard>} />
-        <Route path="/orders" element={<FeatureGuard feature="orders"><Orders /></FeatureGuard>} />
-        <Route path="/tracking" element={<FeatureGuard feature="tracking"><Tracking /></FeatureGuard>} />
-        <Route path="/tracking-orders-check" element={<FeatureGuard feature="tracking"><OrdersCheckPage /></FeatureGuard>} />
-        <Route path="/tracking-api-keys" element={<FeatureGuard feature="tracking"><TrackingApiKeysPage /></FeatureGuard>} />
-        <Route path="/themes" element={<FeatureGuard feature="themes"><Themes /></FeatureGuard>} />
-        <Route path="/analytics" element={<FeatureGuard feature="analytics"><Analytics /></FeatureGuard>} />
-        <Route path="/balance" element={<FeatureGuard feature="finance"><Balance /></FeatureGuard>} />
-        <Route path="/campaign-ads" element={<FeatureGuard feature="finance"><CampaignAds /></FeatureGuard>} />
-        <Route path="/disputes" element={<FeatureGuard feature="dispute"><Disputes /></FeatureGuard>} />
-        <Route path="/order-search" element={<FeatureGuard feature="order-search"><OrderSearch /></FeatureGuard>} />
-        <Route path="/shipping-management" element={<FeatureGuard feature="shipping"><ShippingManagement /></FeatureGuard>} />
-        <Route path="/emails" element={isAdmin ? <EmailManagement /> : <NotFound />} />
-        <Route path="/email-accounts" element={isAdmin ? <EmailAccounts /> : <NotFound />} />
-        <Route path="/discord-settings" element={isAdmin ? <DiscordSettings /> : <NotFound />} />
-        <Route path="/setup" element={<FeatureGuard feature="setup"><SetupStore /></FeatureGuard>} />
-        <Route path="/users" element={isAdmin ? <Users /> : <NotFound />} />
-        <Route path="/dev/webhooks" element={isAdmin ? <DevWebhooks /> : <NotFound />} />
-        <Route path="/dev/test-import" element={isAdmin ? <DevTestImport /> : <NotFound />} />
-        <Route path="/dev/guide" element={isAdmin ? <Guide /> : <NotFound />} />
-        <Route path="*" element={<NotFound />} />
-      </Routes>
-    </StandaloneLayout>
+      <StandaloneLayout>
+        <Routes>
+          <Route path="/" element={<DashboardOrRedirect />} />
+          <Route
+            path="/stores"
+            element={
+              <FeatureGuard feature="stores">
+                <Stores />
+              </FeatureGuard>
+            }
+          />
+          <Route
+            path="/sheets"
+            element={
+              <FeatureGuard feature="sheets">
+                <Sheets />
+              </FeatureGuard>
+            }
+          />
+          <Route
+            path="/products"
+            element={
+              <FeatureGuard feature="products">
+                <Products />
+              </FeatureGuard>
+            }
+          />
+          <Route
+            path="/orders"
+            element={
+              <FeatureGuard feature="orders">
+                <Orders />
+              </FeatureGuard>
+            }
+          />
+          <Route
+            path="/tracking"
+            element={
+              <FeatureGuard feature="tracking">
+                <Tracking />
+              </FeatureGuard>
+            }
+          />
+          <Route
+            path="/tracking-orders-check"
+            element={
+              <FeatureGuard feature="tracking">
+                <OrdersCheckPage />
+              </FeatureGuard>
+            }
+          />
+          <Route
+            path="/tracking-api-keys"
+            element={
+              <FeatureGuard feature="tracking">
+                <TrackingApiKeysPage />
+              </FeatureGuard>
+            }
+          />
+          <Route
+            path="/themes"
+            element={
+              <FeatureGuard feature="themes">
+                <Themes />
+              </FeatureGuard>
+            }
+          />
+          <Route
+            path="/analytics"
+            element={
+              <FeatureGuard feature="analytics">
+                <Analytics />
+              </FeatureGuard>
+            }
+          />
+          <Route
+            path="/balance"
+            element={
+              <FeatureGuard feature="finance">
+                <Balance />
+              </FeatureGuard>
+            }
+          />
+          <Route
+            path="/campaign-ads"
+            element={
+              <FeatureGuard feature="finance">
+                <CampaignAds />
+              </FeatureGuard>
+            }
+          />
+          <Route
+            path="/disputes"
+            element={
+              <FeatureGuard feature="dispute">
+                <Disputes />
+              </FeatureGuard>
+            }
+          />
+          <Route
+            path="/order-search"
+            element={
+              <FeatureGuard feature="order-search">
+                <OrderSearch />
+              </FeatureGuard>
+            }
+          />
+          <Route
+            path="/shipping-management"
+            element={
+              <FeatureGuard feature="shipping">
+                <ShippingManagement />
+              </FeatureGuard>
+            }
+          />
+          <Route path="/my-email" element={<FeatureGuard feature="my-email"><MyEmailAccount /></FeatureGuard>} />
+          <Route path="/emails" element={isAdmin ? <EmailManagement /> : <NotFound />} />
+          <Route path="/email-accounts" element={isAdmin ? <EmailAccounts /> : <NotFound />} />
+          <Route path="/discord-settings" element={isAdmin ? <DiscordSettings /> : <NotFound />} />
+          <Route
+            path="/setup"
+            element={
+              <FeatureGuard feature="setup">
+                <SetupStore />
+              </FeatureGuard>
+            }
+          />
+          <Route path="/users" element={isAdmin ? <Users /> : <NotFound />} />
+          <Route path="/dev/webhooks" element={isAdmin ? <DevWebhooks /> : <NotFound />} />
+          <Route path="/dev/test-import" element={isAdmin ? <DevTestImport /> : <NotFound />} />
+          <Route path="/dev/guide" element={isAdmin ? <Guide /> : <NotFound />} />
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </StandaloneLayout>
     </StoreProvider>
   );
 }

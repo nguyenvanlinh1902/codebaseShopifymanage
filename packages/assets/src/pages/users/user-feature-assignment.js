@@ -14,7 +14,8 @@ const ALL_FEATURES = [
   {label: 'Finance (Balance, Campaign Ads)', value: 'finance'},
   {label: 'Disputes', value: 'dispute'},
   {label: 'Themes', value: 'themes'},
-  {label: 'Setup Store', value: 'setup'}
+  {label: 'Setup Store', value: 'setup'},
+  {label: 'My Email (Outlook)', value: 'my-email'}
 ];
 
 // Sub-features rendered indented right below their parent

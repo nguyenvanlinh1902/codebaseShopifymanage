@@ -7,11 +7,10 @@ import EmailDetailPanel from './email/EmailDetailPanel';
 import {useGmailEmails} from '../hooks/useGmailEmails';
 
 /**
- * Email Management page — browse Gmail emails for connected accounts
+ * Email Management page — browse Outlook/Hotmail emails for connected accounts
  */
 export default function EmailManagement() {
   const [selectedEmail, setSelectedEmail] = useState('');
-  const [provider, setProvider] = useState('gmail');
   const {
     emails,
     loading,
@@ -24,11 +23,10 @@ export default function EmailManagement() {
     fetchMore,
     fetchMessage,
     fetchLabels
-  } = useGmailEmails(selectedEmail, provider);
+  } = useGmailEmails(selectedEmail);
 
-  const handleAccountSelect = useCallback((email, prov) => {
+  const handleAccountSelect = useCallback(email => {
     setSelectedEmail(email);
-    setProvider(prov || 'gmail');
   }, []);
 
   useEffect(() => {

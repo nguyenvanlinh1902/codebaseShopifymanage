@@ -4,7 +4,6 @@ import {Page, Layout, Card, Banner, Text, Spinner, BlockStack} from '@shopify/po
 import {
   handleGoogleCallback,
   handleGoogleCallbackTemp,
-  handleGmailCallback,
   handleOutlookCallback
 } from './oauth-callback/oauth-handlers';
 
@@ -42,12 +41,21 @@ export default function OAuthCallback() {
 
     const handlers = {setError, setStatus, navigate};
 
-    if (code && mode === 'temp') {
+    // Handle OAuth provider errors (e.g. Microsoft returns error in URL)
+    const oauthError = urlParams.get('error_description') || urlParams.get('error');
+    if (oauthError) {
+      setError(decodeURIComponent(oauthError));
+      setStatus('error');
+      if (window.opener) {
+        window.opener.postMessage(
+          {type: `${mode}-auth-callback`, success: false, error: oauthError},
+          '*'
+        );
+      }
+    } else if (code && mode === 'temp') {
       handleGoogleCallbackTemp(code, handlers);
-    } else if (code && mode === 'outlook') {
-      handleOutlookCallback(code, stateUserId, stateStoreId, handlers);
-    } else if (code && mode === 'gmail') {
-      handleGmailCallback(code, stateUserId, stateStoreId, handlers);
+    } else if (code && (mode === 'outlook' || mode === 'gmail')) {
+      handleOutlookCallback(code, stateUserId, stateStoreId, handlers, stateRaw);
     } else if (code) {
       handleGoogleCallback(code, stateUserId, stateStoreId, handlers);
     } else {

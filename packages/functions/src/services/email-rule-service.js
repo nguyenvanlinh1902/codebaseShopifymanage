@@ -37,8 +37,8 @@ export class EmailRuleService {
       }
     }
 
-    // No rule matched = ignore (whitelist mode when rules exist)
-    return 'ignore';
+    // No rule matched = forward by default
+    return 'forward';
   }
 
   _matchesRule(rule, emailData) {

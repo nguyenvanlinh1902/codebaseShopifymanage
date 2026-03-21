@@ -55,7 +55,8 @@ export async function stopOutlookWatch(req, res) {
 
     if (watch?.subscriptionId) {
       try {
-        const outlookService = await OutlookService.createForEmail(storeId, userId, email);
+        const isAdmin = req.userRole === 'admin';
+        const outlookService = await OutlookService.createForEmail(storeId, userId, email, {isAdmin});
         await outlookService.deleteSubscription(watch.subscriptionId);
       } catch (err) {
         console.warn(`[Outlook:Watch] Failed to delete subscription: ${err.message}`);

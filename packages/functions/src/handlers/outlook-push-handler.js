@@ -29,9 +29,10 @@ export async function handleOutlookWebhook(req, res) {
 
   for (const notification of notifications) {
     try {
+      console.log(`${LOG_PREFIX} Processing: sub=${notification.subscriptionId}, resource=${notification.resource}, clientState=${notification.clientState}`);
       await processNotification(notification);
     } catch (err) {
-      console.error(`${LOG_PREFIX} Error processing notification:`, err.message);
+      console.error(`${LOG_PREFIX} Error processing notification:`, err.message, err.stack);
     }
   }
 }
@@ -52,11 +53,9 @@ async function processNotification(notification) {
   }
 
   const authRepo = new GoogleAuthRepository();
-  const authRecord = await authRepo.getByStoreUserAndEmail(
-    watchRecord.storeId,
-    watchRecord.userId,
-    watchRecord.email
-  );
+  // Lookup by store + email only — no userId check needed for webhook processing
+  const allInStore = await authRepo.getAllByStore(watchRecord.storeId);
+  const authRecord = allInStore.find(a => a.googleEmail === watchRecord.email && a.authType === 'outlook');
   if (!authRecord) {
     console.error(`${LOG_PREFIX} No auth record for ${watchRecord.email}`);
     return;
@@ -85,10 +84,13 @@ async function processNotification(notification) {
     // Evaluate rules and forward to Discord
     const ruleService = await EmailRuleService.createForStore(watchRecord.storeId);
     const action = ruleService.evaluate(fullMsg);
+    console.log(`${LOG_PREFIX} Rule result: ${action} for "${fullMsg.subject}"`);
 
     if (action === 'forward') {
       const discordService = await DiscordService.createFromConfig(watchRecord.storeId);
-      if (discordService) {
+      if (!discordService) {
+        console.warn(`${LOG_PREFIX} No Discord config for store ${watchRecord.storeId}, skipping`);
+      } else {
         const embed = discordService.createEmailEmbed({
           ...fullMsg,
           accountEmail: watchRecord.email,

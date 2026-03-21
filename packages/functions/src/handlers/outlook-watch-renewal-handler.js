@@ -13,29 +13,37 @@ export async function processOutlookWatchRenewal() {
   const watchRepo = new OutlookWatchRepository();
   const authRepo = new GoogleAuthRepository();
 
+  // Renew expiring watches + re-activate expired ones
   const expiring = await watchRepo.getAllExpiringSoon(48);
-  console.log(`${LOG_PREFIX} Found ${expiring.length} subscriptions expiring within 48h`);
+  const allWatches = await watchRepo.collection.where('status', 'in', ['expired', 'error']).get();
+  const expired = allWatches.docs.map(doc => ({id: doc.id, ...doc.data()}));
+  const toProcess = [...expiring, ...expired.filter(e => !expiring.find(x => x.email === e.email))];
+  console.log(`${LOG_PREFIX} Found ${expiring.length} expiring, ${expired.length} expired/error — processing ${toProcess.length} total`);
 
-  if (expiring.length === 0) return;
+  if (toProcess.length === 0) return;
 
   let renewed = 0;
   let failed = 0;
 
-  for (let i = 0; i < expiring.length; i += BATCH_SIZE) {
-    const batch = expiring.slice(i, i + BATCH_SIZE);
+  for (let i = 0; i < toProcess.length; i += BATCH_SIZE) {
+    const batch = toProcess.slice(i, i + BATCH_SIZE);
 
     const results = await Promise.allSettled(
       batch.map(async watch => {
         try {
-          const authRecord = await authRepo.getByStoreUserAndEmail(
-            watch.storeId,
-            watch.userId,
-            watch.email
-          );
+          // Lookup by store + email (no userId restriction)
+          const allInStore = await authRepo.getAllByStore(watch.storeId);
+          const authRecord = allInStore.find(a => a.googleEmail === watch.email && a.authType === 'outlook');
           if (!authRecord) throw new Error(`No auth record for ${watch.email}`);
 
           const outlookService = await OutlookService.createFromAuthRecord(authRecord);
-          const subResult = await outlookService.renewSubscription(watch.subscriptionId);
+          // Renew existing or create new subscription for expired watches
+          let subResult;
+          if (watch.subscriptionId && watch.status !== 'expired') {
+            subResult = await outlookService.renewSubscription(watch.subscriptionId);
+          } else {
+            subResult = await outlookService.createSubscription(watch.webhookUrl);
+          }
 
           await watchRepo.upsertWatch(watch.email, watch.storeId, watch.userId, {
             subscriptionId: subResult.subscriptionId,

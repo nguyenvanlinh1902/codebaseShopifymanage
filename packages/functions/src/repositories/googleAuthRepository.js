@@ -75,6 +75,14 @@ export class GoogleAuthRepository {
   }
 
   /**
+   * Get ALL auth records for a store (admin use — all users)
+   */
+  async getAllByStore(storeId) {
+    const snapshot = await this.collection.where('storeId', '==', storeId).get();
+    return snapshot.docs.map(doc => ({id: doc.id, ...doc.data()}));
+  }
+
+  /**
    * Get ALL auth records for a user (multi-account)
    * @deprecated Use getAllByStoreAndUser for proper data isolation
    */

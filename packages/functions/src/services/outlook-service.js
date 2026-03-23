@@ -190,10 +190,7 @@ async function refreshIfExpired(authRecord) {
 
   const res = await fetch(OUTLOOK_OAUTH_CONFIG.tokenUrl, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      Origin: OUTLOOK_OAUTH_CONFIG.redirectUri
-    },
+    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
     body
   });
 

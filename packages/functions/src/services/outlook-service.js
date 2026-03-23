@@ -181,9 +181,9 @@ async function refreshIfExpired(authRecord) {
     return authRecord.accessToken;
   }
 
-  // Public client (PKCE) — never send client_secret for refresh
   const body = new URLSearchParams({
     client_id: OUTLOOK_OAUTH_CONFIG.clientId,
+    client_secret: OUTLOOK_OAUTH_CONFIG.clientSecret,
     refresh_token: authRecord.refreshToken,
     grant_type: 'refresh_token'
   });

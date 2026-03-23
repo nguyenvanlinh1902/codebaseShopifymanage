@@ -43,10 +43,13 @@ export default function AccountManagement({onAccountChange}) {
     fetchAccounts();
   }, [fetchAccounts]);
 
-  const connectAccount = useCallback(async () => {
+  const connectAccount = useCallback(async (loginHint) => {
     try {
       setError(null);
-      const res = await api('/api/outlook/auth-url');
+      const url = loginHint
+        ? `/api/outlook/auth-url?login_hint=${encodeURIComponent(loginHint)}`
+        : '/api/outlook/auth-url';
+      const res = await api(url);
       const result = await res.json();
       if (!result.success) throw new Error(result.error);
 
@@ -90,7 +93,15 @@ export default function AccountManagement({onAccountChange}) {
         body: JSON.stringify({email})
       });
       const result = await res.json();
-      if (!result.success) throw new Error(result.error);
+      if (!result.success) {
+        // Token expired — prompt user to reconnect
+        if (result.code === 'TOKEN_EXPIRED') {
+          setError(`Token expired for ${email}. Please reconnect the account.`);
+          fetchAccounts();
+          return;
+        }
+        throw new Error(result.error);
+      }
       setSuccess(`Watch started for ${email}`);
     } catch (err) {
       setError(err.message);
@@ -172,7 +183,9 @@ export default function AccountManagement({onAccountChange}) {
               headings={[
                 {title: 'Email'},
                 {title: 'Type'},
+                {title: 'Status'},
                 {title: 'Connected'},
+                {title: 'Last Refreshed'},
                 {title: 'Actions'}
               ]}
               selectable={false}
@@ -186,6 +199,11 @@ export default function AccountManagement({onAccountChange}) {
                     <Badge tone="attention">Outlook</Badge>
                   </IndexTable.Cell>
                   <IndexTable.Cell>
+                    <Badge tone={account.authStatus === 'expired' ? 'critical' : 'success'}>
+                      {account.authStatus === 'expired' ? 'Expired' : 'Active'}
+                    </Badge>
+                  </IndexTable.Cell>
+                  <IndexTable.Cell>
                     <Text as="span" tone="subdued" variant="bodySm">
                       {account.connectedAt
                         ? new Date(account.connectedAt).toLocaleDateString()
@@ -193,14 +211,27 @@ export default function AccountManagement({onAccountChange}) {
                     </Text>
                   </IndexTable.Cell>
                   <IndexTable.Cell>
+                    <Text as="span" tone="subdued" variant="bodySm">
+                      {account.lastRefreshed
+                        ? new Date(account.lastRefreshed).toLocaleString()
+                        : '-'}
+                    </Text>
+                  </IndexTable.Cell>
+                  <IndexTable.Cell>
                     <InlineStack gap="200">
-                      <Button
-                        onClick={() => handleStartWatch(account.email)}
-                        size="slim"
-                        loading={actionLoading}
-                      >
-                        Start Watch
-                      </Button>
+                      {account.authStatus === 'expired' ? (
+                        <Button onClick={() => connectAccount(account.email)} size="slim" variant="primary" tone="critical">
+                          Reconnect
+                        </Button>
+                      ) : (
+                        <Button
+                          onClick={() => handleStartWatch(account.email)}
+                          size="slim"
+                          loading={actionLoading}
+                        >
+                          Start Watch
+                        </Button>
+                      )}
                       <Button onClick={() => setDeleteConfirm(account)} size="slim" tone="critical">
                         Delete
                       </Button>

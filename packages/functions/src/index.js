@@ -27,7 +27,7 @@ import * as devOrderInspectorController from './controllers/dev-order-inspector-
 import trackingStatusRoutes from './routes/tracking-status-routes.js';
 import shippingTemplateRoutes from './routes/shipping-template-routes.js';
 import outlookRoutes from './routes/outlook-routes.js';
-import {exchangeOutlookCode as outlookAuthExchange} from './controllers/outlook/outlook-auth-handler.js';
+import {exchangeOutlookCode as outlookAuthExchange, handleOutlookCallback} from './controllers/outlook/outlook-auth-handler.js';
 import {handleOutlookWebhook} from './handlers/outlook-push-handler.js';
 import discordRoutes from './routes/discord-routes.js';
 import emailRuleRoutes from './routes/email-rule-routes.js';
@@ -92,8 +92,9 @@ app.all('/embed/api/gdpr*', (_req, res) => {
 app.post('/api/google/exchange', googleAuthController.exchangeGoogleCode);
 app.post('/api/google/exchange-temp', googleAuthController.exchangeGoogleCodeTemp);
 
-// Outlook OAuth exchange (public — called from popup callback)
+// Outlook OAuth (public — no auth required)
 app.post('/api/outlook/auth/exchange', outlookAuthExchange);
+app.get('/api/outlook/auth/callback', handleOutlookCallback);
 
 // Outlook webhook (public — called by Microsoft Graph change notifications)
 app.post('/api/outlook/webhook', handleOutlookWebhook);

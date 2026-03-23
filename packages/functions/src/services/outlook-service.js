@@ -200,7 +200,23 @@ async function refreshIfExpired(authRecord) {
   if (!res.ok) {
     const errBody = await res.json().catch(() => ({}));
     console.error('[Outlook:Refresh] Failed:', errBody.error, errBody.error_description);
-    throw new Error(`Failed to refresh Outlook token: ${errBody.error_description || errBody.error || res.status}`);
+
+    // Mark account as expired when grant is revoked/expired
+    const isGrantExpired = errBody.error === 'invalid_grant' ||
+      (errBody.error_description || '').includes('grant is expired');
+    if (isGrantExpired) {
+      const {GoogleAuthRepository} = await import('../repositories/googleAuthRepository.js');
+      const authRepo = new GoogleAuthRepository();
+      await authRepo.upsertByStoreAndEmail(
+        authRecord.storeId, authRecord.userId, authRecord.googleEmail,
+        {authStatus: 'expired'}
+      );
+    }
+
+    const errMsg = errBody.error_description || errBody.error || res.status;
+    const err = new Error(`Failed to refresh Outlook token: ${errMsg}`);
+    err.code = isGrantExpired ? 'TOKEN_EXPIRED' : 'REFRESH_FAILED';
+    throw err;
   }
   const tokens = await res.json();
 

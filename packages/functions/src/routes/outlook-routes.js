@@ -11,6 +11,7 @@ import {
 } from '../controllers/outlook/outlook-watch-handler.js';
 import {
   getOutlookAuthUrl,
+  handleOutlookCallback,
   getOutlookAccounts,
   disconnectOutlookAccount
 } from '../controllers/outlook/outlook-auth-handler.js';
@@ -19,6 +20,7 @@ const router = new Router();
 
 // Outlook OAuth
 router.get('/auth-url', getOutlookAuthUrl);
+router.get('/auth/callback', handleOutlookCallback);
 router.get('/accounts', getOutlookAccounts);
 router.post('/disconnect', disconnectOutlookAccount);
 

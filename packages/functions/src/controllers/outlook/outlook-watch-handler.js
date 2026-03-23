@@ -8,15 +8,15 @@ const WEBHOOK_URL_BASE = `https://us-central1-${process.env.GCLOUD_PROJECT ||
  * POST /api/outlook/watch — start watching an Outlook account
  */
 export async function startOutlookWatch(req, res) {
+  const userId = req.userId;
+  const storeId = req.body.storeId || req.query.storeId || 'default';
+  const {email} = req.body;
+
+  if (!email) {
+    return res.status(400).json({success: false, error: 'email is required'});
+  }
+
   try {
-    const userId = req.userId;
-    const storeId = req.body.storeId || req.query.storeId || 'default';
-    const {email} = req.body;
-
-    if (!email) {
-      return res.status(400).json({success: false, error: 'email is required'});
-    }
-
     const outlookService = await OutlookService.createForEmail(storeId, userId, email);
     const subResult = await outlookService.createSubscription(WEBHOOK_URL_BASE);
 
@@ -33,6 +33,21 @@ export async function startOutlookWatch(req, res) {
     return res.json({success: true, data: watchRecord});
   } catch (error) {
     console.error('[Outlook:Watch:Start] Error:', error.message);
+
+    // If token expired, mark watch as token_expired so UI can prompt reconnect
+    if (error.code === 'TOKEN_EXPIRED') {
+      const watchRepo = new OutlookWatchRepository();
+      await watchRepo.upsertWatch(email, storeId, userId, {
+        status: 'token_expired',
+        renewalError: error.message
+      });
+      return res.status(422).json({
+        success: false,
+        error: 'Token expired — please reconnect your Outlook account',
+        code: 'TOKEN_EXPIRED'
+      });
+    }
+
     return res.status(500).json({success: false, error: error.message});
   }
 }

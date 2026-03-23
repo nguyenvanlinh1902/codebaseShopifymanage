@@ -94,3 +94,4 @@ shopify.**.toml
 plans/
 claudekit-engineer-main/**
 .playwright-mcp
+.gitnexus

@@ -13,6 +13,9 @@ export async function processOutlookWatchRenewal() {
   const watchRepo = new OutlookWatchRepository();
   const authRepo = new GoogleAuthRepository();
 
+  // Proactive token refresh — keep tokens alive to prevent 90-day inactivity expiry
+  await proactiveTokenRefresh(authRepo, watchRepo);
+
   // Renew expiring watches + re-activate expired ones
   const expiring = await watchRepo.getAllExpiringSoon(48);
   const allWatches = await watchRepo.collection.where('status', 'in', ['expired', 'error']).get();
@@ -55,7 +58,9 @@ export async function processOutlookWatchRenewal() {
 
           return {email: watch.email, success: true};
         } catch (err) {
-          await watchRepo.updateStatus(watch.email, 'error', err.message);
+          // Mark as token_expired so UI prompts reconnect instead of retrying
+          const status = err.code === 'TOKEN_EXPIRED' ? 'token_expired' : 'error';
+          await watchRepo.updateStatus(watch.email, status, err.message);
           return {email: watch.email, success: false, error: err.message};
         }
       })
@@ -70,4 +75,34 @@ export async function processOutlookWatchRenewal() {
 
   console.log(`${LOG_PREFIX} Renewal complete: ${renewed} renewed, ${failed} failed`);
   return {renewed, failed};
+}
+
+/**
+ * Proactive token refresh — refresh all active Outlook tokens every cron run
+ * to prevent Microsoft 90-day inactivity expiry on refresh tokens
+ */
+async function proactiveTokenRefresh(authRepo, watchRepo) {
+  const activeWatches = await watchRepo.getAllActive();
+  if (activeWatches.length === 0) return;
+
+  console.log(`${LOG_PREFIX} Proactive refresh for ${activeWatches.length} active accounts`);
+
+  for (const watch of activeWatches) {
+    try {
+      const allInStore = await authRepo.getAllByStore(watch.storeId);
+      const authRecord = allInStore.find(a => a.googleEmail === watch.email && a.authType === 'outlook');
+      if (!authRecord) continue;
+
+      // Force refresh by temporarily clearing expiryDate
+      await OutlookService.createFromAuthRecord({...authRecord, expiryDate: 0});
+      console.log(`${LOG_PREFIX} Proactive refresh OK: ${watch.email}`);
+    } catch (err) {
+      if (err.code === 'TOKEN_EXPIRED') {
+        await watchRepo.updateStatus(watch.email, 'token_expired', err.message);
+        console.warn(`${LOG_PREFIX} Token expired for ${watch.email} — needs re-auth`);
+      } else {
+        console.warn(`${LOG_PREFIX} Proactive refresh failed for ${watch.email}: ${err.message}`);
+      }
+    }
+  }
 }

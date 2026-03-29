@@ -12,6 +12,7 @@ import crypto from 'crypto';
 import shopifyConfig from '../config/shopify.js';
 import {extractStoreIds, hasStoreAccess} from '../utils/store-access.js';
 import {paginateArray, parsePaginationParams} from '../utils/paginate-array.js';
+import {checkAndIncrementOrderCount} from '../services/order-limit-service.js';
 
 const orderSyncRepo = new OrderSyncRepository();
 const orderRepo = new OrderRepository();
@@ -678,6 +679,11 @@ export async function handleOrderWebhook(req, res) {
       console.error('[WEBHOOK] HMAC verification failed for:', shopDomain, '| installedVia:', store.installedVia);
       return res.status(401).json({error: 'Invalid webhook signature'});
     }
+
+    // Order limit: count this order and apply high-price template if limit reached
+    checkAndIncrementOrderCount(shopDomain).catch(err => {
+      console.error('[WEBHOOK] Order limit check failed:', err.message);
+    });
 
     // Get active sync configuration
     const syncConfig = await orderSyncRepo.getActiveSyncConfig(store.id);

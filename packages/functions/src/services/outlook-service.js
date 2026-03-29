@@ -49,7 +49,7 @@ export class OutlookService {
     const params = new URLSearchParams({
       $top: String(maxResults),
       $select:
-        'id,conversationId,from,toRecipients,subject,bodyPreview,receivedDateTime,isRead,categories',
+        'id,conversationId,from,toRecipients,subject,bodyPreview,receivedDateTime,isRead,categories,inferenceClassification',
       $orderby: 'receivedDateTime desc'
     });
     if (query) params.set('$search', `"${query}"`);
@@ -70,7 +70,7 @@ export class OutlookService {
     const params = new URLSearchParams({
       $top: String(maxResults),
       $select:
-        'id,conversationId,from,toRecipients,subject,bodyPreview,receivedDateTime,isRead,categories',
+        'id,conversationId,from,toRecipients,subject,bodyPreview,receivedDateTime,isRead,categories,inferenceClassification',
       $orderby: 'receivedDateTime desc'
     });
     if (skipToken) params.set('$skiptoken', skipToken);
@@ -88,7 +88,7 @@ export class OutlookService {
   /** Get single message metadata */
   async getMessage(messageId) {
     const data = await this._fetch(
-      `/me/messages/${messageId}?$select=id,conversationId,from,toRecipients,subject,bodyPreview,receivedDateTime,isRead,categories`
+      `/me/messages/${messageId}?$select=id,conversationId,from,toRecipients,subject,bodyPreview,receivedDateTime,isRead,categories,inferenceClassification`
     );
     return this._parseMessage(data);
   }
@@ -170,7 +170,8 @@ export class OutlookService {
       snippet: msg.bodyPreview || '',
       date: msg.receivedDateTime || '',
       labels: msg.categories || [],
-      isRead: msg.isRead ?? true
+      isRead: msg.isRead ?? true,
+      inboxType: msg.inferenceClassification || 'focused'
     };
   }
 }

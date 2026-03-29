@@ -5,6 +5,7 @@ import {useStores} from '../context/store-context';
 import TemplatesTab from './shipping-management/TemplatesTab';
 import StoreRatesTab from './shipping-management/StoreRatesTab';
 import BulkApplyTab from './shipping-management/BulkApplyTab';
+import OrderLimitsTab from './shipping-management/OrderLimitsTab';
 
 /**
  * Shipping Rate Management — Templates, Store Rates, Bulk Apply
@@ -22,7 +23,8 @@ export default function ShippingManagement() {
   const tabs = [
     {id: 'templates', content: 'Templates'},
     {id: 'store-rates', content: 'Store Rates'},
-    {id: 'bulk-apply', content: 'Bulk Apply'}
+    {id: 'bulk-apply', content: 'Bulk Apply'},
+    {id: 'order-limits', content: 'Order Limits'}
   ];
 
   const fetchTemplates = useCallback(async () => {
@@ -143,6 +145,14 @@ export default function ShippingManagement() {
                 templates={templates}
                 stores={stores}
                 groups={groups}
+                onError={setError}
+                onSuccess={setSuccess}
+              />
+            )}
+            {selectedTab === 3 && (
+              <OrderLimitsTab
+                templates={templates}
+                stores={stores}
                 onError={setError}
                 onSuccess={setSuccess}
               />

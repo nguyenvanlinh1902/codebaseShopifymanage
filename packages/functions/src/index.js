@@ -43,6 +43,8 @@ import * as trackingImportController from './controllers/trackingImportControlle
 
 // Outlook watch renewal
 import {processOutlookWatchRenewal} from './handlers/outlook-watch-renewal-handler.js';
+// Order limit daily reset
+import {processOrderLimitReset} from './handlers/order-limit-cron-handler.js';
 
 // BigQuery Firestore triggers
 import {
@@ -230,6 +232,19 @@ export const outlookWatchRenewalCron = onSchedule(
   },
   async () => {
     await processOutlookWatchRenewal();
+  }
+);
+
+/** Cron: Order Limit Daily Reset (every hour) */
+export const orderLimitResetCron = onSchedule(
+  {
+    schedule: '0 * * * *',
+    memory: '256MiB',
+    timeoutSeconds: 540,
+    retryConfig: {retryCount: 2, maxRetrySeconds: 600}
+  },
+  async () => {
+    await processOrderLimitReset();
   }
 );
 

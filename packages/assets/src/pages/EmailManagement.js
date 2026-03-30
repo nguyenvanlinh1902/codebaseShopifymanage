@@ -1,4 +1,4 @@
-import React, {useState, useEffect, useCallback} from 'react';
+import React, {useState, useEffect, useCallback, useMemo} from 'react';
 import {Page, Layout, Card, Banner, BlockStack, SkeletonBodyText} from '@shopify/polaris';
 import AccountSelector from './email/AccountSelector';
 import EmailFiltersBar from './email/EmailFiltersBar';
@@ -36,12 +36,20 @@ export default function EmailManagement() {
     }
   }, [selectedEmail, fetchEmails, fetchLabels]);
 
+  const [inboxTypeFilter, setInboxTypeFilter] = useState('all');
+
   const handleFilter = useCallback(
-    ({query, label}) => {
+    ({query, label, inboxType}) => {
+      if (inboxType !== undefined) setInboxTypeFilter(inboxType);
       fetchEmails(query, label);
     },
     [fetchEmails]
   );
+
+  const filteredEmails = useMemo(() => {
+    if (inboxTypeFilter === 'all') return emails;
+    return emails.filter(e => e.inboxType === inboxTypeFilter);
+  }, [emails, inboxTypeFilter]);
 
   const handleSelectMessage = useCallback(
     messageId => {
@@ -88,7 +96,7 @@ export default function EmailManagement() {
 
             {!showListSkeleton && selectedEmail && (
               <EmailListContent
-                emails={emails}
+                emails={filteredEmails}
                 loading={loading}
                 hasMore={hasMore}
                 onFetchMore={fetchMore}

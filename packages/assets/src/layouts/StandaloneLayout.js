@@ -41,11 +41,15 @@ const NAV_FEATURE_MAP = {
   '/balance': 'finance',
   '/campaign-ads': 'finance',
   '/order-search': 'order-search',
+  '/draft-orders': 'draft-orders',
+  '/customer-search': 'customer-search',
+  '/customer-search/': 'customer-search',
   '/disputes': 'dispute',
   '/shipping-management': 'shipping',
   '/themes': 'themes',
   '/my-email': 'my-email',
-  '/setup': 'setup'
+  '/setup': 'setup',
+  '/policies': 'policies'
 };
 
 export default function StandaloneLayout({children}) {
@@ -79,6 +83,8 @@ export default function StandaloneLayout({children}) {
     {label: 'Products', icon: ProductIcon, url: '/products'},
     {label: 'Orders', icon: OrderIcon, url: '/orders'},
     {label: 'Order Search', icon: SearchIcon, url: '/order-search'},
+    {label: 'Draft Orders', icon: OrderIcon, url: '/draft-orders'},
+    {label: 'Customer Search', icon: SearchIcon, url: '/customer-search'},
     {
       label: 'Tracking',
       icon: DeliveryIcon,
@@ -96,6 +102,7 @@ export default function StandaloneLayout({children}) {
     {label: 'Shipping', icon: DeliveryIcon, url: '/shipping-management'},
     {label: 'Themes', icon: ThemeIcon, url: '/themes'},
     {label: 'Setup Store', icon: SettingsIcon, url: '/setup'},
+    {label: 'Policies', icon: NoteIcon, url: '/policies'},
     {label: 'My Email', icon: NoteIcon, url: '/my-email'}
   ];
 

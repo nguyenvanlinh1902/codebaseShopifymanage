@@ -9,12 +9,15 @@ const ALL_FEATURES = [
   {label: 'Products', value: 'products'},
   {label: 'Orders', value: 'orders'},
   {label: 'Order Search', value: 'order-search'},
+  {label: 'Customer Search', value: 'customer-search'},
   {label: 'Tracking', value: 'tracking'},
   {label: 'Analytics (Revenue)', value: 'analytics'},
   {label: 'Finance (Balance, Campaign Ads)', value: 'finance'},
   {label: 'Disputes', value: 'dispute'},
   {label: 'Themes', value: 'themes'},
   {label: 'Setup Store', value: 'setup'},
+  {label: 'Policies', value: 'policies'},
+  {label: 'Draft Orders', value: 'draft-orders'},
   {label: 'My Email (Outlook)', value: 'my-email'}
 ];
 

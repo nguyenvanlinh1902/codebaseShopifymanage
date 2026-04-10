@@ -67,4 +67,5 @@ export class ShopifyService {
   createMetafieldDefinition(definition) { return shopSvc.createMetafieldDefinition(this.shopify, definition); }
   getShopPolicies() { return shopSvc.getShopPolicies(this.shopify); }
   updateShopPolicy(type, body) { return shopSvc.updateShopPolicy(this.shopify, type, body); }
+  getPrivacySettings() { return shopSvc.getPrivacySettings(this.shopify); }
 }

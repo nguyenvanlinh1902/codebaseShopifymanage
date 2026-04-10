@@ -65,7 +65,8 @@ export default function StatusListTab({
   onPageChange,
   onPerPageChange,
   onSearchChange,
-  onHide
+  onHide,
+  onRemove
 }) {
   const selectedTabIndex = STATUS_TABS.findIndex(t => t.id === statusFilter);
 
@@ -107,16 +108,28 @@ export default function StatusListTab({
       <IndexTable.Cell>
         <Text variant="bodySm" tone="subdued">{item.apiKeyName || '—'}</Text>
       </IndexTable.Cell>
-      {onHide && (
+      {(onHide || onRemove) && (
         <IndexTable.Cell>
-          <Button
-            size="slim"
-            tone="critical"
-            variant="plain"
-            onClick={() => onHide(item.id || item.trackingNumber)}
-          >
-            Hide
-          </Button>
+          {onHide && (
+            <Button
+              size="slim"
+              tone="critical"
+              variant="plain"
+              onClick={() => onHide(item.id || item.trackingNumber)}
+            >
+              Hide
+            </Button>
+          )}
+          {onRemove && (
+            <Button
+              size="slim"
+              tone="critical"
+              variant="plain"
+              onClick={() => onRemove(item.id || item.trackingNumber)}
+            >
+              Remove
+            </Button>
+          )}
         </IndexTable.Cell>
       )}
     </IndexTable.Row>
@@ -158,7 +171,7 @@ export default function StatusListTab({
               {title: 'Last updated date'},
               {title: 'Note'},
               {title: 'API Key'},
-              ...(onHide ? [{title: 'Actions'}] : [])
+              ...(onHide || onRemove ? [{title: 'Actions'}] : [])
             ]}
             selectable={false}
           >

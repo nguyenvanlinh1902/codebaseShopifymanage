@@ -350,6 +350,10 @@ export default function TrackingStatus() {
                   await trackingApi.hideTracking(id);
                   fetchStatuses();
                 }}
+                onRemove={async id => {
+                  await trackingApi.removeTracking(id);
+                  fetchStatuses();
+                }}
               />
             )}
             {selectedTab === 2 && (

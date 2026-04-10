@@ -36,12 +36,16 @@ import CampaignAds from './pages/CampaignAds';
 import Disputes from './pages/Disputes';
 import Themes from './pages/Themes';
 import SetupStore from './pages/SetupStore';
+import PolicyManagement from './pages/PolicyManagement';
 import Stores from './pages/Stores';
 import Users from './pages/Users';
 import DevWebhooks from './pages/DevWebhooks';
 import DevTestImport from './pages/DevTestImport';
 import Guide from './pages/Guide';
 import OrderSearch from './pages/OrderSearch';
+import DraftOrders from './pages/draft-orders';
+import CustomerSearch from './pages/customer-search';
+import CustomerOrderDetails from './pages/customer-order-details';
 import ShippingManagement from './pages/ShippingManagement';
 import EmailManagement from './loadables/EmailManagement';
 import DiscordSettings from './loadables/DiscordSettings';
@@ -164,11 +168,13 @@ const FEATURE_ROUTE_MAP = {
   products: '/products',
   orders: '/orders',
   'order-search': '/order-search',
+  'draft-orders': '/draft-orders',
   tracking: '/tracking',
   analytics: '/analytics',
   dispute: '/disputes',
   themes: '/themes',
-  setup: '/setup'
+  setup: '/setup',
+  policies: '/policies'
 };
 
 /**
@@ -301,6 +307,30 @@ function StandaloneFrame() {
             }
           />
           <Route
+            path="/draft-orders"
+            element={
+              <FeatureGuard feature="draft-orders">
+                <DraftOrders />
+              </FeatureGuard>
+            }
+          />
+          <Route
+            path="/customer-search"
+            element={
+              <FeatureGuard feature="customer-search">
+                <CustomerSearch />
+              </FeatureGuard>
+            }
+          />
+          <Route
+            path="/customer-search/:storeId/:orderId"
+            element={
+              <FeatureGuard feature="customer-search">
+                <CustomerOrderDetails />
+              </FeatureGuard>
+            }
+          />
+          <Route
             path="/shipping-management"
             element={
               <FeatureGuard feature="shipping">
@@ -317,6 +347,14 @@ function StandaloneFrame() {
             element={
               <FeatureGuard feature="setup">
                 <SetupStore />
+              </FeatureGuard>
+            }
+          />
+          <Route
+            path="/policies"
+            element={
+              <FeatureGuard feature="policies">
+                <PolicyManagement />
               </FeatureGuard>
             }
           />

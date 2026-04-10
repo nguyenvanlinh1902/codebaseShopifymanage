@@ -480,6 +480,32 @@ export async function hideTracking(req, res) {
   }
 }
 
+/** Remove a single tracking by id */
+export async function removeTracking(req, res) {
+  try {
+    const {id} = req.params;
+    await statusRepo.deleteById(id);
+    res.json({success: true});
+  } catch (err) {
+    console.error('[TrackingStatus] removeTracking error:', err.message);
+    res.status(500).json({success: false, error: err.message});
+  }
+}
+
+/** Remove multiple trackings by ids (max 500 per request) */
+export async function bulkRemoveTrackings(req, res) {
+  try {
+    const {ids} = req.body;
+    if (!ids?.length) return res.status(400).json({success: false, error: 'ids array required'});
+    if (ids.length > 500) return res.status(400).json({success: false, error: 'Max 500 ids per request'});
+    const deleted = await statusRepo.deleteByIds(ids);
+    res.json({success: true, data: {deleted}});
+  } catch (err) {
+    console.error('[TrackingStatus] bulkRemoveTrackings error:', err.message);
+    res.status(500).json({success: false, error: err.message});
+  }
+}
+
 /** Unhide a tracking (isHidden = false) */
 export async function unhideTracking(req, res) {
   try {

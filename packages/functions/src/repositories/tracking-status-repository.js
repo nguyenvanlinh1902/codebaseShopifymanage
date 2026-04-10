@@ -327,6 +327,29 @@ export class TrackingStatusRepository {
     return snapshot.docs.map(d => d.data());
   }
 
+  /** Delete a tracking by its doc id */
+  async deleteById(id) {
+    const snap = await this.collection.where('id', '==', id).limit(1).get();
+    if (snap.empty) throw new Error(`Tracking ${id} not found`);
+    await snap.docs[0].ref.delete();
+  }
+
+  /** Delete multiple trackings by doc ids (batch) */
+  async deleteByIds(ids) {
+    if (!ids.length) return 0;
+    let deleted = 0;
+    for (let i = 0; i < ids.length; i += 30) {
+      const chunk = ids.slice(i, i + 30);
+      const snap = await this.collection.where('id', 'in', chunk).get();
+      if (snap.empty) continue;
+      const batch = this.db.batch();
+      snap.docs.forEach(doc => batch.delete(doc.ref));
+      await batch.commit();
+      deleted += snap.size;
+    }
+    return deleted;
+  }
+
   /** Hide or unhide a tracking by its doc id */
   async setHidden(id, isHidden) {
     const snap = await this.collection.where('id', '==', id).limit(1).get();

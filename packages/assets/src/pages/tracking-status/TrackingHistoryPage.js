@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Page, Layout, Banner } from '@shopify/polaris';
-import { api } from '../../helpers/api';
-import { usePermittedStores } from '../../hooks/usePermittedStores';
+import {api} from '../../helpers/api';
+import {usePermittedStores} from '../../hooks/usePermittedStores';
+import {useTrackingStatusApi} from '../../hooks/use-tracking-status-api';
 import StatusListTab from './StatusListTab';
 
 /**
@@ -9,7 +10,8 @@ import StatusListTab from './StatusListTab';
  * Requires store or group selection before fetching.
  */
 export default function TrackingHistoryPage() {
-  const { stores, groups } = usePermittedStores();
+  const {stores, groups} = usePermittedStores();
+  const trackingApi = useTrackingStatusApi();
   const [statuses, setStatuses] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -83,6 +85,10 @@ export default function TrackingHistoryPage() {
         onStoreChange={setSelectedStore}
         selectedGroup={selectedGroup}
         onGroupChange={setSelectedGroup}
+        onRemove={async id => {
+          await trackingApi.removeTracking(id);
+          fetchStatuses();
+        }}
       />
     </Page>
   );

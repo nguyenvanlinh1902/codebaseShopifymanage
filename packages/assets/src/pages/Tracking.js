@@ -574,6 +574,10 @@ export default function Tracking() {
               onPageChange={setHistoryPage}
               onPerPageChange={setHistoryPerPage}
               onSearchChange={setHistorySearch}
+              onRemove={async id => {
+                await trackingApi.removeTracking(id);
+                fetchHistory();
+              }}
             />
           </BlockStack>
         </Layout.Section>

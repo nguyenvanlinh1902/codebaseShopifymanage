@@ -148,6 +148,18 @@ export function useTrackingStatusApi() {
     return json;
   }, []);
 
+  const removeTracking = useCallback(async id => {
+    await callApi(`${BASE}/statuses/${id}`, {method: 'DELETE'});
+  }, []);
+
+  const bulkRemoveTrackings = useCallback(async ids => {
+    const json = await callApi(`${BASE}/statuses/bulk-remove`, {
+      method: 'POST',
+      body: JSON.stringify({ids})
+    });
+    return json.data;
+  }, []);
+
   const hideTracking = useCallback(async (id) => {
     await callApi(`${BASE}/statuses/${id}/hide`, { method: 'POST' });
   }, []);
@@ -169,6 +181,8 @@ export function useTrackingStatusApi() {
     // Actions
     actionLoading, triggerRecheck, clearInvalid,
     checkOrders, checkSingleTracking,
-    hideTracking, unhideTracking
+    hideTracking, unhideTracking,
+    removeTracking,
+    bulkRemoveTrackings
   };
 }

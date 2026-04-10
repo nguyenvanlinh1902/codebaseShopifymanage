@@ -1,4 +1,5 @@
 import React, {useState, useEffect, useRef} from 'react';
+import {useNavigate} from 'react-router-dom';
 import {
   Page,
   Layout,
@@ -7,7 +8,6 @@ import {
   Card,
   DataTable,
   Badge,
-  Link,
   Button,
   Text,
   SkeletonBodyText,
@@ -17,21 +17,13 @@ import {SearchIcon} from '@shopify/polaris-icons';
 import {api} from '../helpers/api';
 import {usePermittedStores} from '../hooks/usePermittedStores';
 
-const FULFILLMENT_TONE = {
-  FULFILLED: 'success',
-  UNFULFILLED: 'attention',
-  PARTIALLY_FULFILLED: 'info',
-  IN_PROGRESS: 'info'
-};
-const FINANCIAL_TONE = {
-  PAID: 'success',
-  PENDING: 'attention',
-  REFUNDED: 'info',
-  PARTIALLY_REFUNDED: 'warning',
-  VOIDED: 'critical'
-};
+import {FULFILLMENT_TONE, FINANCIAL_TONE} from '../helpers/order-status-tones';
+
+// Extract numeric id from Shopify GID
+const numericOrderId = gid => String(gid || '').split('/').pop();
 
 export default function OrderSearch() {
+  const navigate = useNavigate();
   const {stores} = usePermittedStores();
   const [selectedStoreId, setSelectedStoreId] = useState('');
   const [query, setQuery] = useState('');
@@ -84,10 +76,13 @@ export default function OrderSearch() {
     return `$${num.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
   };
 
+  const goDetails = (orderGid) => {
+    if (!selectedStoreId || !orderGid) return;
+    navigate(`/customer-search/${selectedStoreId}/${numericOrderId(orderGid)}`);
+  };
+
   const rows = results.map(o => [
-    <Link key={o.id} url={o.adminUrl} external>
-      {o.name}
-    </Link>,
+    o.name,
     new Date(o.createdAt).toLocaleDateString(),
     o.customer?.name || 'N/A',
     `${o.currency} ${o.total}`,
@@ -99,7 +94,10 @@ export default function OrderSearch() {
     </Badge>,
     <Badge key={`p-${o.id}`} tone={FINANCIAL_TONE[o.financialStatus] || 'new'}>
       {o.financialStatus}
-    </Badge>
+    </Badge>,
+    <Button key={`v-${o.id}`} size="slim" onClick={() => goDetails(o.id)}>
+      View
+    </Button>
   ]);
 
   return (
@@ -139,8 +137,8 @@ export default function OrderSearch() {
             ) : results.length > 0 ? (
               <>
                 <DataTable
-                  columnContentTypes={['text', 'text', 'text', 'numeric', 'numeric', 'numeric', 'numeric', 'text', 'text']}
-                  headings={['Order', 'Date', 'Customer', 'Total', 'Base Cost', 'Fee', 'Tax', 'Fulfillment', 'Payment']}
+                  columnContentTypes={['text', 'text', 'text', 'numeric', 'numeric', 'numeric', 'numeric', 'text', 'text', 'text']}
+                  headings={['Order', 'Date', 'Customer', 'Total', 'Base Cost', 'Fee', 'Tax', 'Fulfillment', 'Payment', 'Details']}
                   rows={rows}
                 />
                 {pageInfo.hasNextPage && (

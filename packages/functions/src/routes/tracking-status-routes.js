@@ -14,6 +14,8 @@ router.delete('/keys/:id', controller.deleteApiKey);
 // Tracking statuses
 router.get('/statuses', controller.listStatuses);
 router.post('/statuses/clear-invalid', controller.clearInvalidStatuses);
+router.delete('/statuses/:id', controller.removeTracking);
+router.post('/statuses/bulk-remove', controller.bulkRemoveTrackings);
 router.post('/statuses/:id/hide', controller.hideTracking);
 router.post('/statuses/:id/unhide', controller.unhideTracking);
 router.get('/statuses/:trackingNumber', controller.getStatus);

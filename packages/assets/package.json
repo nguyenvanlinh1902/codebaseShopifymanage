@@ -30,6 +30,7 @@
     "react-dom": "18.2.0",
     "react-html-parser": "^2.0.2",
     "react-markdown": "^8.0.3",
+    "react-quill-new": "^3.8.3",
     "react-router-dom": "^6.0.0",
     "react-router-routes-loader": "^0.2.1",
     "react-screentype-hook": "^1.0.18",

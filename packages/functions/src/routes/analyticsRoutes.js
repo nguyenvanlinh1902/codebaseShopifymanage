@@ -17,6 +17,9 @@ router.get('/campaign-ads/all-stores', shopifyqlCampaignController.getCampaignAd
 router.get('/order-analytics', orderAnalyticsController.getOrderAnalytics);
 router.get('/order-analytics-batch', orderAnalyticsController.getOrderAnalyticsBatch);
 router.get('/order-search', orderSearchController.searchOrders);
+router.get('/customer-search', orderSearchController.searchCustomersAcrossStores);
+router.get('/order-details', orderSearchController.getOrderDetails);
+router.put('/order-note', orderSearchController.updateOrderNote);
 router.get('/disputes', disputeController.getDisputes);
 
 export default router;

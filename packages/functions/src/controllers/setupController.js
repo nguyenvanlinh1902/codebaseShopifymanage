@@ -188,8 +188,19 @@ export async function applyPolicies(req, res) {
           errors: []
         };
 
+        // Check autoManaged status to skip auto-managed policies
+        let privacyAutoManaged = false;
+        try {
+          const privacySettings = await shopifyService.getPrivacySettings();
+          privacyAutoManaged = privacySettings.privacyPolicy?.autoManaged || false;
+        } catch { /* ignore */ }
+
         for (const {type, body} of policies) {
           if (!body || !body.trim()) continue;
+          if (type === 'PRIVACY_POLICY' && privacyAutoManaged) {
+            storeResult.errors.push({type, error: 'Auto-managed by Shopify. Disable "Use automated policy" in Shopify Admin first.'});
+            continue;
+          }
           try {
             await shopifyService.updateShopPolicy(type, body);
             storeResult.updated.push(type);
@@ -294,7 +305,7 @@ async function checkPolicyStatus(shopifyService) {
   return {done: filled >= 3, detail: `${filled}/${total} filled`};
 }
 
-const POLICY_TYPES_CHECK = ['REFUND_POLICY', 'PRIVACY_POLICY', 'TERMS_OF_SERVICE', 'SHIPPING_POLICY'];
+const POLICY_TYPES_CHECK = ['REFUND_POLICY', 'PRIVACY_POLICY', 'TERMS_OF_SERVICE', 'SHIPPING_POLICY', 'CONTACT_INFORMATION'];
 
 async function checkShippingStatus(shopifyService) {
   try {

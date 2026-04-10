@@ -1,16 +1,17 @@
 import React, {useState, useEffect} from 'react';
 import {
   Modal, BlockStack, Text, Tabs, TextField, InlineStack,
-  Badge, Spinner, Card, ChoiceList
+  Badge, Spinner, Card, ChoiceList, Banner, Button
 } from '@shopify/polaris';
 import {api} from '../../helpers/api';
+import {generatePolicies} from '../../helpers/policy-templates';
 
 const POLICY_TYPES = [
   {type: 'REFUND_POLICY', label: 'Refund Policy'},
   {type: 'PRIVACY_POLICY', label: 'Privacy Policy'},
   {type: 'TERMS_OF_SERVICE', label: 'Terms of Service'},
   {type: 'SHIPPING_POLICY', label: 'Shipping Policy'},
-  {type: 'SUBSCRIPTION_POLICY', label: 'Subscription Policy'}
+  {type: 'CONTACT_INFORMATION', label: 'Contact Information'}
 ];
 
 const EMPTY_CONTENT = Object.fromEntries(POLICY_TYPES.map(p => [p.type, '']));
@@ -22,6 +23,7 @@ export default function PolicySetup({open, onClose, stores, onSuccess}) {
   const [loading, setLoading] = useState(false);
   const [applying, setApplying] = useState(false);
   const [applyResults, setApplyResults] = useState([]);
+  const [templateEmail, setTemplateEmail] = useState('');
 
   const tabs = POLICY_TYPES.map(p => ({
     id: p.type, content: p.label, panelID: `${p.type}-panel`
@@ -92,6 +94,20 @@ export default function PolicySetup({open, onClose, stores, onSuccess}) {
     }
   };
 
+  // Get store name from first selected store for template generation
+  const getSelectedStoreName = () => {
+    if (!selectedStoreIds.length || !stores?.length) return '';
+    const store = stores.find(s => s.id === selectedStoreIds[0]);
+    return store?.name || store?.shopDomain || '';
+  };
+
+  const handleGenerateFromTemplate = () => {
+    const storeName = getSelectedStoreName();
+    if (!storeName || !templateEmail.trim()) return;
+    const generated = generatePolicies(storeName, templateEmail.trim());
+    setPolicyContent(prev => ({...prev, ...generated}));
+  };
+
   const filledCount = POLICY_TYPES.filter(p => policyContent[p.type]?.trim()).length;
 
   return (
@@ -127,9 +143,34 @@ export default function PolicySetup({open, onClose, stores, onSuccess}) {
             </InlineStack>
           ) : selectedStoreIds.length > 0 ? (
             <BlockStack gap="300">
-              <Text variant="bodySm" tone="subdued">
-                Policies loaded from first selected store. Edit and Apply to push to all.
-              </Text>
+              {/* Generate from template */}
+              <Card>
+                <BlockStack gap="200">
+                  <Text variant="headingSm">Generate from Template</Text>
+                  <Text variant="bodySm" tone="subdued">
+                    Enter support email to auto-fill all 4 policies using store name "{getSelectedStoreName()}".
+                  </Text>
+                  <InlineStack gap="300" blockAlign="end">
+                    <div style={{flex: 1}}>
+                      <TextField
+                        label="Support Email"
+                        type="email"
+                        value={templateEmail}
+                        onChange={setTemplateEmail}
+                        placeholder="support@example.com"
+                        autoComplete="email"
+                      />
+                    </div>
+                    <Button
+                      variant="primary"
+                      onClick={handleGenerateFromTemplate}
+                      disabled={!templateEmail.trim() || !getSelectedStoreName()}
+                    >
+                      Generate All Policies
+                    </Button>
+                  </InlineStack>
+                </BlockStack>
+              </Card>
 
               <Tabs tabs={tabs} selected={selectedTab} onSelect={setSelectedTab}>
                 <BlockStack gap="300">
@@ -161,6 +202,9 @@ export default function PolicySetup({open, onClose, stores, onSuccess}) {
                   </InlineStack>
                 </Card>
               ))}
+              <Banner tone="info">
+                "Use automated policy" can only be toggled in each store's Shopify Admin (Settings &gt; Policies).
+              </Banner>
             </BlockStack>
           )}
         </BlockStack>

@@ -155,7 +155,7 @@ mutation DraftOrderCreate($input: DraftOrderInput!) {
  */
 export async function createDraftOrder(req, res) {
   try {
-    const {storeId, lineItems, customer, note, tags, shippingAddress, appliedDiscount} = req.body || {};
+    const {storeId, lineItems, customer, note, tags, shippingAddress, appliedDiscount, shippingLine, taxExempt} = req.body || {};
 
     if (!storeId) {
       return res.status(400).json({success: false, error: 'storeId is required'});
@@ -203,12 +203,23 @@ export async function createDraftOrder(req, res) {
       };
     }
 
-    if (appliedDiscount) {
+    if (appliedDiscount && parseFloat(appliedDiscount.value) > 0) {
       input.appliedDiscount = {
         value: parseFloat(appliedDiscount.value) || 0,
         valueType: appliedDiscount.valueType || 'FIXED_AMOUNT',
         title: appliedDiscount.title || 'Discount'
       };
+    }
+
+    if (shippingLine && parseFloat(shippingLine.price) > 0) {
+      input.shippingLine = {
+        title: shippingLine.title || 'Shipping',
+        price: String(shippingLine.price)
+      };
+    }
+
+    if (taxExempt !== undefined) {
+      input.taxExempt = !!taxExempt;
     }
 
     const data = await shopifyGraphQL(access.store, DRAFT_ORDER_CREATE_MUTATION, {input});
@@ -326,6 +337,10 @@ query GetDraftOrder($id: ID!) {
     createdAt
     totalPriceSet { shopMoney { amount currencyCode } }
     subtotalPriceSet { shopMoney { amount currencyCode } }
+    totalTax
+    taxExempt
+    appliedDiscount { title value valueType }
+    shippingLine { title originalPriceSet { shopMoney { amount } } }
     customer { firstName lastName email phone }
     shippingAddress { address1 city province country zip phone firstName lastName }
     lineItems(first: 50) {
@@ -378,6 +393,13 @@ export async function getDraftOrder(req, res) {
       total: d.totalPriceSet?.shopMoney?.amount || '0.00',
       subtotal: d.subtotalPriceSet?.shopMoney?.amount || '0.00',
       currency: d.totalPriceSet?.shopMoney?.currencyCode || 'USD',
+      totalTax: d.totalTax || '0.00',
+      taxExempt: d.taxExempt || false,
+      appliedDiscount: d.appliedDiscount || null,
+      shippingLine: d.shippingLine ? {
+        title: d.shippingLine.title,
+        price: d.shippingLine.originalPriceSet?.shopMoney?.amount || '0.00'
+      } : null,
       customer: d.customer ? {
         name: [d.customer.firstName, d.customer.lastName].filter(Boolean).join(' ') || '',
         email: d.customer.email || '',
@@ -426,7 +448,7 @@ mutation DraftOrderUpdate($id: ID!, $input: DraftOrderInput!) {
 export async function updateDraftOrder(req, res) {
   try {
     const draftOrderId = req.params.id;
-    const {storeId, lineItems, customer, note, tags} = req.body || {};
+    const {storeId, lineItems, customer, note, tags, appliedDiscount, shippingLine, taxExempt, shippingAddress} = req.body || {};
 
     if (!storeId || !draftOrderId) {
       return res.status(400).json({success: false, error: 'storeId and id are required'});
@@ -454,6 +476,39 @@ export async function updateDraftOrder(req, res) {
     if (note !== undefined) input.note = note;
     if (tags) input.tags = Array.isArray(tags) ? tags : [tags];
     if (customer?.email) input.email = customer.email;
+
+    if (shippingAddress) {
+      input.shippingAddress = {
+        address1: shippingAddress.address1 || '',
+        address2: shippingAddress.address2 || '',
+        city: shippingAddress.city || '',
+        province: shippingAddress.province || '',
+        country: shippingAddress.country || '',
+        zip: shippingAddress.zip || '',
+        phone: shippingAddress.phone || '',
+        firstName: shippingAddress.firstName || customer?.firstName || '',
+        lastName: shippingAddress.lastName || customer?.lastName || ''
+      };
+    }
+
+    if (appliedDiscount && parseFloat(appliedDiscount.value) > 0) {
+      input.appliedDiscount = {
+        value: parseFloat(appliedDiscount.value) || 0,
+        valueType: appliedDiscount.valueType || 'FIXED_AMOUNT',
+        title: appliedDiscount.title || 'Discount'
+      };
+    }
+
+    if (shippingLine && parseFloat(shippingLine.price) > 0) {
+      input.shippingLine = {
+        title: shippingLine.title || 'Shipping',
+        price: String(shippingLine.price)
+      };
+    }
+
+    if (taxExempt !== undefined) {
+      input.taxExempt = !!taxExempt;
+    }
 
     const data = await shopifyGraphQL(access.store, DRAFT_ORDER_UPDATE_MUTATION, {id: gid, input});
 

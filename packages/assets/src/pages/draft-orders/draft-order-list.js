@@ -49,11 +49,9 @@ export default function DraftOrderList({storeId, storeOptions, onStoreChange, on
         {d.status}
       </Badge>,
       <InlineStack key={`a-${d.id}`} gap="200">
-        {d.status === 'OPEN' && (
-          <Button size="slim" onClick={() => onEdit(numericId)}>
-            Edit
-          </Button>
-        )}
+        <Button size="slim" onClick={() => onEdit(numericId)}>
+          Edit
+        </Button>
         <Button size="slim" icon={ExternalIcon} url={d.adminUrl} external>
           View
         </Button>

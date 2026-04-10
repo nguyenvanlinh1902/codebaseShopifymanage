@@ -307,7 +307,7 @@ function StandaloneFrame() {
             }
           />
           <Route
-            path="/draft-orders"
+            path="/draft-orders/*"
             element={
               <FeatureGuard feature="draft-orders">
                 <DraftOrders />

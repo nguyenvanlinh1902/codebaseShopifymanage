@@ -1,18 +1,18 @@
 import React, {useState, useEffect, useRef, useCallback} from 'react';
 import {
-  Page, Layout, Card, Select, TextField, Button, Text, Badge,
+  Page, Layout, Card, Select, TextField, Button, Text, Badge, Toast,
   Banner, InlineStack, BlockStack, Thumbnail, SkeletonBodyText,
   Spinner, Divider, Box, Scrollable, Icon, Modal, Checkbox
 } from '@shopify/polaris';
 import {
-  SearchIcon, DeleteIcon, ExternalIcon, ImageIcon, EditIcon, PlusIcon
+  SearchIcon, DeleteIcon, ExternalIcon, ImageIcon, EditIcon, PlusIcon,
+  ShareIcon, ClipboardIcon, DiscountIcon, DeliveryIcon, TaxIcon
 } from '@shopify/polaris-icons';
 import {api} from '../../helpers/api';
 
 const fmtMoney = v => `$${parseFloat(v || 0).toFixed(2)}`;
 
-export default function DraftOrderForm({storeId, storeOptions, onStoreChange, onBack, editOrderId = null}) {
-  const isEdit = !!editOrderId;
+export default function DraftOrderForm({storeId, storeOptions, onStoreChange, onBack, editOrderId = null, onOrderCreated}) {
   const [lineItems, setLineItems] = useState([]);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [note, setNote] = useState('');
@@ -21,9 +21,33 @@ export default function DraftOrderForm({storeId, storeOptions, onStoreChange, on
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
-  const [successData, setSuccessData] = useState(null);
+  const [toastMsg, setToastMsg] = useState('');
   const [orderName, setOrderName] = useState('');
+  const [adminUrl, setAdminUrl] = useState('');
+  const isEdit = !!editOrderId;
   const [editingNotes, setEditingNotes] = useState(false);
+
+  // Discount, Shipping, Tax
+  const [discountValue, setDiscountValue] = useState('');
+  const [discountType, setDiscountType] = useState('FIXED_AMOUNT');
+  const [discountTitle, setDiscountTitle] = useState('Custom discount');
+  const [editingDiscount, setEditingDiscount] = useState(false);
+  const [shippingPrice, setShippingPrice] = useState('');
+  const [shippingTitle, setShippingTitle] = useState('Custom');
+  const [editingShipping, setEditingShipping] = useState(false);
+  const [taxExempt, setTaxExempt] = useState(false);
+
+  // Share
+  const [shareUrl, setShareUrl] = useState('');
+  const [shareModalOpen, setShareModalOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const handleCopyShareUrl = () => {
+    navigator.clipboard.writeText(shareUrl).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
 
   // New customer form
   const [showNewCustomer, setShowNewCustomer] = useState(false);
@@ -70,6 +94,17 @@ export default function DraftOrderForm({storeId, storeOptions, onStoreChange, on
               ? d.tags.split(',').map(t => t.trim()).filter(Boolean)
               : []
           );
+          if (d.invoiceUrl) setShareUrl(d.invoiceUrl);
+          if (d.taxExempt) setTaxExempt(true);
+          if (d.appliedDiscount) {
+            setDiscountValue(String(d.appliedDiscount.value || ''));
+            setDiscountType(d.appliedDiscount.valueType || 'FIXED_AMOUNT');
+            setDiscountTitle(d.appliedDiscount.title || 'Custom discount');
+          }
+          if (d.shippingLine) {
+            setShippingPrice(String(d.shippingLine.price || ''));
+            setShippingTitle(d.shippingLine.title || 'Custom');
+          }
           if (d.customer?.email) {
             const addr = d.shippingAddress;
             setSelectedCustomer({
@@ -238,6 +273,13 @@ export default function DraftOrderForm({storeId, storeOptions, onStoreChange, on
   const subtotal = lineItems.reduce(
     (sum, item) => sum + (parseFloat(item.price) || 0) * (item.quantity || 0), 0
   );
+  const discountAmount = discountValue
+    ? discountType === 'PERCENTAGE'
+      ? subtotal * (parseFloat(discountValue) || 0) / 100
+      : parseFloat(discountValue) || 0
+    : 0;
+  const shippingAmount = parseFloat(shippingPrice) || 0;
+  const total = Math.max(0, subtotal - discountAmount + shippingAmount);
 
   // ── Save ──
   const handleSave = async () => {
@@ -259,14 +301,28 @@ export default function DraftOrderForm({storeId, storeOptions, onStoreChange, on
         customer: selectedCustomer?.email
           ? {email: selectedCustomer.email}
           : undefined,
-        shippingAddress: selectedCustomer?.shippingAddress || undefined
+        shippingAddress: selectedCustomer?.shippingAddress || undefined,
+        appliedDiscount: discountValue ? {value: parseFloat(discountValue), valueType: discountType, title: discountTitle} : undefined,
+        shippingLine: shippingPrice ? {price: shippingPrice, title: shippingTitle} : undefined,
+        taxExempt
       };
       const url = isEdit ? `/api/draft-orders/${editOrderId}` : '/api/draft-orders';
       const method = isEdit ? 'PUT' : 'POST';
       const res = await api(url, {method, body: JSON.stringify(body)});
       const result = await res.json();
-      if (result.success) setSuccessData(result.data);
-      else setErrorMsg(result.error || `Failed to ${isEdit ? 'update' : 'create'} draft order`);
+      if (result.success) {
+        if (result.data.invoiceUrl) setShareUrl(result.data.invoiceUrl);
+        if (result.data.adminUrl) setAdminUrl(result.data.adminUrl);
+        if (result.data.name) setOrderName(result.data.name);
+        // After create, navigate to edit URL so F5 stays on this order
+        if (!isEdit && result.data.id && onOrderCreated) {
+          const numId = result.data.id.split('/').pop();
+          onOrderCreated(numId, storeId);
+        }
+        setToastMsg(isEdit ? 'Draft order saved' : `${result.data.name} created`);
+      } else {
+        setErrorMsg(result.error || `Failed to ${isEdit ? 'update' : 'create'} draft order`);
+      }
     } catch (err) {
       setErrorMsg(err.message || 'Something went wrong');
     } finally {
@@ -283,38 +339,6 @@ export default function DraftOrderForm({storeId, storeOptions, onStoreChange, on
     setNewCustomerCompany('');
     setNewCustomerAddress({address1: '', city: '', province: '', country: '', zip: '', phone: ''});
   };
-
-  // ── Success ──
-  if (successData) {
-    return (
-      <Page
-        title={isEdit ? 'Draft order updated' : 'Draft order created'}
-        backAction={{content: 'Draft orders', onAction: onBack}}
-      >
-        <Layout>
-          <Layout.Section>
-            <Banner tone="success">
-              <p>
-                <strong>{successData.name}</strong> was {isEdit ? 'updated' : 'created'}{' '}
-                successfully. Total: {successData.currency} {fmtMoney(successData.total)}
-              </p>
-            </Banner>
-          </Layout.Section>
-          <Layout.Section>
-            <InlineStack gap="300">
-              <Button onClick={onBack}>Back to draft orders</Button>
-              <Button variant="primary" url={successData.adminUrl} external icon={ExternalIcon}>
-                View in Shopify
-              </Button>
-              {successData.invoiceUrl && (
-                <Button url={successData.invoiceUrl} external>Invoice link</Button>
-              )}
-            </InlineStack>
-          </Layout.Section>
-        </Layout>
-      </Page>
-    );
-  }
 
   // ── Loading ──
   if (loading) {
@@ -344,7 +368,12 @@ export default function DraftOrderForm({storeId, storeOptions, onStoreChange, on
         loading: saving,
         disabled: lineItems.length === 0
       }}
+      secondaryActions={[
+        ...(isEdit && shareUrl ? [{content: 'Share', icon: ShareIcon, onAction: () => setShareModalOpen(true)}] : []),
+        ...(adminUrl ? [{content: 'View in Shopify', icon: ExternalIcon, url: adminUrl, external: true}] : [])
+      ]}
     >
+      {toastMsg && <Toast content={toastMsg} onDismiss={() => setToastMsg('')} />}
       {errorMsg && (
         <div style={{marginBottom: 16}}>
           <Banner tone="critical" onDismiss={() => setErrorMsg('')}>{errorMsg}</Banner>
@@ -433,26 +462,108 @@ export default function DraftOrderForm({storeId, storeOptions, onStoreChange, on
               <BlockStack gap="0">
                 <Text variant="headingSm" as="h2">Payment</Text>
                 <Box paddingBlockStart="300">
-                  {[
-                    {label: 'Subtotal', right: lineItems.length > 0 ? `${lineItems.length} item${lineItems.length > 1 ? 's' : ''}` : '', value: fmtMoney(subtotal)},
-                    {label: 'Add discount', right: '\u2014', value: fmtMoney(0), subdued: true},
-                    {label: 'Add shipping or delivery', right: '\u2014', value: fmtMoney(0), subdued: true},
-                  ].map(({label, right, value, subdued}, i) => (
-                    <div key={i} style={{display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--p-color-border-secondary)'}}>
-                      <Text variant="bodyMd" tone={subdued ? 'subdued' : undefined}>{label}</Text>
-                      <InlineStack gap="800">
-                        <Text variant="bodyMd" tone="subdued">{right}</Text>
-                        <Text variant="bodyMd">{value}</Text>
-                      </InlineStack>
-                    </div>
-                  ))}
+                  {/* Subtotal */}
                   <div style={{display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--p-color-border-secondary)'}}>
-                    <Text variant="bodyMd">Estimated tax</Text>
-                    <Text variant="bodyMd" tone="subdued">Not calculated</Text>
+                    <Text variant="bodyMd">Subtotal</Text>
+                    <InlineStack gap="800">
+                      <Text variant="bodyMd" tone="subdued">
+                        {lineItems.length > 0 ? `${lineItems.length} item${lineItems.length > 1 ? 's' : ''}` : ''}
+                      </Text>
+                      <Text variant="bodyMd">{fmtMoney(subtotal)}</Text>
+                    </InlineStack>
                   </div>
+
+                  {/* Discount */}
+                  <div style={{padding: '8px 0', borderBottom: '1px solid var(--p-color-border-secondary)'}}>
+                    {editingDiscount ? (
+                      <BlockStack gap="200">
+                        <InlineStack gap="200" blockAlign="end">
+                          <div style={{flex: 1}}>
+                            <TextField label="Discount" type="number" value={discountValue}
+                              onChange={setDiscountValue} autoComplete="off" prefix={discountType === 'FIXED_AMOUNT' ? '$' : undefined}
+                              suffix={discountType === 'PERCENTAGE' ? '%' : undefined} />
+                          </div>
+                          <Select label="Type" options={[
+                            {label: 'Fixed ($)', value: 'FIXED_AMOUNT'},
+                            {label: 'Percentage (%)', value: 'PERCENTAGE'}
+                          ]} value={discountType} onChange={setDiscountType} />
+                        </InlineStack>
+                        <TextField label="Reason" value={discountTitle} onChange={setDiscountTitle}
+                          autoComplete="off" placeholder="Discount reason" />
+                        <InlineStack gap="200">
+                          <Button size="slim" variant="primary" onClick={() => setEditingDiscount(false)}>Done</Button>
+                          <Button size="slim" onClick={() => { setDiscountValue(''); setEditingDiscount(false); }}>Remove</Button>
+                        </InlineStack>
+                      </BlockStack>
+                    ) : (
+                      <div style={{display: 'flex', justifyContent: 'space-between', cursor: 'pointer'}}
+                        onClick={() => setEditingDiscount(true)}>
+                        <InlineStack gap="100" blockAlign="center">
+                          <Icon source={DiscountIcon} tone={discountAmount > 0 ? 'success' : 'subdued'} />
+                          <Text variant="bodyMd" tone={discountAmount > 0 ? 'success' : 'subdued'}>
+                            {discountAmount > 0 ? 'Edit discount' : 'Add discount'}
+                          </Text>
+                        </InlineStack>
+                        <InlineStack gap="800">
+                          <Text variant="bodyMd" tone="subdued">{discountAmount > 0 ? discountTitle : '\u2014'}</Text>
+                          <Text variant="bodyMd">{discountAmount > 0 ? `-${fmtMoney(discountAmount)}` : fmtMoney(0)}</Text>
+                        </InlineStack>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Shipping */}
+                  <div style={{padding: '8px 0', borderBottom: '1px solid var(--p-color-border-secondary)'}}>
+                    {editingShipping ? (
+                      <BlockStack gap="200">
+                        <InlineStack gap="200" blockAlign="end">
+                          <div style={{flex: 1}}>
+                            <TextField label="Shipping rate name" value={shippingTitle}
+                              onChange={setShippingTitle} autoComplete="off" placeholder="e.g. Standard Shipping" />
+                          </div>
+                          <div style={{width: 120}}>
+                            <TextField label="Price" type="number" value={shippingPrice}
+                              onChange={setShippingPrice} autoComplete="off" prefix="$" />
+                          </div>
+                        </InlineStack>
+                        <InlineStack gap="200">
+                          <Button size="slim" variant="primary" onClick={() => setEditingShipping(false)}>Done</Button>
+                          <Button size="slim" onClick={() => { setShippingPrice(''); setEditingShipping(false); }}>Remove</Button>
+                        </InlineStack>
+                      </BlockStack>
+                    ) : (
+                      <div style={{display: 'flex', justifyContent: 'space-between', cursor: 'pointer'}}
+                        onClick={() => setEditingShipping(true)}>
+                        <InlineStack gap="100" blockAlign="center">
+                          <Icon source={DeliveryIcon} tone={shippingAmount > 0 ? undefined : 'subdued'} />
+                          <Text variant="bodyMd" tone={shippingAmount > 0 ? undefined : 'subdued'}>
+                            {shippingAmount > 0 ? 'Edit shipping or delivery' : 'Add shipping or delivery'}
+                          </Text>
+                        </InlineStack>
+                        <InlineStack gap="800">
+                          <Text variant="bodyMd" tone="subdued">{shippingAmount > 0 ? shippingTitle : '\u2014'}</Text>
+                          <Text variant="bodyMd">{fmtMoney(shippingAmount)}</Text>
+                        </InlineStack>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Tax */}
+                  <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid var(--p-color-border-secondary)'}}>
+                    <InlineStack gap="200" blockAlign="center">
+                      <Icon source={TaxIcon} tone="subdued" />
+                      <Text variant="bodyMd">Estimated tax</Text>
+                      <Checkbox label="Tax exempt" labelHidden checked={taxExempt}
+                        onChange={setTaxExempt} />
+                      {taxExempt && <Text variant="bodySm" tone="subdued">(exempt)</Text>}
+                    </InlineStack>
+                    <Text variant="bodyMd" tone="subdued">{taxExempt ? '$0.00' : 'Not calculated'}</Text>
+                  </div>
+
+                  {/* Total */}
                   <div style={{display: 'flex', justifyContent: 'space-between', padding: '12px 0 4px'}}>
                     <Text variant="headingSm">Total</Text>
-                    <Text variant="headingSm">{fmtMoney(subtotal)}</Text>
+                    <Text variant="headingSm">{fmtMoney(total)}</Text>
                   </div>
                 </Box>
                 {lineItems.length === 0 && (
@@ -795,6 +906,30 @@ export default function DraftOrderForm({storeId, storeOptions, onStoreChange, on
             </Scrollable>
           </Modal.Section>
         )}
+      </Modal>
+
+      {/* ─── Share Modal ─── */}
+      <Modal
+        open={shareModalOpen}
+        onClose={() => setShareModalOpen(false)}
+        title="Share draft order"
+        primaryAction={{content: 'Done', onAction: () => setShareModalOpen(false)}}
+      >
+        <Modal.Section>
+          <BlockStack gap="300">
+            <Text variant="bodySm" tone="subdued">
+              Share this link with your customer so they can complete checkout and pay for their order.
+            </Text>
+            <InlineStack gap="200" blockAlign="end">
+              <div style={{flex: 1}}>
+                <TextField label="Invoice link" value={shareUrl} readOnly autoComplete="off" selectTextOnFocus />
+              </div>
+              <Button icon={ClipboardIcon} onClick={handleCopyShareUrl}>
+                {copied ? 'Copied!' : 'Copy'}
+              </Button>
+            </InlineStack>
+          </BlockStack>
+        </Modal.Section>
       </Modal>
     </Page>
   );

@@ -4,11 +4,14 @@ import {SyncJobRepository} from '../repositories/syncJobRepository.js';
 import {GoogleSheetsService} from '../services/googleSheetsService.js';
 import {ShopifyService} from '../services/shopifyService.js';
 import {GoogleAuthRepository} from '../repositories/googleAuthRepository.js';
+import {AdminUserRepository} from '../repositories/adminUserRepository.js';
+import {hasStoreAccess} from '../utils/store-access.js';
 
 const storeRepo = new StoreRepository();
 const sheetRepo = new SheetRepository();
 const syncJobRepo = new SyncJobRepository();
 const authRepo = new GoogleAuthRepository();
+const adminUserRepo = new AdminUserRepository();
 
 /**
  * Tracking Controller
@@ -28,6 +31,14 @@ export async function updateTracking(req, res) {
         success: false,
         error: 'storeId, sheetId, and range are required'
       });
+    }
+
+    // Check store access
+    if (req.userRole !== 'admin') {
+      const user = await adminUserRepo.getById(req.userId);
+      if (!hasStoreAccess(user?.assignedStores, storeId)) {
+        return res.status(403).json({success: false, error: 'Access denied to this store'});
+      }
     }
 
     // Get store and sheet
@@ -214,6 +225,14 @@ export async function getOrderFulfillments(req, res) {
         success: false,
         error: 'storeId and orderId are required'
       });
+    }
+
+    // Check store access
+    if (req.userRole !== 'admin') {
+      const user = await adminUserRepo.getById(req.userId);
+      if (!hasStoreAccess(user?.assignedStores, storeId)) {
+        return res.status(403).json({success: false, error: 'Access denied to this store'});
+      }
     }
 
     const store = await storeRepo.getById(storeId);

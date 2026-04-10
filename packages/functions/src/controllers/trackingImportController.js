@@ -10,9 +10,19 @@ import {
   generateTrackingTemplate
 } from '../helpers/excelParser.js';
 import {getOrCreateTopic, publishMessage} from '../helpers/pubsubHelper.js';
+import {AdminUserRepository} from '../repositories/adminUserRepository.js';
+import {hasStoreAccess, extractStoreIds} from '../utils/store-access.js';
 
 const trackingHistoryRepo = new TrackingHistoryRepository();
 const storeRepo = new StoreRepository();
+const adminUserRepo = new AdminUserRepository();
+
+/** Reusable store access check for non-admin users */
+async function checkStoreAccess(req, storeId) {
+  if (req.userRole === 'admin') return true;
+  const user = await adminUserRepo.getById(req.userId);
+  return hasStoreAccess(user?.assignedStores, storeId);
+}
 const trackingStatusRepo = new TrackingStatusRepository();
 
 const delay = ms => new Promise(r => setTimeout(r, ms));
@@ -62,7 +72,12 @@ export async function uploadAndImport(req, res) {
       });
     }
 
-    // Task 2: Get store information
+    // Task 2: Check store access
+    if (!await checkStoreAccess(req, storeId)) {
+      return res.status(403).json({success: false, error: 'Access denied to this store'});
+    }
+
+    // Task 3: Get store information
     const store = await storeRepo.getById(storeId);
     if (!store) {
       return res.status(404).json({
@@ -71,7 +86,7 @@ export async function uploadAndImport(req, res) {
       });
     }
 
-    // Task 3: Parse Excel
+    // Task 4: Parse Excel
     let trackingRecords;
     try {
       // Convert base64 to buffer if needed
@@ -187,8 +202,20 @@ export async function getImportHistory(req, res) {
   try {
     const {storeId} = req.query;
 
+    // Filter by permitted stores for non-admin users
     let imports;
-    if (storeId) {
+    if (req.userRole !== 'admin') {
+      const user = await adminUserRepo.getById(req.userId);
+      const allowedIds = extractStoreIds(user?.assignedStores);
+      if (storeId) {
+        if (!allowedIds.includes(storeId)) {
+          return res.status(403).json({success: false, error: 'Access denied to this store'});
+        }
+        imports = await trackingHistoryRepo.getByStore(storeId);
+      } else {
+        imports = await trackingHistoryRepo.getByStoreIds(allowedIds);
+      }
+    } else if (storeId) {
       imports = await trackingHistoryRepo.getByStore(storeId);
     } else {
       imports = await trackingHistoryRepo.getAll();
@@ -223,6 +250,11 @@ export async function getImportDetails(req, res) {
         success: false,
         error: 'Import job not found'
       });
+    }
+
+    // Verify store access via the import's storeId
+    if (importJob.storeId && !await checkStoreAccess(req, importJob.storeId)) {
+      return res.status(403).json({success: false, error: 'Access denied to this store'});
     }
 
     return res.json({
@@ -268,12 +300,25 @@ export async function getTrackingRecords(req, res) {
   try {
     const {storeId, storeIds} = req.query;
 
+    // Resolve permitted store IDs for non-admin
+    let allowedIds = null;
+    if (req.userRole !== 'admin') {
+      const user = await adminUserRepo.getById(req.userId);
+      allowedIds = extractStoreIds(user?.assignedStores);
+    }
+
     let imports;
     if (storeIds) {
-      const ids = storeIds.split(',').filter(Boolean);
+      let ids = storeIds.split(',').filter(Boolean);
+      if (allowedIds) ids = ids.filter(id => allowedIds.includes(id));
       imports = await trackingHistoryRepo.getByStoreIds(ids);
     } else if (storeId) {
+      if (allowedIds && !allowedIds.includes(storeId)) {
+        return res.status(403).json({success: false, error: 'Access denied to this store'});
+      }
       imports = await trackingHistoryRepo.getByStore(storeId);
+    } else if (allowedIds) {
+      imports = await trackingHistoryRepo.getByStoreIds(allowedIds);
     } else {
       imports = await trackingHistoryRepo.getAll(200);
     }

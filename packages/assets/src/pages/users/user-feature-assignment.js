@@ -18,6 +18,7 @@ const ALL_FEATURES = [
   {label: 'Setup Store', value: 'setup'},
   {label: 'Policies', value: 'policies'},
   {label: 'Draft Orders', value: 'draft-orders'},
+  {label: 'Setup Product Custom Name', value: 'custom-fields'},
   {label: 'My Email (Outlook)', value: 'my-email'}
 ];
 

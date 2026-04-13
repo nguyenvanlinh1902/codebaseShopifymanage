@@ -49,7 +49,8 @@ const NAV_FEATURE_MAP = {
   '/themes': 'themes',
   '/my-email': 'my-email',
   '/setup': 'setup',
-  '/policies': 'policies'
+  '/policies': 'policies',
+  '/custom-fields': 'custom-fields'
 };
 
 export default function StandaloneLayout({children}) {
@@ -103,6 +104,7 @@ export default function StandaloneLayout({children}) {
     {label: 'Themes', icon: ThemeIcon, url: '/themes'},
     {label: 'Setup Store', icon: SettingsIcon, url: '/setup'},
     {label: 'Policies', icon: NoteIcon, url: '/policies'},
+    {label: 'Setup Product Custom Name', icon: SettingsIcon, url: '/custom-fields'},
     {label: 'My Email', icon: NoteIcon, url: '/my-email'}
   ];
 

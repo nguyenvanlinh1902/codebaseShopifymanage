@@ -79,6 +79,29 @@ export async function publishTheme(shopify, themeId) {
 }
 
 /**
+ * Delete a metafield definition by ID via GraphQL.
+ */
+export async function deleteMetafieldDefinition(shopify, id, deleteAllAssociatedMetafields = false) {
+  try {
+    const mutation = `mutation MetafieldDefinitionDelete($id: ID!, $deleteAllAssociatedMetafields: Boolean!) {
+      metafieldDefinitionDelete(id: $id, deleteAllAssociatedMetafields: $deleteAllAssociatedMetafields) {
+        deletedDefinitionId
+        userErrors { field message }
+      }
+    }`;
+    const result = await shopify.graphql(mutation, {id, deleteAllAssociatedMetafields});
+    const {userErrors} = result.metafieldDefinitionDelete;
+    if (userErrors?.length > 0) {
+      throw new Error(userErrors.map(e => e.message).join(', '));
+    }
+    return true;
+  } catch (error) {
+    console.error('Error deleting metafield definition:', error);
+    throw new Error(`Failed to delete metafield definition: ${error.message}`);
+  }
+}
+
+/**
  * Get metafield definitions for a given owner type via GraphQL.
  */
 export async function getMetafieldDefinitions(shopify, ownerType = 'PRODUCT') {

@@ -37,6 +37,7 @@ import Disputes from './pages/Disputes';
 import Themes from './pages/Themes';
 import SetupStore from './pages/SetupStore';
 import PolicyManagement from './pages/PolicyManagement';
+import CustomFieldsManagement from './pages/CustomFieldsManagement';
 import Stores from './pages/Stores';
 import Users from './pages/Users';
 import DevWebhooks from './pages/DevWebhooks';
@@ -174,7 +175,8 @@ const FEATURE_ROUTE_MAP = {
   dispute: '/disputes',
   themes: '/themes',
   setup: '/setup',
-  policies: '/policies'
+  policies: '/policies',
+  'custom-fields': '/custom-fields'
 };
 
 /**
@@ -355,6 +357,14 @@ function StandaloneFrame() {
             element={
               <FeatureGuard feature="policies">
                 <PolicyManagement />
+              </FeatureGuard>
+            }
+          />
+          <Route
+            path="/custom-fields"
+            element={
+              <FeatureGuard feature="custom-fields">
+                <CustomFieldsManagement />
               </FeatureGuard>
             }
           />

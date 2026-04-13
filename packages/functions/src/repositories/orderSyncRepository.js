@@ -71,6 +71,16 @@ export class OrderSyncRepository {
   }
 
   /**
+   * Get all sync configs (single query instead of per-store loop)
+   */
+  async getAllConfigs() {
+    const snapshot = await this.collection.limit(500).get();
+    return snapshot.docs
+      .map(doc => doc.data())
+      .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+  }
+
+  /**
    * Get active sync configuration for a store
    */
   async getActiveSyncConfig(storeId) {

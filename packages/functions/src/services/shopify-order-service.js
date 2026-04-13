@@ -50,11 +50,13 @@ function mapOrderNode(node) {
 }
 
 /** Map REST-style status param to GraphQL query string. */
-function statusToQuery(status, nameFilter) {
+function statusToQuery(status, nameFilter, createdAtMin, createdAtMax) {
   const statusMap = {open: 'status:open', closed: 'status:closed', cancelled: 'status:cancelled', any: ''};
   const parts = [];
   if (status && statusMap[status] !== undefined && statusMap[status]) parts.push(statusMap[status]);
   if (nameFilter) parts.push(`name:${nameFilter}`);
+  if (createdAtMin) parts.push(`created_at:>='${createdAtMin}'`);
+  if (createdAtMax) parts.push(`created_at:<='${createdAtMax}'`);
   return parts.join(' ');
 }
 
@@ -97,7 +99,7 @@ export async function getOrders(shopify, params = {}) {
   try {
     const first = params.limit || 250;
     const after = params.cursor || null;
-    const query = statusToQuery(params.status || 'any', params.name);
+    const query = statusToQuery(params.status || 'any', params.name, params.createdAtMin, params.createdAtMax);
 
     const result = await shopify.graphql(GET_ORDERS_QUERY, {first, after, query});
     const orders = (result.orders.edges || []).map(e => mapOrderNode(e.node));

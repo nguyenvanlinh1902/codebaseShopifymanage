@@ -610,19 +610,12 @@ export async function getSyncConfigs(req, res) {
       }
       configs = await orderSyncRepo.getSyncJobsByStore(storeId);
     } else {
-      // Get configs only for accessible stores
-      let stores;
-      if (isAdmin) {
-        stores = await storeRepo.getAll();
-      } else {
+      // Single query for all configs, then filter by access
+      configs = await orderSyncRepo.getAllConfigs();
+      if (!isAdmin) {
         const userRecord = await adminUserRepo.getById(req.userId);
-        const assignedIds = extractStoreIds(userRecord?.assignedStores);
-        stores = assignedIds.length > 0 ? await storeRepo.getByIds(assignedIds) : [];
-      }
-      configs = [];
-      for (const store of stores) {
-        const storeConfigs = await orderSyncRepo.getSyncJobsByStore(store.id);
-        configs.push(...storeConfigs);
+        const assignedIds = new Set(extractStoreIds(userRecord?.assignedStores));
+        configs = configs.filter(c => assignedIds.has(c.storeId));
       }
     }
 
@@ -861,6 +854,231 @@ function formatOrderRowsForSheet(order, productInfoMap) {
     orderNumber,
     rows
   };
+}
+
+/**
+ * POST /api/orders/sync-missing
+ * Manual sync: fetch orders from Shopify for last N days, compare with sheet, append missing ones.
+ * Body: { storeIds: string[], days: number, dryRun: boolean }
+ * dryRun=true  → synchronous, returns missing counts immediately
+ * dryRun=false → background job, returns jobId for polling
+ */
+export async function syncMissing(req, res) {
+  try {
+    const {storeIds, days, dryRun = false, createdAtMin: rawMin, createdAtMax: rawMax} = req.body || {};
+
+    if (!Array.isArray(storeIds) || storeIds.length === 0) {
+      return res.status(400).json({success: false, error: 'storeIds array is required'});
+    }
+
+    // Accept either createdAtMin/createdAtMax (date strings) or days (number)
+    const createdAtMin = rawMin || new Date(Date.now() - (days || 7) * 86400000).toISOString().split('T')[0];
+    const createdAtMax = rawMax || null;
+
+    // Permission check
+    if (req.userRole !== 'admin') {
+      const userRecord = await adminUserRepo.getById(req.userId);
+      const assignedIds = extractStoreIds(userRecord?.assignedStores);
+      const unauthorized = storeIds.filter(id => !assignedIds.includes(id));
+      if (unauthorized.length > 0) {
+        return res.status(403).json({success: false, error: 'Access denied to some stores'});
+      }
+    }
+
+    // Always background — create job and process async
+    const job = await orderSyncJobRepo.create({
+      type: 'sync_missing',
+      storeIds,
+      dryRun,
+      createdAtMin,
+      createdAtMax,
+      totalStores: storeIds.length,
+      processedStores: 0,
+      results: []
+    });
+
+    const processor = dryRun
+      ? processCheckMissingJob(job.id, storeIds, createdAtMin, createdAtMax)
+      : processSyncMissingJob(job.id, storeIds, createdAtMin, createdAtMax);
+
+    processor.catch(err => {
+      console.error(`[SyncMissing] Background job ${job.id} failed:`, err);
+      orderSyncJobRepo.update(job.id, {status: 'failed', error: err.message}).catch(() => {});
+    });
+
+    return res.json({success: true, data: {jobId: job.id}});
+  } catch (error) {
+    console.error('[SyncMissing] Fatal error:', error);
+    return res.status(500).json({success: false, error: error.message});
+  }
+}
+
+/**
+ * GET /api/orders/sync-missing/:jobId
+ * Poll background sync-missing job progress.
+ */
+export async function getSyncMissingJob(req, res) {
+  try {
+    const job = await orderSyncJobRepo.getById(req.params.jobId);
+    if (!job) return res.status(404).json({success: false, error: 'Job not found'});
+    return res.json({success: true, data: job});
+  } catch (error) {
+    return res.status(500).json({success: false, error: error.message});
+  }
+}
+
+/**
+ * GET /api/orders/sync-missing/active
+ * Check if there's an active sync-missing job (for resume on page load).
+ */
+export async function getActiveSyncMissingJob(req, res) {
+  try {
+    const job = await orderSyncJobRepo.getActiveSyncMissingJob();
+    return res.json({success: true, data: job});
+  } catch (error) {
+    return res.status(500).json({success: false, error: error.message});
+  }
+}
+
+/**
+ * Background processor for check-only (dry run) job.
+ */
+async function processCheckMissingJob(jobId, storeIds, createdAtMin, createdAtMax) {
+  const results = [];
+  for (let i = 0; i < storeIds.length; i++) {
+    const storeId = storeIds[i];
+    const r = {storeId, storeName: '', totalFetched: 0, alreadyInSheet: 0, missing: 0, synced: 0, error: null};
+    try {
+      const {store, syncConfig, sheetsService, shopifyService} = await initStoreServices(storeId);
+      if (!store) { r.error = 'Store not found'; results.push(r); await updateSyncMissingProgress(jobId, i + 1, results); continue; }
+      r.storeName = store.name;
+      if (!syncConfig) { r.error = 'No active sync config'; results.push(r); await updateSyncMissingProgress(jobId, i + 1, results); continue; }
+      if (!sheetsService) { r.error = 'Sheet not found'; results.push(r); await updateSyncMissingProgress(jobId, i + 1, results); continue; }
+
+      const existingOrderNumbers = await readSheetOrderNumbers(sheetsService, syncConfig);
+      const allOrders = await fetchAllOrders(shopifyService, createdAtMin, createdAtMax);
+      r.totalFetched = allOrders.length;
+
+      const missingOrders = allOrders.filter(o => !existingOrderNumbers.has(o.name));
+      r.alreadyInSheet = allOrders.length - missingOrders.length;
+      r.missing = missingOrders.length;
+    } catch (err) {
+      r.error = err.message;
+    }
+    results.push(r);
+    await updateSyncMissingProgress(jobId, i + 1, results);
+  }
+  await orderSyncJobRepo.update(jobId, {status: 'completed', completedAt: new Date().toISOString()});
+}
+
+/**
+ * Background processor for sync-missing job.
+ */
+async function processSyncMissingJob(jobId, storeIds, createdAtMin, createdAtMax) {
+  const results = [];
+  for (let i = 0; i < storeIds.length; i++) {
+    const storeId = storeIds[i];
+    const r = {storeId, storeName: '', totalFetched: 0, alreadyInSheet: 0, missing: 0, synced: 0, error: null};
+    try {
+      const {store, syncConfig, sheetsService, shopifyService} = await initStoreServices(storeId);
+      if (!store) { r.error = 'Store not found'; results.push(r); await updateSyncMissingProgress(jobId, i + 1, results); continue; }
+      r.storeName = store.name;
+      if (!syncConfig) { r.error = 'No active sync config'; results.push(r); await updateSyncMissingProgress(jobId, i + 1, results); continue; }
+      if (!sheetsService) { r.error = 'Sheet not found'; results.push(r); await updateSyncMissingProgress(jobId, i + 1, results); continue; }
+
+      const existingOrderNumbers = await readSheetOrderNumbers(sheetsService, syncConfig);
+      const allOrders = await fetchAllOrders(shopifyService, createdAtMin, createdAtMax);
+      r.totalFetched = allOrders.length;
+
+      const missingOrders = allOrders.filter(o => !existingOrderNumbers.has(o.name));
+      r.alreadyInSheet = allOrders.length - missingOrders.length;
+      r.missing = missingOrders.length;
+
+      if (missingOrders.length > 0) {
+        // Fetch product info
+        let productInfoMap;
+        try {
+          const variantIds = missingOrders
+            .flatMap(o => (o.line_items || []).map(li => li.variant_id?.toString()))
+            .filter(Boolean);
+          if (variantIds.length > 0) {
+            productInfoMap = await shopifyService.getLineItemsProductInfo(variantIds, store.shopDomain);
+          }
+        } catch (err) {
+          console.error(`[SyncMissing] Product info failed for ${store.name}:`, err.message);
+        }
+
+        const formattedOrders = missingOrders.map(o => formatOrderRowsForSheet(o, productInfoMap));
+        await sheetsService.appendOrders(syncConfig.spreadsheetId, syncConfig.targetSheet, formattedOrders);
+
+        for (const order of formattedOrders) {
+          try { await orderSyncRepo.claimOrderSync(storeId, order.orderId, order.orderNumber); } catch { /* dup */ }
+        }
+
+        r.synced = missingOrders.length;
+        await orderSyncRepo.updateSyncJob(syncConfig.id, {
+          totalOrdersSynced: (syncConfig.totalOrdersSynced || 0) + missingOrders.length,
+          lastSyncAt: new Date().toISOString()
+        });
+      }
+    } catch (err) {
+      console.error(`[SyncMissing] Error for store ${storeId}:`, err.message);
+      r.error = err.message;
+    }
+    results.push(r);
+    await updateSyncMissingProgress(jobId, i + 1, results);
+  }
+
+  await orderSyncJobRepo.update(jobId, {status: 'completed', completedAt: new Date().toISOString()});
+  console.log(`[SyncMissing] Job ${jobId} completed: ${results.length} stores processed`);
+}
+
+/** Init Shopify + Sheets services for a store. */
+async function initStoreServices(storeId) {
+  const [store, syncConfig] = await Promise.all([
+    storeRepo.getById(storeId),
+    orderSyncRepo.getActiveSyncConfig(storeId)
+  ]);
+  if (!store || !syncConfig) return {store, syncConfig, sheetsService: null, shopifyService: null};
+
+  const sheet = await sheetRepo.getById(syncConfig.sheetId);
+  if (!sheet) return {store, syncConfig, sheetsService: null, shopifyService: null};
+
+  const shopifyService = new ShopifyService({shopDomain: store.shopDomain, accessToken: store.accessToken});
+  const sheetsService = sheet.credentials
+    ? new GoogleSheetsService(sheet.credentials)
+    : sheet.refreshToken
+    ? await GoogleSheetsService.createFromRefreshToken(sheet.refreshToken)
+    : await GoogleSheetsService.createFromAnyAuth(authRepo);
+
+  return {store, syncConfig, sheetsService, shopifyService};
+}
+
+/** Read existing order numbers from sheet column B. */
+async function readSheetOrderNumbers(sheetsService, syncConfig) {
+  const sheetData = await sheetsService.readSheet(syncConfig.spreadsheetId, `${syncConfig.targetSheet}!B:B`);
+  return new Set(
+    (sheetData || []).slice(1).map(row => (row[0] || '').toString().trim()).filter(Boolean)
+  );
+}
+
+/** Fetch all orders from Shopify with date filter (paginated). */
+async function fetchAllOrders(shopifyService, createdAtMin, createdAtMax) {
+  let allOrders = [];
+  let cursor = null;
+  let hasNextPage = true;
+  while (hasNextPage) {
+    const result = await shopifyService.getOrders({limit: 250, cursor, createdAtMin, createdAtMax});
+    allOrders = allOrders.concat(result.orders);
+    hasNextPage = result.pageInfo.hasNextPage;
+    cursor = result.pageInfo.endCursor;
+  }
+  return allOrders;
+}
+
+/** Update job progress in Firestore. */
+async function updateSyncMissingProgress(jobId, processedStores, results) {
+  await orderSyncJobRepo.update(jobId, {processedStores, results});
 }
 
 /**

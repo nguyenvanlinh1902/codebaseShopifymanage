@@ -81,6 +81,20 @@ export class OrderSyncJobRepository {
   }
 
   /**
+   * Get active sync_missing job (any store — for resume on page load)
+   */
+  async getActiveSyncMissingJob() {
+    const snapshot = await this.collection
+      .where('type', '==', 'sync_missing')
+      .where('status', '==', 'processing')
+      .limit(1)
+      .get();
+
+    if (snapshot.empty) return null;
+    return snapshot.docs[0].data();
+  }
+
+  /**
    * Get sync jobs for a store (history)
    */
   async getJobsByStore(storeId, limit = 10) {

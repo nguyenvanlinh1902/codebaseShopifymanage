@@ -14,6 +14,9 @@ router.post('/setup-sync', orderSyncController.setupSync);
 router.get('/sync-configs', orderSyncController.getSyncConfigs);
 router.get('/sync-stats', orderSyncController.getSyncStats);
 router.post('/resync-failed', orderSyncController.resyncFailedOrders);
+router.post('/sync-missing', orderSyncController.syncMissing);
+router.get('/sync-missing/active', orderSyncController.getActiveSyncMissingJob);
+router.get('/sync-missing/:jobId', orderSyncController.getSyncMissingJob);
 router.get('/queue-stats', orderSyncController.getOrderSyncQueueStats);
 
 // Webhook endpoint moved to index.js (must bypass auth middleware)

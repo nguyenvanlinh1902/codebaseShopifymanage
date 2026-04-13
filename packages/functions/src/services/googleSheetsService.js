@@ -463,12 +463,8 @@ export class GoogleSheetsService {
       const nextSTT = await this.getNextSTT(spreadsheetId, sheetName);
       order.rows[0][0] = nextSTT;
 
-      // Read column B (Order Number) to find last row - column A (STT) has empty
-      // cells for sub-line-items which causes Google Sheets API to trim them
-      const data = await this.readSheet(spreadsheetId, `${sheetName}!B:B`);
-      const nextRow = (data?.length || 0) + 1;
-      const endRow = nextRow + order.rows.length - 1;
-      await this.writeSheet(spreadsheetId, `${sheetName}!A${nextRow}:AE${endRow}`, order.rows);
+      // Use append API to avoid race condition when multiple webhooks arrive concurrently
+      await this.appendSheet(spreadsheetId, `${sheetName}!A1`, order.rows);
 
       return {success: true};
     } catch (error) {

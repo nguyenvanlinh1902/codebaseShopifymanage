@@ -60,6 +60,15 @@ export default function DraftOrderForm({storeId, storeOptions, onStoreChange, on
     address1: '', city: '', province: '', country: '', zip: '', phone: ''
   });
 
+  // Custom field definitions
+  const [fieldDefinitions, setFieldDefinitions] = useState([]);
+
+  useEffect(() => {
+    api('/api/custom-fields').then(r => r.json()).then(data => {
+      if (data.success && data.data?.length) setFieldDefinitions(data.data);
+    }).catch(() => {});
+  }, []);
+
   // Product modal
   const [productModalOpen, setProductModalOpen] = useState(false);
   const [productQuery, setProductQuery] = useState('');
@@ -95,6 +104,7 @@ export default function DraftOrderForm({storeId, storeOptions, onStoreChange, on
               : []
           );
           if (d.invoiceUrl) setShareUrl(d.invoiceUrl);
+          if (d.adminUrl) setAdminUrl(d.adminUrl);
           if (d.taxExempt) setTaxExempt(true);
           if (d.appliedDiscount) {
             setDiscountValue(String(d.appliedDiscount.value || ''));
@@ -293,8 +303,13 @@ export default function DraftOrderForm({storeId, storeOptions, onStoreChange, on
       const body = {
         storeId,
         lineItems: lineItems.map(item => {
-          if (item.variantId) return {variantId: item.variantId, quantity: item.quantity};
-          return {title: item.title, originalUnitPrice: item.price, quantity: item.quantity};
+          const li = item.variantId
+            ? {variantId: item.variantId, quantity: item.quantity}
+            : {title: item.title, originalUnitPrice: item.price, quantity: item.quantity};
+          if (item.customAttributes?.length) {
+            li.customAttributes = item.customAttributes.filter(a => a.value);
+          }
+          return li;
         }),
         note: note || undefined,
         tags: tags.length > 0 ? tags : undefined,
@@ -410,7 +425,8 @@ export default function DraftOrderForm({storeId, storeOptions, onStoreChange, on
                   <>
                     <Divider />
                     {lineItems.map((item, idx) => (
-                      <div key={idx} style={{
+                      <React.Fragment key={idx}>
+                      <div style={{
                         display: 'flex', alignItems: 'center', gap: 12, padding: '4px 0',
                         borderBottom: idx < lineItems.length - 1 ? '1px solid var(--p-color-border-secondary)' : 'none'
                       }}>
@@ -449,6 +465,39 @@ export default function DraftOrderForm({storeId, storeOptions, onStoreChange, on
                         <Button icon={DeleteIcon} variant="plain" tone="critical"
                           onClick={() => removeItem(idx)} accessibilityLabel="Remove" />
                       </div>
+                      {fieldDefinitions.length > 0 && (
+                        <div style={{paddingLeft: 52, paddingBottom: 8}}>
+                          <InlineStack gap="200" wrap>
+                            {fieldDefinitions.map(fd => {
+                              const attrs = item.customAttributes || [];
+                              const attr = attrs.find(a => a.key === fd.label);
+                              const val = attr?.value || '';
+                              return (
+                                <div key={fd.key} style={{width: 180}}>
+                                  <TextField
+                                    label={fd.label}
+                                    type={fd.inputType === 'number' ? 'number' : 'text'}
+                                    multiline={fd.inputType === 'textarea' ? 2 : undefined}
+                                    value={val}
+                                    requiredIndicator={fd.required}
+                                    onChange={v => {
+                                      const updated = [...lineItems];
+                                      const existing = updated[idx].customAttributes || fieldDefinitions.map(f => ({key: f.label, value: ''}));
+                                      const ai = existing.findIndex(a => a.key === fd.label);
+                                      if (ai >= 0) existing[ai] = {...existing[ai], value: v};
+                                      else existing.push({key: fd.label, value: v});
+                                      updated[idx] = {...updated[idx], customAttributes: existing};
+                                      setLineItems(updated);
+                                    }}
+                                    autoComplete="off"
+                                  />
+                                </div>
+                              );
+                            })}
+                          </InlineStack>
+                        </div>
+                      )}
+                    </React.Fragment>
                     ))}
                   </>
                 )}

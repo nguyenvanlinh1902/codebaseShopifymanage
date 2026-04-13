@@ -170,15 +170,20 @@ export async function createDraftOrder(req, res) {
     // Build draft order input
     const input = {
       lineItems: lineItems.map(item => {
-        if (item.variantId) {
-          return {variantId: item.variantId, quantity: parseInt(item.quantity, 10) || 1};
+        const lineItem = item.variantId
+          ? {variantId: item.variantId, quantity: parseInt(item.quantity, 10) || 1}
+          : {
+              title: item.title || 'Custom Item',
+              originalUnitPrice: String(item.originalUnitPrice || '0'),
+              quantity: parseInt(item.quantity, 10) || 1
+            };
+        if (item.customAttributes?.length) {
+          lineItem.customAttributes = item.customAttributes.map(a => ({
+            key: a.key,
+            value: String(a.value ?? '')
+          }));
         }
-        // Custom line item
-        return {
-          title: item.title || 'Custom Item',
-          originalUnitPrice: String(item.originalUnitPrice || '0'),
-          quantity: parseInt(item.quantity, 10) || 1
-        };
+        return lineItem;
       })
     };
 
@@ -464,12 +469,20 @@ export async function updateDraftOrder(req, res) {
 
     const input = {
       lineItems: lineItems.map(item => {
-        if (item.variantId) return {variantId: item.variantId, quantity: parseInt(item.quantity, 10) || 1};
-        return {
-          title: item.title || 'Custom Item',
-          originalUnitPrice: String(item.originalUnitPrice || '0'),
-          quantity: parseInt(item.quantity, 10) || 1
-        };
+        const lineItem = item.variantId
+          ? {variantId: item.variantId, quantity: parseInt(item.quantity, 10) || 1}
+          : {
+              title: item.title || 'Custom Item',
+              originalUnitPrice: String(item.originalUnitPrice || '0'),
+              quantity: parseInt(item.quantity, 10) || 1
+            };
+        if (item.customAttributes?.length) {
+          lineItem.customAttributes = item.customAttributes.map(a => ({
+            key: a.key,
+            value: String(a.value ?? '')
+          }));
+        }
+        return lineItem;
       })
     };
 

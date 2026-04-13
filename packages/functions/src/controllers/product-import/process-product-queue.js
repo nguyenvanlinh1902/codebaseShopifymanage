@@ -9,6 +9,7 @@ import {ProductRepository} from '../../repositories/productRepository.js';
 import {ProductQueueRepository} from '../../repositories/productQueueRepository.js';
 import {StoreRepository} from '../../repositories/storeRepository.js';
 import {ShopifyService} from '../../services/shopifyService.js';
+import {isTokenExpired} from './retry-helpers.js';
 
 const importHistoryRepo = new ImportHistoryRepository();
 const productRepo = new ProductRepository();
@@ -128,21 +129,21 @@ async function rescueStuckImports() {
  * Process a single queue item
  */
 async function processQueueItem(queueItem) {
-  try {
-    const {
-      id: queueId,
-      importId,
-      storeId,
-      userId,
-      storeName,
-      shopDomain,
-      accessToken,
-      product,
-      productIndex,
-      totalProducts,
-      attempts
-    } = queueItem;
+  const {
+    id: queueId,
+    importId,
+    storeId,
+    userId,
+    storeName,
+    shopDomain,
+    accessToken,
+    product,
+    productIndex,
+    totalProducts,
+    attempts
+  } = queueItem;
 
+  try {
     // Check max retry attempts
     if (attempts >= MAX_ATTEMPTS) {
       console.log(`Queue item ${queueId} exceeded max attempts (${attempts}), marking as failed`);
@@ -150,22 +151,25 @@ async function processQueueItem(queueItem) {
       return;
     }
 
-    // Mark as processing
-    await productQueueRepo.updateStatus(queueId, 'processing');
+    // Acquire cron lock — skip if PubSub processor is currently active on this import
+    const acquired = await importHistoryRepo.acquireLock(importId, 'cron');
+    if (!acquired) {
+      console.log(`Import ${importId} locked by PubSub processor, skipping queue item ${queueId}`);
+      return;
+    }
 
-    console.log(
-      `Processing product ${productIndex +
-        1}/${totalProducts} for import ${importId} (attempt ${attempts + 1})`
-    );
-
-    // Create Shopify service
-    const shopifyService = new ShopifyService({
-      shopDomain,
-      accessToken
-    });
-
-    // Always upsert: create if new, merge variants if exists
     try {
+      // Mark as processing
+      await productQueueRepo.updateStatus(queueId, 'processing');
+
+      console.log(
+        `Processing product ${productIndex + 1}/${totalProducts} for import ${importId} (attempt ${attempts + 1})`
+      );
+
+      // Create Shopify service
+      const shopifyService = new ShopifyService({shopDomain, accessToken});
+
+      // Always upsert: create if new, merge variants if exists
       const {result, action} = await shopifyService.upsertProduct(product);
 
       await handleSuccessfulImport(
@@ -181,11 +185,33 @@ async function processQueueItem(queueItem) {
         action
       );
     } catch (error) {
+      // Detect token expiration — stop the entire import
+      if (isTokenExpired(error)) {
+        console.error(`Import ${importId}: access token expired or invalid`);
+        await importHistoryRepo.updateProgress(importId, {
+          status: 'auth_failed',
+          error: 'Store access token expired. Please reconnect the store.'
+        });
+        await productQueueRepo.updateStatus(queueId, 'failed', 'Auth token expired');
+        return; // Stop processing this queue item
+      }
+
       await handleFailedImport(queueId, importId, totalProducts, product, error);
+    } finally {
+      await importHistoryRepo.releaseLock(importId);
     }
   } catch (error) {
+    // Fix 1: Outer catch must update queue item status — never leave items stuck in "processing"
     console.error('Error processing queue item:', error);
-    // Continue to next item
+    try {
+      await productQueueRepo.updateStatus(queueId, 'failed', error.message);
+      await importHistoryRepo.atomicIncrement(importId, {
+        processedProducts: 1,
+        failedCount: 1
+      });
+    } catch (statusError) {
+      console.error('Failed to update queue item status after outer error:', statusError);
+    }
   }
 }
 
@@ -206,6 +232,9 @@ async function handleSuccessfulImport(
 ) {
   const variantCount = product.variants ? product.variants.length : 1;
 
+  // Fix 7: Track actual variant count from GraphQL response instead of assuming all succeeded
+  const actualVariants = result.product?.variants?.length || variantCount;
+
   // Save product tracking data to Firestore (lightweight, no heavy variant/image arrays)
   await productRepo.save({
     importId,
@@ -223,26 +252,25 @@ async function handleSuccessfulImport(
     tags: product.tags,
     sku: product.variants?.[0]?.sku || product.sku || '',
     price: product.variants?.[0]?.price || product.price || '0.00',
-    variantCount
+    variantCount: actualVariants
   });
 
   // Mark queue item as completed
   await productQueueRepo.updateStatus(queueId, 'completed');
 
-  // Update import progress (success)
-  const importJob = await importHistoryRepo.getById(importId);
-  await importHistoryRepo.updateProgress(importId, {
-    processedProducts: (importJob.processedProducts || 0) + 1,
-    processedVariants: (importJob.processedVariants || 0) + variantCount,
-    successCount: (importJob.successCount || 0) + 1,
-    status: 'processing'
+  // Fix 4: Atomic increment — avoid stale read-then-update race condition
+  await importHistoryRepo.atomicIncrement(importId, {
+    processedProducts: 1,
+    processedVariants: actualVariants,
+    successCount: 1
   });
 
-  // Check if this is the last product
-  if ((importJob.processedProducts || 0) + 1 >= totalProducts) {
+  // Completion check: read AFTER atomic increment to get accurate totals
+  const updated = await importHistoryRepo.getById(importId);
+  if ((updated.processedProducts || 0) >= totalProducts) {
     await importHistoryRepo.markCompleted(importId, {
-      successCount: (importJob.successCount || 0) + 1,
-      failedCount: importJob.failedCount || 0
+      successCount: updated.successCount || 0,
+      failedCount: updated.failedCount || 0
     });
   }
 
@@ -263,25 +291,25 @@ async function handleFailedImport(queueId, importId, totalProducts, product, err
     // Mark as failed after max attempts
     await productQueueRepo.markFailed(queueId, error.message);
 
-    // Update import progress (failure)
+    // Fix 4: Atomic increment for failure counters
     const variantCount = product.variants ? product.variants.length : 1;
-    const importJob = await importHistoryRepo.getById(importId);
-    await importHistoryRepo.updateProgress(importId, {
-      processedProducts: (importJob.processedProducts || 0) + 1,
-      processedVariants: (importJob.processedVariants || 0) + variantCount,
-      failedCount: (importJob.failedCount || 0) + 1
+    await importHistoryRepo.atomicIncrement(importId, {
+      processedProducts: 1,
+      processedVariants: variantCount,
+      failedCount: 1
     });
 
-    // Check if this is the last product
-    if ((importJob.processedProducts || 0) + 1 >= totalProducts) {
-      if ((importJob.failedCount || 0) + 1 >= totalProducts) {
+    // Completion check: read AFTER atomic increment
+    const updated = await importHistoryRepo.getById(importId);
+    if ((updated.processedProducts || 0) >= totalProducts) {
+      if ((updated.failedCount || 0) >= totalProducts) {
         // All products failed
         await importHistoryRepo.markFailed(importId, 'All products failed to import');
       } else {
         // Some products succeeded
         await importHistoryRepo.markCompleted(importId, {
-          successCount: importJob.successCount || 0,
-          failedCount: (importJob.failedCount || 0) + 1
+          successCount: updated.successCount || 0,
+          failedCount: updated.failedCount || 0
         });
       }
     }

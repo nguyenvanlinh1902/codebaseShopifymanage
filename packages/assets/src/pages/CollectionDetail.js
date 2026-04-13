@@ -1,0 +1,205 @@
+import React, {useState, useEffect, useCallback} from 'react';
+import {Page, Layout, BlockStack, Spinner, Modal, Text, Banner} from '@shopify/polaris';
+import {useNavigate, useParams, useSearchParams} from 'react-router-dom';
+import {api} from '../helpers/api';
+import {usePermittedStores} from '../hooks/usePermittedStores';
+import CollectionForm from './collections/collection-form';
+import CollectionSidebar from './collections/collection-sidebar';
+
+const DEFAULT_FORM = {
+  title: '',
+  descriptionHtml: '',
+  collectionType: 'manual',
+  rules: [],
+  disjunctive: false,
+  products: [],
+  image: '',
+  templateSuffix: '',
+  seo: {title: '', description: '', handle: ''}
+};
+
+export default function CollectionDetail() {
+  const navigate = useNavigate();
+  const {id} = useParams();
+  const [searchParams] = useSearchParams();
+  const {stores} = usePermittedStores();
+  const isNew = !id;
+
+  const [formData, setFormData] = useState(DEFAULT_FORM);
+  const [storeId, setStoreId] = useState(() => searchParams.get('store') || '');
+  const [loading, setLoading] = useState(!isNew);
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (stores.length > 0 && !storeId) {
+      setStoreId(stores[0].id);
+    }
+  }, [stores, storeId]);
+
+  useEffect(() => {
+    if (!isNew && storeId) {
+      fetchCollection();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, storeId]);
+
+  const fetchCollection = async () => {
+    try {
+      setLoading(true);
+      const res = await api(`/api/collections/${encodeURIComponent(id)}?storeId=${storeId}`);
+      const result = await res.json();
+      if (result.success && result.data) {
+        const c = result.data;
+        setFormData({
+          title: c.title || '',
+          descriptionHtml: c.descriptionHtml || '',
+          collectionType: c.ruleSet ? 'smart' : 'manual',
+          rules: c.ruleSet?.rules || [],
+          disjunctive: c.ruleSet?.appliedDisjunctively || false,
+          products: c.products || [],
+          image: c.image?.url || '',
+          templateSuffix: c.templateSuffix || '',
+          seo: {
+            title: c.seo?.title || '',
+            description: c.seo?.description || '',
+            handle: c.handle || ''
+          }
+        });
+      }
+    } catch (err) {
+      setError('Failed to load collection');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleChange = useCallback((field, value) => {
+    setFormData(prev => ({...prev, [field]: value}));
+  }, []);
+
+  const handleSave = async () => {
+    if (!formData.title.trim()) {
+      setError('Title is required');
+      return;
+    }
+    if (!storeId) {
+      setError('Please select a store');
+      return;
+    }
+    try {
+      setSaving(true);
+      setError(null);
+      const body = {storeId, ...formData};
+      const res = isNew
+        ? await api('/api/collections/', {method: 'POST', body: JSON.stringify(body)})
+        : await api(`/api/collections/${encodeURIComponent(id)}`, {
+            method: 'PUT',
+            body: JSON.stringify(body)
+          });
+      const result = await res.json();
+      if (result.success) {
+        navigate('/collections');
+      } else {
+        setError(result.error || 'Failed to save collection');
+      }
+    } catch (err) {
+      setError('Failed to save collection');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    try {
+      setDeleting(true);
+      const res = await api(`/api/collections/${encodeURIComponent(id)}?storeId=${storeId}`, {
+        method: 'DELETE'
+      });
+      const result = await res.json();
+      if (result.success) {
+        navigate('/collections');
+      } else {
+        setError(result.error || 'Failed to delete collection');
+        setDeleteModalOpen(false);
+      }
+    } catch (err) {
+      setError('Failed to delete collection');
+      setDeleteModalOpen(false);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <Page title="Loading..." backAction={{content: 'Collections', url: '/collections'}}>
+        <Spinner />
+      </Page>
+    );
+  }
+
+  const secondaryActions = isNew
+    ? []
+    : [
+        {
+          content: 'Delete collection',
+          destructive: true,
+          onAction: () => setDeleteModalOpen(true)
+        }
+      ];
+
+  return (
+    <Page
+      title={isNew ? 'Create collection' : formData.title || 'Edit collection'}
+      backAction={{content: 'Collections', url: '/collections'}}
+      primaryAction={{content: 'Save', onAction: handleSave, loading: saving}}
+      secondaryActions={secondaryActions}
+    >
+      <BlockStack gap="400">
+        {error && (
+          <Banner tone="critical" onDismiss={() => setError(null)}>
+            {error}
+          </Banner>
+        )}
+        <Layout>
+          <Layout.Section>
+            <CollectionForm formData={formData} onChange={handleChange} storeId={storeId} />
+          </Layout.Section>
+          <Layout.Section variant="oneThird">
+            <CollectionSidebar
+              formData={formData}
+              onChange={handleChange}
+              stores={stores}
+              storeId={storeId}
+              onStoreChange={setStoreId}
+              isNew={isNew}
+            />
+          </Layout.Section>
+        </Layout>
+      </BlockStack>
+
+      <Modal
+        open={deleteModalOpen}
+        onClose={() => setDeleteModalOpen(false)}
+        title="Delete collection"
+        primaryAction={{
+          content: 'Delete',
+          destructive: true,
+          onAction: handleDelete,
+          loading: deleting
+        }}
+        secondaryActions={[{content: 'Cancel', onAction: () => setDeleteModalOpen(false)}]}
+      >
+        <Modal.Section>
+          <Text as="p">
+            Are you sure you want to delete <strong>{formData.title}</strong>? This cannot be
+            undone.
+          </Text>
+        </Modal.Section>
+      </Modal>
+    </Page>
+  );
+}

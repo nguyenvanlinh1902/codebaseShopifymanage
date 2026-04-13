@@ -1,4 +1,4 @@
-import {getFirestore} from 'firebase-admin/firestore';
+import {getFirestore, FieldValue} from 'firebase-admin/firestore';
 
 /**
  * Import History Repository
@@ -255,5 +255,62 @@ export class ImportHistoryRepository {
       .get();
 
     return snapshot.docs.map(doc => doc.data());
+  }
+
+  /**
+   * Atomically increment numeric fields on an import document.
+   * Uses Firestore FieldValue.increment() to avoid stale read-then-update race conditions.
+   *
+   * @param {string} importId
+   * @param {Record<string, number>} increments - e.g. { processedProducts: 1, successCount: 1 }
+   */
+  async atomicIncrement(importId, increments) {
+    const updates = {};
+    for (const [key, value] of Object.entries(increments)) {
+      updates[key] = FieldValue.increment(value);
+    }
+    updates.updatedAt = new Date().toISOString();
+    await this.collection.doc(importId).update(updates);
+  }
+
+  /**
+   * Acquire a distributed lock on an import document using a Firestore transaction.
+   * Returns true if the lock was acquired, false if already locked by another processor.
+   * Stale locks older than 10 minutes are auto-expired.
+   *
+   * @param {string} importId
+   * @param {'pubsub'|'cron'} processor
+   * @returns {Promise<boolean>}
+   */
+  async acquireLock(importId, processor) {
+    const ref = this.collection.doc(importId);
+    return this.db.runTransaction(async (tx) => {
+      const doc = await tx.get(ref);
+      if (!doc.exists) return false;
+
+      const data = doc.data();
+      const now = Date.now();
+      const lockAge = data?.lockedAt ? now - data.lockedAt : Infinity;
+      const STALE_LOCK_MS = 600000; // 10 minutes
+
+      if (data?.lockedBy && lockAge < STALE_LOCK_MS) {
+        return false; // Lock held by another processor and not stale
+      }
+
+      tx.update(ref, {lockedBy: processor, lockedAt: now});
+      return true;
+    });
+  }
+
+  /**
+   * Release the distributed lock on an import document.
+   *
+   * @param {string} importId
+   */
+  async releaseLock(importId) {
+    await this.collection.doc(importId).update({
+      lockedBy: null,
+      lockedAt: null
+    });
   }
 }

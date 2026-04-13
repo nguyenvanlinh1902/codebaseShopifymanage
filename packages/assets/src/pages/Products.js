@@ -1,139 +1,157 @@
-import React, {useState, useEffect, useCallback} from 'react';
+import React, {useState, useEffect, useCallback, useRef} from 'react';
 import {
   Page,
-  Banner,
   BlockStack,
-  Tabs,
   Card,
   Select,
+  IndexFilters,
+  useSetIndexFiltersMode,
   InlineStack,
-  Text,
-  Badge,
-  Tooltip
+  Banner
 } from '@shopify/polaris';
 import {ImportIcon} from '@shopify/polaris-icons';
+import {useSearchParams} from 'react-router-dom';
 import {api} from '../helpers/api';
-import {useAuth} from '../context/AuthContext';
 import {usePermittedStores} from '../hooks/usePermittedStores';
-import useImportProgressAllStores from '../hooks/useImportProgressAllStores';
-import ImportProgressCard from './embed-products/ImportProgressCard';
-import UploadCsvModal from './products/UploadCsvModal';
 import ProductsTableSection from './products/ProductsTableSection';
-import ReimportModal from './products/ReimportModal';
+import UploadCsvModal from './products/UploadCsvModal';
 
-/**
- * Products Page - Redesigned to match embed pattern
- * Store filter is shared across all tabs
- */
+const STATUS_TABS = [
+  {content: 'All', id: 'all', index: 0},
+  {content: 'Active', id: 'active', index: 1},
+  {content: 'Draft', id: 'draft', index: 2},
+  {content: 'Archived', id: 'archived', index: 3}
+];
+
+const SORT_OPTIONS = [
+  {label: 'Product title', value: 'TITLE asc', directionLabel: 'A-Z'},
+  {label: 'Product title', value: 'TITLE desc', directionLabel: 'Z-A'},
+  {label: 'Created', value: 'CREATED_AT asc', directionLabel: 'Oldest first'},
+  {label: 'Created', value: 'CREATED_AT desc', directionLabel: 'Newest first'},
+  {label: 'Updated', value: 'UPDATED_AT asc', directionLabel: 'Oldest first'},
+  {label: 'Updated', value: 'UPDATED_AT desc', directionLabel: 'Newest first'},
+  {label: 'Inventory', value: 'INVENTORY_TOTAL asc', directionLabel: 'Low to high'},
+  {label: 'Inventory', value: 'INVENTORY_TOTAL desc', directionLabel: 'High to low'}
+];
+
 export default function Products() {
-  const {user} = useAuth();
   const {stores, groups, isAdmin} = usePermittedStores();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const {mode, setMode} = useSetIndexFiltersMode();
+
+  const [selectedStore, setSelectedStore] = useState(() => searchParams.get('store') || '');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedTab, setSelectedTab] = useState(0);
-  const [selectedStore, setSelectedStore] = useState('');
-  const [selectedStores, setSelectedStores] = useState([]);
-  const [files, setFiles] = useState([]);
-  const [uploading, setUploading] = useState(false);
-  const [uploadModalOpen, setUploadModalOpen] = useState(false);
+  const [sortSelected, setSortSelected] = useState(['TITLE asc']);
+
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const [pageInfo, setPageInfo] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
-  const [importProgress, setImportProgress] = useState(null);
-  const [lastCompletedId, setLastCompletedId] = useState(null);
+  const [error, setError] = useState(null);
 
-  // Selection states
-  const [selectedProducts, setSelectedProducts] = useState([]);
-  const [showReimportModal, setShowReimportModal] = useState(false);
-  const [reimportStores, setReimportStores] = useState([]);
-  const [reimporting, setReimporting] = useState(false);
+  // Import state
+  const [uploadModalOpen, setUploadModalOpen] = useState(false);
+  const [files, setFiles] = useState([]);
+  const [selectedStores, setSelectedStores] = useState([]);
+  const [uploading, setUploading] = useState(false);
 
-  // Real-time import progress (all stores or filtered by selected store)
-  const {importHistory} = useImportProgressAllStores({
-    userId: user?.id,
-    storeId: selectedStore || undefined
-  });
+  // Cursor pagination
+  const cursorStackRef = useRef([]);
+  const [cursor, setCursor] = useState(null);
+  const hasPrev = cursorStackRef.current.length > 0;
 
-  // Watch importHistory for progress updates and completion
   useEffect(() => {
-    if (!importHistory.length) {
-      setImportProgress(null);
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+      cursorStackRef.current = [];
+      setCursor(null);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  const statusFilter = selectedTab > 0 ? STATUS_TABS[selectedTab].id : '';
+  const [sortKey, sortDir] = sortSelected[0].split(' ');
+
+  const fetchProducts = useCallback(async (afterCursor = null) => {
+    if (!selectedStore) {
+      setProducts([]);
+      setPageInfo(null);
       return;
     }
-
-    const latest = importHistory[0];
-
-    if (latest.status === 'pending' || latest.status === 'processing') {
-      const total = latest.totalProducts || 0;
-      const processed = latest.processedProducts || 0;
-      const pct = total > 0 ? Math.round((processed / total) * 100) : 0;
-
-      setImportProgress({
-        jobId: latest.id,
-        status: latest.status,
-        fileName: latest.fileName,
-        storeName: latest.storeName,
-        totalProducts: total,
-        totalVariants: latest.totalVariants || 0,
-        processedProducts: processed,
-        processedVariants: latest.processedVariants || 0,
-        successCount: latest.successCount || 0,
-        failedCount: latest.failedCount || 0,
-        completionPercentage: pct
-      });
-    }
-
-    const isComplete =
-      latest.status === 'completed' || latest.status === 'partial' || latest.status === 'failed';
-
-    if (isComplete && lastCompletedId !== latest.id) {
-      setLastCompletedId(latest.id);
-      setTimeout(() => setImportProgress(null), 3000);
-      fetchProducts();
-    }
-  }, [importHistory]);
-
-  // Pagination states
-  const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(50);
-  const [totalProducts, setTotalProducts] = useState(0);
-  const [totalPages, setTotalPages] = useState(0);
-
-  const prevStoreRef = React.useRef(selectedStore);
-  useEffect(() => {
-    if (prevStoreRef.current !== selectedStore) {
-      prevStoreRef.current = selectedStore;
-      if (currentPage !== 1) {
-        setCurrentPage(1);
-        return; // will re-trigger with page=1
-      }
-    }
-    fetchProducts();
-  }, [selectedStore, currentPage, itemsPerPage]);
-
-  const fetchProducts = async () => {
     try {
       setLoading(true);
-      const params = new URLSearchParams({page: currentPage, limit: itemsPerPage});
-      if (selectedStore) params.append('storeId', selectedStore);
+      const params = new URLSearchParams({storeId: selectedStore, first: '50'});
+      params.append('sortKey', sortKey);
+      if (sortDir === 'desc') params.append('reverse', 'true');
 
-      const response = await api(`/api/products/list?${params.toString()}`);
+      const queryParts = [];
+      if (debouncedSearch) queryParts.push(debouncedSearch);
+      if (statusFilter) queryParts.push(`status:${statusFilter}`);
+      if (queryParts.length > 0) params.append('query', queryParts.join(' '));
+      if (afterCursor) params.append('after', afterCursor);
+
+      const response = await api(`/api/shopify-products/list?${params.toString()}`);
       const result = await response.json();
       if (result.success) {
-        setProducts(result.data || []);
-        if (result.pagination) {
-          setTotalProducts(result.pagination.total);
-          setTotalPages(result.pagination.totalPages);
-        }
+        setProducts(result.data.products || []);
+        setPageInfo(result.data.pageInfo || null);
+      } else {
+        setError(result.error || 'Failed to load products');
       }
     } catch (err) {
-      console.error('Error fetching products:', err);
+      setError('Failed to load products. Check console for details.');
+      console.error('[Products] fetch error:', err);
     } finally {
       setLoading(false);
     }
+  }, [selectedStore, debouncedSearch, statusFilter, sortKey, sortDir]);
+
+  useEffect(() => {
+    cursorStackRef.current = [];
+    setCursor(null);
+    fetchProducts(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedStore, debouncedSearch, statusFilter, sortKey, sortDir]);
+
+  const resetPagination = () => {
+    cursorStackRef.current = [];
+    setCursor(null);
   };
 
-  const handleDropZoneDrop = useCallback((_dropFiles, acceptedFiles, _rejectedFiles) => {
-    setFiles(prev => [...prev, ...acceptedFiles]);
+  const handleStoreChange = useCallback(value => {
+    setSelectedStore(value);
+    setSearchParams(value ? {store: value} : {});
+    resetPagination();
+  }, [setSearchParams]);
+
+  const handleTabChange = useCallback(index => {
+    setSelectedTab(index);
+    resetPagination();
+  }, []);
+
+  const handleSortChange = useCallback(value => {
+    setSortSelected(value);
+    resetPagination();
+  }, []);
+
+  const handleNextPage = useCallback(() => {
+    if (!pageInfo?.endCursor) return;
+    cursorStackRef.current.push(cursor);
+    setCursor(pageInfo.endCursor);
+    fetchProducts(pageInfo.endCursor);
+  }, [pageInfo, cursor, fetchProducts]);
+
+  const handlePrevPage = useCallback(() => {
+    const prev = cursorStackRef.current.pop();
+    setCursor(prev || null);
+    fetchProducts(prev || null);
+  }, [fetchProducts]);
+
+  // --- Import handlers ---
+  const handleDropZoneDrop = useCallback((_drop, accepted) => {
+    setFiles(prev => [...prev, ...accepted]);
     setError(null);
   }, []);
 
@@ -141,67 +159,41 @@ export default function Products() {
     setFiles(prev => prev.filter((_, i) => i !== index));
   }, []);
 
-  const readFileAsText = file => {
-    return new Promise((resolve, reject) => {
+  const readFileAsText = file =>
+    new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = e => resolve(e.target.result);
-      reader.onerror = () => reject(new Error(`Failed to read file: ${file.name}`));
+      reader.onerror = () => reject(new Error(`Failed to read: ${file.name}`));
       reader.readAsText(file);
     });
-  };
 
   const handleUpload = async () => {
-    if (selectedStores.length === 0) {
-      setError('Please select at least one store');
-      return;
-    }
-    if (files.length === 0) {
-      setError('Please select at least one CSV file');
-      return;
-    }
+    if (selectedStores.length === 0 || files.length === 0) return;
     try {
       setUploading(true);
       setError(null);
-      setSuccessMessage(null);
-
       const csvFiles = [];
       for (const f of files) {
-        try {
-          const csvData = await readFileAsText(f);
-          csvFiles.push({csvData, fileName: f.name});
-        } catch (err) {
-          setError(`Failed to read file: ${f.name}`);
-          setUploading(false);
-          return;
-        }
+        const csvData = await readFileAsText(f);
+        csvFiles.push({csvData, fileName: f.name});
       }
-
       const response = await api('/api/products/upload-csv', {
         method: 'POST',
-        headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({storeIds: selectedStores, csvFiles})
       });
       const result = await response.json();
-
       if (result.success) {
         const jobs = result.data.importResults || [];
-        const totalProducts = jobs.reduce((sum, j) => sum + (j.totalProducts || 0), 0);
+        const total = jobs.reduce((s, j) => s + (j.totalProducts || 0), 0);
         setFiles([]);
         setSelectedStores([]);
         setUploadModalOpen(false);
-        await fetchProducts();
-
-        setSuccessMessage(
-          `Import started! ${totalProducts} products queued for ${jobs.length} store(s). Progress will be shown below.`
-        );
+        setSuccessMessage(`Import started! ${total} products queued for ${jobs.length} store(s).`);
+        fetchProducts(null);
       } else {
-        let errorMsg = result.error || 'Import failed';
-        if (result.fileErrors) {
-          errorMsg += '\n' + result.fileErrors.map(fe => `${fe.fileName}: ${fe.error}`).join('\n');
-        }
-        setError(errorMsg);
+        setError(result.error || 'Import failed');
       }
-    } catch (err) {
+    } catch {
       setError('Failed to upload CSV files');
     } finally {
       setUploading(false);
@@ -220,90 +212,12 @@ export default function Products() {
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
-    } catch (err) {
+    } catch {
       setError('Failed to download template');
     }
   };
 
-  const handleProductSelect = (productId, checked) => {
-    if (checked) {
-      setSelectedProducts([...selectedProducts, productId]);
-    } else {
-      setSelectedProducts(selectedProducts.filter(id => id !== productId));
-    }
-  };
-
-  const handleSelectAll = checked => {
-    if (checked) {
-      setSelectedProducts(products.map(p => p.id));
-    } else {
-      setSelectedProducts([]);
-    }
-  };
-
-  const handleReimport = async () => {
-    if (reimportStores.length === 0) {
-      setError('Please select at least one store to import to');
-      return;
-    }
-    try {
-      setReimporting(true);
-      setError(null);
-
-      const selectedProductDetails = products.filter(p => selectedProducts.includes(p.id));
-      const csvHeaders = [
-        'Title',
-        'Body (HTML)',
-        'Vendor',
-        'Type',
-        'Tags',
-        'Published',
-        'Variant SKU',
-        'Variant Price',
-        'Variant Compare At Price',
-        'Variant Inventory Qty'
-      ];
-      const csvRows = selectedProductDetails.map(p => [
-        p.title || '',
-        p.description || '',
-        p.vendor || '',
-        p.productType || '',
-        p.tags || '',
-        p.status === 'active' ? 'TRUE' : 'FALSE',
-        p.sku || '',
-        p.price || '',
-        p.compareAtPrice || '',
-        p.inventoryQuantity || 0
-      ]);
-      const csvData = [csvHeaders.join(','), ...csvRows.map(row => row.join(','))].join('\n');
-
-      const response = await api('/api/products/upload-csv', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
-          storeIds: reimportStores,
-          csvData,
-          fileName: `reimport-${Date.now()}.csv`
-        })
-      });
-      const result = await response.json();
-      if (result.success) {
-        setShowReimportModal(false);
-        setReimportStores([]);
-        setSelectedProducts([]);
-        setSuccessMessage('Products re-imported successfully!');
-        await fetchProducts();
-      } else {
-        setError(result.error || 'Failed to reimport products');
-      }
-    } catch (err) {
-      setError('Failed to reimport products');
-    } finally {
-      setReimporting(false);
-    }
-  };
-
-  const handleCloseUploadModal = () => {
+  const handleCloseModal = () => {
     if (!uploading) {
       setUploadModalOpen(false);
       setFiles([]);
@@ -312,173 +226,60 @@ export default function Products() {
   };
 
   const storeOptions = [
-    {label: 'All Stores', value: ''},
-    ...stores.map(store => ({label: `${store.name} (${store.shopDomain})`, value: store.id}))
-  ];
-
-  const tabs = [
-    {id: 'products', content: 'Products', panelID: 'products-panel'},
-    {
-      id: 'history',
-      content: `Import History${importHistory.length > 0 ? ` (${importHistory.length})` : ''}`,
-      panelID: 'history-panel'
-    }
+    {label: 'Select a store', value: ''},
+    ...stores.map(s => ({label: `${s.name} (${s.shopDomain})`, value: s.id}))
   ];
 
   return (
     <Page
-      title="Product Management"
+      title="Products"
       fullWidth
-      subtitle="Import products from CSV to multiple Shopify stores"
-      primaryAction={{
-        content: 'Import CSV',
-        icon: ImportIcon,
-        onAction: () => setUploadModalOpen(true)
-      }}
-      secondaryActions={[{content: 'Download Template', onAction: handleDownloadTemplate}]}
+      primaryAction={{content: 'Import', icon: ImportIcon, onAction: () => setUploadModalOpen(true)}}
     >
       <BlockStack gap="400">
-        {error && (
-          <Banner tone="critical" onDismiss={() => setError(null)}>
-            {error}
-          </Banner>
-        )}
-        {successMessage && (
-          <Banner tone="success" onDismiss={() => setSuccessMessage(null)}>
-            {successMessage}
-          </Banner>
-        )}
+        {error && <Banner tone="critical" onDismiss={() => setError(null)}>{error}</Banner>}
+        {successMessage && <Banner tone="success" onDismiss={() => setSuccessMessage(null)}>{successMessage}</Banner>}
 
-        <ImportProgressCard importProgress={importProgress} />
+        <InlineStack align="start">
+          <div style={{minWidth: 300}}>
+            <Select label="Store" labelHidden options={storeOptions} value={selectedStore} onChange={handleStoreChange} />
+          </div>
+        </InlineStack>
 
-        {/* Store filter - shared across all tabs */}
-        <Card>
-          <InlineStack align="space-between" blockAlign="center">
-            <Text variant="headingSm" as="h3">
-              Filter by Store
-            </Text>
-            <div style={{minWidth: '300px'}}>
-              <Select
-                label="Store"
-                labelHidden
-                options={storeOptions}
-                value={selectedStore}
-                onChange={setSelectedStore}
-              />
-            </div>
-          </InlineStack>
+        <Card padding="0">
+          <IndexFilters
+            queryValue={searchQuery}
+            queryPlaceholder="Search products"
+            onQueryChange={setSearchQuery}
+            onQueryClear={() => setSearchQuery('')}
+            sortOptions={SORT_OPTIONS}
+            sortSelected={sortSelected}
+            onSort={handleSortChange}
+            tabs={STATUS_TABS}
+            selected={selectedTab}
+            onSelect={handleTabChange}
+            canCreateNewView={false}
+            filters={[]}
+            appliedFilters={[]}
+            onClearAll={() => {}}
+            mode={mode}
+            setMode={setMode}
+            cancelAction={{onAction: () => { setSearchQuery(''); setMode('DEFAULT'); }}}
+          />
+          <ProductsTableSection
+            products={products}
+            loading={loading}
+            pageInfo={pageInfo}
+            hasPrev={hasPrev}
+            onNextPage={handleNextPage}
+            onPrevPage={handlePrevPage}
+          />
         </Card>
-
-        <Tabs tabs={tabs} selected={selectedTab} onSelect={setSelectedTab}>
-          {selectedTab === 0 && (
-            <Card>
-              <ProductsTableSection
-                stores={stores}
-                products={products}
-                loading={loading}
-                selectedStore={selectedStore}
-                selectedProducts={selectedProducts}
-                currentPage={currentPage}
-                itemsPerPage={itemsPerPage}
-                totalProducts={totalProducts}
-                totalPages={totalPages}
-                onStoreChange={setSelectedStore}
-                onProductSelect={handleProductSelect}
-                onSelectAll={handleSelectAll}
-                onOpenReimportModal={() => setShowReimportModal(true)}
-                onClearSelection={() => setSelectedProducts([])}
-                onPageChange={setCurrentPage}
-                onItemsPerPageChange={value => {
-                  setItemsPerPage(value);
-                  setCurrentPage(1);
-                }}
-              />
-            </Card>
-          )}
-
-          {selectedTab === 1 && (
-            <BlockStack gap="400">
-              {/* Import History Records */}
-              <Card>
-                <BlockStack gap="400">
-                  <InlineStack align="space-between" blockAlign="center">
-                    <Text variant="headingMd" as="h2">
-                      Import History
-                    </Text>
-                    {importHistory.length > 0 && <Badge>{importHistory.length} records</Badge>}
-                  </InlineStack>
-
-                  {importHistory.length === 0 ? (
-                    <Text tone="subdued">
-                      No import history yet. Import products from CSV to see history here.
-                    </Text>
-                  ) : (
-                    <BlockStack gap="300">
-                      {importHistory.map(imp => (
-                        <Card key={imp.id}>
-                          <BlockStack gap="200">
-                            <InlineStack align="space-between" blockAlign="center">
-                              <Text variant="bodyMd" fontWeight="semibold">
-                                {imp.fileName || 'Unknown file'}
-                              </Text>
-                              {imp.status === 'failed' && imp.error ? (
-                                <Tooltip content={imp.error} preferredPosition="above">
-                                  <Badge tone="critical">{imp.status}</Badge>
-                                </Tooltip>
-                              ) : (
-                                <Badge
-                                  tone={
-                                    imp.status === 'completed'
-                                      ? 'success'
-                                      : imp.status === 'failed'
-                                      ? 'critical'
-                                      : imp.status === 'processing'
-                                      ? 'attention'
-                                      : 'info'
-                                  }
-                                >
-                                  {imp.status}
-                                </Badge>
-                              )}
-                            </InlineStack>
-                            <InlineStack gap="400">
-                              <Text variant="bodySm" tone="subdued">
-                                {imp.storeName || 'Unknown store'}
-                              </Text>
-                              <Text variant="bodySm" tone="subdued">
-                                {imp.createdAt ? new Date(imp.createdAt).toLocaleString() : '-'}
-                              </Text>
-                              {(imp.totalProducts || 0) > 0 && (
-                                <Text variant="bodySm" tone="subdued">
-                                  {imp.totalProducts} products
-                                </Text>
-                              )}
-                              {(imp.successCount || imp.results?.successCount || 0) > 0 && (
-                                <Text variant="bodySm" tone="success">
-                                  {imp.successCount || imp.results?.successCount || 0} success
-                                </Text>
-                              )}
-                              {(imp.failedCount || 0) > 0 && (
-                                <Text variant="bodySm" tone="critical">
-                                  {imp.failedCount} failed
-                                </Text>
-                              )}
-                            </InlineStack>
-                          </BlockStack>
-                        </Card>
-                      ))}
-                    </BlockStack>
-                  )}
-                </BlockStack>
-              </Card>
-            </BlockStack>
-          )}
-        </Tabs>
       </BlockStack>
 
       <UploadCsvModal
         open={uploadModalOpen}
-        onClose={handleCloseUploadModal}
+        onClose={handleCloseModal}
         files={files}
         onDrop={handleDropZoneDrop}
         onRemove={handleFileRemove}
@@ -490,20 +291,6 @@ export default function Products() {
         onStoresChange={setSelectedStores}
         groups={groups}
         isAdmin={isAdmin}
-      />
-
-      <ReimportModal
-        open={showReimportModal}
-        stores={stores.filter(s => s.status === 'active')}
-        selectedProductsCount={selectedProducts.length}
-        reimportStores={reimportStores}
-        reimporting={reimporting}
-        onClose={() => {
-          setShowReimportModal(false);
-          setReimportStores([]);
-        }}
-        onReimportStoresChange={setReimportStores}
-        onReimport={handleReimport}
       />
     </Page>
   );

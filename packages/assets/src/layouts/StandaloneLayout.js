@@ -50,7 +50,8 @@ const NAV_FEATURE_MAP = {
   '/my-email': 'my-email',
   '/setup': 'setup',
   '/policies': 'policies',
-  '/custom-fields': 'custom-fields'
+  '/custom-fields': 'custom-fields',
+  '/collections': 'products'
 };
 
 export default function StandaloneLayout({children}) {
@@ -81,7 +82,15 @@ export default function StandaloneLayout({children}) {
     {label: 'Dashboard', icon: HomeIcon, url: '/', exactMatch: true},
     {label: 'Stores', icon: StoreIcon, url: '/stores'},
     {label: 'Google Sheets (Beta)', icon: NoteIcon, url: '/sheets'},
-    {label: 'Products', icon: ProductIcon, url: '/products'},
+    {
+      label: 'Products',
+      icon: ProductIcon,
+      url: '/products',
+      subNavigationItems: [
+        {label: 'All Products', url: '/products'},
+        {label: 'Collections', url: '/collections'}
+      ]
+    },
     {label: 'Orders', icon: OrderIcon, url: '/orders'},
     {label: 'Order Search', icon: SearchIcon, url: '/order-search'},
     {label: 'Draft Orders', icon: OrderIcon, url: '/draft-orders'},

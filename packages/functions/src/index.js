@@ -28,6 +28,8 @@ import * as devOrderInspectorController from './controllers/dev-order-inspector-
 import trackingStatusRoutes from './routes/tracking-status-routes.js';
 import draftOrderRoutes from './routes/draft-order-routes.js';
 import customFieldRoutes from './routes/custom-field-routes.js';
+import collectionRoutes from './routes/collection-routes.js';
+import shopifyProductRoutes from './routes/shopify-product-routes.js';
 import shippingTemplateRoutes from './routes/shipping-template-routes.js';
 import outlookRoutes from './routes/outlook-routes.js';
 import {exchangeOutlookCode as outlookAuthExchange, handleOutlookCallback} from './controllers/outlook/outlook-auth-handler.js';
@@ -129,6 +131,8 @@ app.use('/api/setup', setupRoutes);
 app.use('/api/policy-templates', policyTemplateRoutes);
 app.use('/api/draft-orders', draftOrderRoutes);
 app.use('/api/custom-fields', customFieldRoutes);
+app.use('/api/collections', collectionRoutes);
+app.use('/api/shopify-products', shopifyProductRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.get('/api/dev/orders', devOrderInspectorController.getOrderData);
 

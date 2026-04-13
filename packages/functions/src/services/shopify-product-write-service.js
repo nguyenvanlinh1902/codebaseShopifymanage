@@ -2,6 +2,7 @@
  * Shopify Product Write Service — create/bulk-variant/image-link mutations.
  */
 import {toGid, fromGid, buildMetafieldsFromProduct, buildOptionKey, gqlVariantToRest} from './shopify-helpers.js';
+import {validateGraphqlResult} from '../helpers/graphql-error-handler.js';
 
 export const GQL_BATCH = 250;
 
@@ -10,8 +11,14 @@ export const GQL_BATCH = 250;
  */
 export async function createProduct(shopify, productData) {
   try {
-    const csvVariants = productData.variants?.length > 0 ? productData.variants : [productData];
+    let csvVariants = productData.variants?.length > 0 ? productData.variants : [productData];
     const optionNames = [productData.option1Name, productData.option2Name, productData.option3Name].filter(Boolean);
+
+    // Shopify hard limit: 2048 variants per product
+    if (csvVariants.length > 2000) {
+      console.warn(`createProduct: "${productData.title}" has ${csvVariants.length} variants, truncating to 2000`);
+      csvVariants = csvVariants.slice(0, 2000);
+    }
 
     const input = {title: productData.title};
     if (productData.description) input.descriptionHtml = productData.description;
@@ -98,7 +105,7 @@ export async function createProduct(shopify, productData) {
 
     const mutation = `mutation productSet($input: ProductSetInput!) {
       productSet(input: $input, synchronous: true) {
-        product { id variants(first: 10) { edges { node { id } } } }
+        product { id variants(first: 250) { edges { node { id } } } }
         userErrors { field message code }
       }
     }`;
@@ -165,10 +172,8 @@ export async function bulkCreateVariantsGraphQL(shopify, productId, restVariants
 
     try {
       const result = await shopify.graphql(mutation, {productId: gid, variants: gqlVariants});
+      validateGraphqlResult(result, `productVariantsBulkCreate (batch ${i / GQL_BATCH + 1})`);
       const payload = result.productVariantsBulkCreate;
-      if (payload.userErrors?.length > 0) {
-        console.warn(`GraphQL variantsBulkCreate errors (batch ${i / GQL_BATCH + 1}): ${JSON.stringify(payload.userErrors.slice(0, 5))}`);
-      }
       if (payload.productVariants) {
         for (const gv of payload.productVariants) {
           const numId = gv.id.replace('gid://shopify/ProductVariant/', '');
@@ -259,6 +264,7 @@ export async function linkVariantImages(shopify, productId, productData, created
   for (let i = 0; i < updates.length; i += GQL_BATCH) {
     try {
       const result = await shopify.graphql(mutation, {productId: gid, variants: updates.slice(i, i + GQL_BATCH)});
+      validateGraphqlResult(result, 'linkVariantImages productVariantsBulkUpdate');
       linkedCount += result.productVariantsBulkUpdate.productVariants?.length || 0;
     } catch (err) {
       console.error(`linkVariantImages batch failed: ${err.message}`);

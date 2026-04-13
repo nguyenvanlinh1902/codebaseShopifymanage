@@ -29,7 +29,7 @@ async function getPermittedStoreIds(req) {
  */
 export async function getProducts(req, res) {
   try {
-    const {storeId, importId, page, limit, search, vendor, store} = req.query;
+    const {storeId, importId, page, limit, search, vendor, store, status} = req.query;
 
     // Handle import ID separately (no pagination needed usually)
     if (importId) {
@@ -58,13 +58,14 @@ export async function getProducts(req, res) {
     }
 
     // Decision tree: Use BigQuery if search or filters present
-    if (searchQuery || vendors.length > 0 || stores.length > 0) {
+    if (searchQuery || vendors.length > 0 || stores.length > 0 || status) {
       const result = await productRepo.searchProducts({
         permittedStoreIds,
         storeId,
         search: searchQuery,
         vendors,
         stores,
+        status: status || '',
         page: pageNum,
         limit: limitNum
       });
@@ -85,6 +86,7 @@ export async function getProducts(req, res) {
     const result = await productRepo.getWithPagination({
       permittedStoreIds,
       storeId,
+      status: status || '',
       page: pageNum,
       limit: limitNum
     });

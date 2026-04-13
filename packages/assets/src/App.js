@@ -38,6 +38,8 @@ import Themes from './pages/Themes';
 import SetupStore from './pages/SetupStore';
 import PolicyManagement from './pages/PolicyManagement';
 import CustomFieldsManagement from './pages/CustomFieldsManagement';
+import Collections from './pages/Collections';
+import CollectionDetail from './pages/CollectionDetail';
 import Stores from './pages/Stores';
 import Users from './pages/Users';
 import DevWebhooks from './pages/DevWebhooks';
@@ -229,6 +231,30 @@ function StandaloneFrame() {
             }
           />
           <Route
+            path="/collections"
+            element={
+              <FeatureGuard feature="products">
+                <Collections />
+              </FeatureGuard>
+            }
+          />
+          <Route
+            path="/collections/new"
+            element={
+              <FeatureGuard feature="products">
+                <CollectionDetail />
+              </FeatureGuard>
+            }
+          />
+          <Route
+            path="/collections/:id"
+            element={
+              <FeatureGuard feature="products">
+                <CollectionDetail />
+              </FeatureGuard>
+            }
+          />
+          <Route
             path="/orders"
             element={
               <FeatureGuard feature="orders">
@@ -340,7 +366,14 @@ function StandaloneFrame() {
               </FeatureGuard>
             }
           />
-          <Route path="/my-email" element={<FeatureGuard feature="my-email"><MyEmailAccount /></FeatureGuard>} />
+          <Route
+            path="/my-email"
+            element={
+              <FeatureGuard feature="my-email">
+                <MyEmailAccount />
+              </FeatureGuard>
+            }
+          />
           <Route path="/emails" element={isAdmin ? <EmailManagement /> : <NotFound />} />
           <Route path="/email-accounts" element={isAdmin ? <EmailAccounts /> : <NotFound />} />
           <Route path="/discord-settings" element={isAdmin ? <DiscordSettings /> : <NotFound />} />

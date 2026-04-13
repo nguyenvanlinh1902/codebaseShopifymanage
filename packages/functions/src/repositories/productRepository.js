@@ -172,7 +172,7 @@ export class ProductRepository {
    *   - permittedStoreIds = string[] → non-admin, filter by those stores
    *   - storeId → override: filter by single store (user-selected)
    */
-  async getWithPagination({permittedStoreIds, storeId, page = 1, limit = 50}) {
+  async getWithPagination({permittedStoreIds, storeId, status = '', page = 1, limit = 50}) {
     let query = this.collection;
 
     if (storeId) {
@@ -184,6 +184,10 @@ export class ProductRepository {
       query = query.where('storeId', 'in', ids);
     }
     // else: admin (permittedStoreIds === null) — no filter, get all
+
+    if (status) {
+      query = query.where('status', '==', status);
+    }
 
     const countSnapshot = await query.count().get();
     const total = countSnapshot.data().count;
@@ -213,6 +217,7 @@ export class ProductRepository {
     search = '',
     vendors = [],
     stores = [],
+    status = '',
     page = 1,
     limit = 50
   } = {}) {
@@ -251,6 +256,11 @@ export class ProductRepository {
     if (stores.length > 0) {
       whereConditions.push(`storeId IN UNNEST(@stores)`);
       params.stores = stores;
+    }
+
+    if (status) {
+      whereConditions.push(`status = @status`);
+      params.status = status;
     }
 
     const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';

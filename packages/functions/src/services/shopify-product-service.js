@@ -10,6 +10,7 @@ import {
   getProductGraphQL,
   GQL_BATCH
 } from './shopify-product-write-service.js';
+import {validateGraphqlResult} from '../helpers/graphql-error-handler.js';
 
 export {createProduct, bulkCreateVariantsGraphQL, linkVariantImages, getProductGraphQL};
 
@@ -75,7 +76,7 @@ export async function upsertProduct(shopify, productData) {
   }`;
   const updateVars = {product: updateInput};
   if (newMedia.length > 0) updateVars.media = newMedia;
-  await shopify.graphql(updateMutation, updateVars);
+  validateGraphqlResult(await shopify.graphql(updateMutation, updateVars), 'productUpdate');
 
   // Merge variants: match by option key, bulk update existing, bulk create new
   const existingVariants = existingProduct.variants || [];
@@ -115,15 +116,26 @@ export async function upsertProduct(shopify, productData) {
       }
     }`;
     for (let i = 0; i < variantUpdates.length; i += GQL_BATCH) {
-      await shopify.graphql(bulkUpdateMut, {productId: gid, variants: variantUpdates.slice(i, i + GQL_BATCH)});
+      validateGraphqlResult(
+        await shopify.graphql(bulkUpdateMut, {productId: gid, variants: variantUpdates.slice(i, i + GQL_BATCH)}),
+        'productVariantsBulkUpdate'
+      );
     }
   }
 
   let addedCount = 0;
   if (newVariantsToCreate.length > 0) {
-    const optionNames = [productData.option1Name, productData.option2Name, productData.option3Name].filter(Boolean);
-    const created = await bulkCreateVariantsGraphQL(shopify, numericId, newVariantsToCreate, optionNames);
-    addedCount = created.length;
+    // Shopify limit: 2048 variants per product — check remaining capacity
+    const maxNew = 2000 - existingVariants.length;
+    const toCreate = maxNew > 0 ? newVariantsToCreate.slice(0, maxNew) : [];
+    if (toCreate.length < newVariantsToCreate.length) {
+      console.warn(`upsertProduct: "${productData.title}" would exceed 2048 variants (${existingVariants.length} existing + ${newVariantsToCreate.length} new), creating only ${toCreate.length}`);
+    }
+    if (toCreate.length > 0) {
+      const optionNames = [productData.option1Name, productData.option2Name, productData.option3Name].filter(Boolean);
+      const created = await bulkCreateVariantsGraphQL(shopify, numericId, toCreate, optionNames);
+      addedCount = created.length;
+    }
   }
 
   const updatedProduct = await getProductGraphQL(shopify, numericId);
@@ -220,7 +232,10 @@ async function _updateFirstVariant(shopify, productGid, variantId, productData) 
       userErrors { field message }
     }
   }`;
-  await shopify.graphql(varMut, {productId: productGid, variants: [vUpd]});
+  validateGraphqlResult(
+    await shopify.graphql(varMut, {productId: productGid, variants: [vUpd]}),
+    'productVariantsBulkUpdate'
+  );
 }
 
 /**

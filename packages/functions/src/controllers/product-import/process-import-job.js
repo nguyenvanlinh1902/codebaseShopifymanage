@@ -1,151 +1,140 @@
 /**
  * Background handler: Process entire import job from PubSub
- * Always upserts: creates new products or merges variants into existing ones
+ * Uses Shopify Bulk Operations API for fast async processing (no rate limits).
  */
 
 import {ImportHistoryRepository} from '../../repositories/importHistoryRepository.js';
-import {ProductRepository} from '../../repositories/productRepository.js';
 import {ShopifyService} from '../../services/shopifyService.js';
-import {StoreRepository} from '../../repositories/storeRepository.js';
-import {callWithRetry, sleep, RATE_LIMIT_DELAY} from './retry-helpers.js';
+import {
+  buildProductJsonl,
+  createStagedUpload,
+  uploadToStagedTarget,
+  runBulkMutation,
+  pollBulkOperation,
+  downloadBulkResults
+} from '../../services/shopify-bulk-import-service.js';
 
 const importHistoryRepo = new ImportHistoryRepository();
-const productRepo = new ProductRepository();
-const storeRepo = new StoreRepository();
-
-/** Check if a Shopify error is daily variant creation throttle */
-function isVariantThrottle(error) {
-  return (
-    error.message?.includes('Daily variant creation limit') ||
-    error.extensions?.code === 'VARIANT_THROTTLE_EXCEEDED'
-  );
-}
 
 /**
- * Process product import from PubSub message
+ * Process product import from PubSub message via Bulk Operations API.
  */
 export async function processProductImport(messageData) {
   const data = messageData.message.json;
-  const {importId, storeId, userId, storeName, shopDomain, accessToken, totalProducts} = data;
+  const {importId, storeName, shopDomain, accessToken} = data;
 
-  // Validate accessToken before starting (don't enforce shpat_ prefix — legacy tokens are still valid)
   if (!accessToken) {
-    const errMsg = `Missing access token for ${storeName} (${shopDomain}). Please reinstall the app.`;
-    console.error(`Import ${importId} aborted: ${errMsg}`);
-    await importHistoryRepo.markFailed(importId, errMsg);
+    await importHistoryRepo.markFailed(importId,
+      `Missing access token for ${storeName} (${shopDomain}). Please reinstall the app.`);
+    return;
+  }
+
+  const acquired = await importHistoryRepo.acquireLock(importId, 'pubsub');
+  if (!acquired) {
+    console.log(`Import ${importId} already locked, skipping`);
     return;
   }
 
   const shopifyService = new ShopifyService({shopDomain, accessToken});
 
-  // Verify credentials with a test API call before processing products
   try {
-    await shopifyService.verifyCredentials();
-  } catch (verifyError) {
-    const errMsg = `Cannot connect to ${storeName} (${shopDomain}): ${verifyError.message || 'Invalid credentials'}. Please reinstall the app.`;
-    console.error(`Import ${importId} aborted: ${errMsg}`);
-    await importHistoryRepo.markFailed(importId, errMsg);
-    return;
-  }
-
-  // Read products from Firestore subcollection (stored during upload, not sent via PubSub)
-  const products = await importHistoryRepo.getImportProducts(importId);
-  if (!products || products.length === 0) {
-    const errMsg = 'No products found in import job';
-    console.error(`Import ${importId} aborted: ${errMsg}`);
-    await importHistoryRepo.markFailed(importId, errMsg);
-    return;
-  }
-
-  let successCount = 0;
-  let failedCount = 0;
-  let processedVariants = 0;
-  const failedProductDetails = [];
-
-  console.log(`Starting import ${importId}: ${products.length} products for ${storeName}`);
-
-  for (let i = 0; i < products.length; i++) {
-    const product = products[i];
-    const variantCount = product.variants ? product.variants.length : 1;
-
+    // Verify credentials before starting
     try {
-      await importHistoryRepo.updateProductStatus(importId, i, 'processing');
-
-      // Always upsert: create if new, merge variants if exists
-      const {result, action, variantStats} = await callWithRetry(() =>
-        shopifyService.upsertProduct(product)
-      );
-
-      // Save tracking record to Firestore
-      await productRepo.save({
-        importId,
-        storeId,
-        userId,
-        storeName,
-        shopDomain,
-        shopifyProductId: result.id,
-        action,
-        importedAt: new Date().toISOString(),
-        title: product.title,
-        handle: product.handle,
-        vendor: product.vendor,
-        productType: product.productType,
-        tags: product.tags,
-        sku: product.variants?.[0]?.sku || '',
-        price: product.variants?.[0]?.price || '0.00',
-        variantCount
-      });
-
-      successCount++;
-      processedVariants += variantCount;
-      await importHistoryRepo.updateProductStatus(importId, i, 'completed');
-      await importHistoryRepo.updateProgress(importId, {
-        processedProducts: i + 1,
-        processedVariants,
-        successCount,
-        failedCount
-      });
-
-      const statsMsg = action === 'updated'
-        ? `+${variantStats.added} new, ${variantStats.updated} updated`
-        : `${variantCount} variants`;
-      console.log(`[${i + 1}/${products.length}] ${action}: ${product.title} (${statsMsg})`);
-    } catch (error) {
-      failedCount++;
-      processedVariants += variantCount;
-      const errMsg = error.message || 'Unknown error';
-      failedProductDetails.push({title: product.title || 'Unknown', error: errMsg});
-
-      await importHistoryRepo.updateProductStatus(importId, i, 'failed', errMsg);
-      await importHistoryRepo.updateProgress(importId, {
-        processedProducts: i + 1,
-        processedVariants,
-        successCount,
-        failedCount,
-        failedProductDetails: failedProductDetails.slice(0, 100)
-      });
-
-      console.error(`[${i + 1}/${products.length}] Failed: ${product.title}: ${errMsg}`);
-
-      // Stop immediately on daily variant limit — remaining products cannot be processed today
-      if (isVariantThrottle(error)) {
-        const throttleMsg = `Daily variant creation limit reached for ${storeName} (${shopDomain}). Import stopped. Please retry tomorrow after midnight UTC.`;
-        console.error(`Import ${importId} stopped: ${throttleMsg}`);
-        await storeRepo.markVariantThrottled(storeId);
-        await importHistoryRepo.markFailed(importId, throttleMsg);
-        return;
-      }
+      await shopifyService.verifyCredentials();
+    } catch (err) {
+      await importHistoryRepo.markFailed(importId,
+        `Cannot connect to ${storeName}: ${err.message}. Please reinstall the app.`);
+      return;
     }
 
-    await sleep(RATE_LIMIT_DELAY);
-  }
+    // Read products from Firestore
+    const products = await importHistoryRepo.getImportProducts(importId);
+    if (!products?.length) {
+      await importHistoryRepo.markFailed(importId, 'No products found in import job');
+      return;
+    }
 
-  // Mark import job as completed/failed
-  if (failedCount >= products.length) {
-    await importHistoryRepo.markFailed(importId, 'All products failed to import');
-  } else {
-    await importHistoryRepo.markCompleted(importId, {successCount, failedCount});
-  }
+    const total = products.length;
+    console.log(`[import:${importId}] Starting bulk import: ${total} products → ${storeName}`);
 
-  console.log(`Import ${importId} done: ${successCount} success, ${failedCount} failed`);
+    // Step 1: Build JSONL
+    await updateStatus(importId, 'preparing', `Building JSONL for ${total} products...`);
+    const jsonl = buildProductJsonl(products);
+    const fileSize = Buffer.byteLength(jsonl, 'utf8');
+
+    // Step 2: Staged upload
+    await updateStatus(importId, 'uploading', `Uploading ${(fileSize / 1024).toFixed(0)}KB to Shopify...`);
+    const target = await createStagedUpload(shopifyService.shopify, {
+      filename: `import-${importId}.jsonl`,
+      fileSize
+    });
+
+    // Step 3: Upload JSONL file
+    await uploadToStagedTarget(target, jsonl);
+    const uploadPath = target.parameters.find(p => p.name === 'key')?.value || target.resourceUrl;
+    console.log(`[import:${importId}] JSONL uploaded (${fileSize} bytes)`);
+
+    // Step 4: Start bulk mutation
+    await updateStatus(importId, 'processing', 'Shopify is processing products...');
+    const operation = await runBulkMutation(shopifyService.shopify, uploadPath);
+    console.log(`[import:${importId}] Bulk operation started: ${operation.id}`);
+
+    // Step 5: Poll with progress updates
+    const result = await pollBulkOperation(shopifyService.shopify, operation.id, {
+      maxWait: 1800000, // 30 minutes
+      onProgress: ({status, objectCount}) => {
+        // Fire-and-forget progress updates (don't await to avoid slowing poll)
+        importHistoryRepo.updateProgress(importId, {
+          status: 'processing',
+          statusMessage: `Processing... ${objectCount} objects handled`,
+          processedProducts: Math.min(objectCount, total)
+        }).catch(() => {});
+      }
+    });
+
+    // Step 6: Handle result
+    if (result.status !== 'COMPLETED') {
+      const errMsg = `Bulk operation ${result.status}${result.errorCode ? `: ${result.errorCode}` : ''}`;
+      await importHistoryRepo.markFailed(importId, errMsg);
+      return;
+    }
+
+    // Parse results JSONL
+    let successCount = total;
+    let failedCount = 0;
+    let failedDetails = [];
+
+    if (result.url) {
+      const parsed = await downloadBulkResults(result.url);
+      successCount = parsed.successCount;
+      failedCount = parsed.failedCount;
+      failedDetails = parsed.errors.slice(0, 100);
+    }
+
+    // Mark final status
+    if (failedCount >= total) {
+      await importHistoryRepo.markFailed(importId, 'All products failed to import', {
+        failedProductDetails: failedDetails
+      });
+    } else {
+      await importHistoryRepo.markCompleted(importId, {
+        successCount,
+        failedCount,
+        processedProducts: total,
+        failedProductDetails: failedDetails
+      });
+    }
+
+    console.log(`[import:${importId}] Done: ${successCount} success, ${failedCount} failed`);
+  } catch (error) {
+    console.error(`[import:${importId}] Error:`, error);
+    await importHistoryRepo.markFailed(importId, error.message || 'Unexpected error');
+  } finally {
+    await importHistoryRepo.releaseLock(importId);
+  }
+}
+
+/** Helper: update progress with status message */
+async function updateStatus(importId, status, statusMessage) {
+  await importHistoryRepo.updateProgress(importId, {status, statusMessage});
 }

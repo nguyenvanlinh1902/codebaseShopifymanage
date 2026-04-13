@@ -40,8 +40,7 @@ export async function listFields(req, res) {
 
 export async function getSnippet(req, res) {
   try {
-    const fields = await customFieldRepo.getAll();
-    const snippet = generateLiquidSnippet(fields);
+    const snippet = generateLiquidSnippet();
     res.json({success: true, data: {snippet}});
   } catch (error) {
     console.error('Error generating snippet:', error);

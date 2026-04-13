@@ -1,6 +1,163 @@
 /**
- * Shopify Shop Service — shop info, themes, metafields, policies.
+ * Shopify Shop Service — shop info, themes, metafields, policies, collections.
+ * Custom fields use namespace "toolshopify_cf".
  */
+
+const CF_NAMESPACE = 'toolshopify_cf';
+
+// ── Storefront Access Token ─────────────────────────────────────────────
+
+/**
+ * Create a Storefront Access Token and save it as a shop metafield.
+ * Returns the token string.
+ */
+export async function createStorefrontToken(shopify) {
+  try {
+    // Check if token already exists in shop metafield
+    const existingQuery = `{ shop { id metafield(namespace: "${CF_NAMESPACE}", key: "storefront_token") { value } } }`;
+    const existing = await shopify.graphql(existingQuery);
+    const shopId = existing.shop?.id;
+    console.log('[createStorefrontToken] shopId:', shopId, 'existing token:', !!existing.shop?.metafield?.value);
+
+    if (existing.shop?.metafield?.value) return existing.shop.metafield.value;
+
+    // Create new Storefront Access Token
+    const createMutation = `mutation { storefrontAccessTokenCreate(input: {title: "ToolShopify Custom Fields"}) {
+      storefrontAccessToken { accessToken }
+      userErrors { field message }
+    }}`;
+    const result = await shopify.graphql(createMutation);
+    console.log('[createStorefrontToken] create result:', JSON.stringify(result));
+    const {storefrontAccessToken, userErrors} = result.storefrontAccessTokenCreate;
+    if (userErrors?.length > 0) throw new Error(userErrors.map(e => e.message).join(', '));
+
+    const token = storefrontAccessToken.accessToken;
+
+    // Save token to shop metafield
+    const saveMutation = `mutation($metafields: [MetafieldsSetInput!]!) {
+      metafieldsSet(metafields: $metafields) { metafields { id } userErrors { field message } }
+    }`;
+    const saveResult = await shopify.graphql(saveMutation, {metafields: [{
+      namespace: CF_NAMESPACE, key: 'storefront_token',
+      ownerId: shopId, value: token, type: 'single_line_text_field'
+    }]});
+    console.log('[createStorefrontToken] save result:', JSON.stringify(saveResult));
+
+    return token;
+  } catch (error) {
+    console.error('[createStorefrontToken] ERROR:', error.message);
+    throw error;
+  }
+}
+
+// ── Shop Metafields (config + enabled collections) ──────────────────────
+
+/**
+ * Get shop ID + all toolshopify_cf metafields in one query.
+ */
+async function getShopCfData(shopify) {
+  const query = `{ shop {
+    id
+    config: metafield(namespace: "${CF_NAMESPACE}", key: "config") { value }
+    collections: metafield(namespace: "${CF_NAMESPACE}", key: "collections") { value }
+  }}`;
+  const result = await shopify.graphql(query);
+  const shop = result.shop;
+  return {
+    shopId: shop.id,
+    config: shop.config?.value ? JSON.parse(shop.config.value) : [],
+    enabledCollections: shop.collections?.value ? JSON.parse(shop.collections.value) : []
+  };
+}
+
+/**
+ * Save field config to shop metafield toolshopify_cf.config.
+ */
+export async function saveFieldConfig(shopify, fieldsConfig) {
+  const {shopId} = await getShopCfData(shopify);
+  console.log('[saveFieldConfig] shopId:', shopId, 'fields:', fieldsConfig.length);
+  const mutation = `mutation($metafields: [MetafieldsSetInput!]!) {
+    metafieldsSet(metafields: $metafields) { metafields { id } userErrors { field message } }
+  }`;
+  const result = await shopify.graphql(mutation, {metafields: [{
+    namespace: CF_NAMESPACE, key: 'config', ownerId: shopId,
+    value: JSON.stringify(fieldsConfig), type: 'json'
+  }]});
+  console.log('[saveFieldConfig] result:', JSON.stringify(result));
+  const {userErrors} = result.metafieldsSet;
+  if (userErrors?.length > 0) throw new Error(userErrors.map(e => e.message).join(', '));
+  return true;
+}
+
+/**
+ * Toggle a collection ID in shop metafield toolshopify_cf.collections.
+ * Returns updated list.
+ */
+export async function toggleCollection(shopify, collectionId, enabled) {
+  const {shopId, enabledCollections} = await getShopCfData(shopify);
+  console.log('[toggleCollection] shopId:', shopId, 'collectionId:', collectionId, 'enabled:', enabled, 'current:', enabledCollections);
+  let updated;
+  if (enabled) {
+    updated = enabledCollections.includes(collectionId) ? enabledCollections : [...enabledCollections, collectionId];
+  } else {
+    updated = enabledCollections.filter(id => id !== collectionId);
+  }
+
+  const mutation = `mutation($metafields: [MetafieldsSetInput!]!) {
+    metafieldsSet(metafields: $metafields) { metafields { id } userErrors { field message } }
+  }`;
+  const result = await shopify.graphql(mutation, {metafields: [{
+    namespace: CF_NAMESPACE, key: 'collections', ownerId: shopId,
+    value: JSON.stringify(updated), type: 'json'
+  }]});
+  console.log('[toggleCollection] result:', JSON.stringify(result), 'updated list:', updated);
+  const {userErrors} = result.metafieldsSet;
+  if (userErrors?.length > 0) throw new Error(userErrors.map(e => e.message).join(', '));
+  return updated;
+}
+
+/**
+ * Get enabled collection IDs from shop metafield.
+ */
+export async function getEnabledCollections(shopify) {
+  const {enabledCollections} = await getShopCfData(shopify);
+  return enabledCollections;
+}
+
+// ── Collections List ────────────────────────────────────────────────────
+
+/**
+ * List all collections + mark which ones are enabled via shop metafield.
+ */
+export async function listCollections(shopify, {first = 50, after = null} = {}) {
+  try {
+    const [collectionsResult, enabledIds] = await Promise.all([
+      shopify.graphql(`query($first: Int!, $after: String) {
+        collections(first: $first, after: $after) {
+          pageInfo { hasNextPage endCursor }
+          nodes { id title handle image { url } productsCount { count } }
+        }
+      }`, {first, after}),
+      getEnabledCollections(shopify)
+    ]);
+
+    const {nodes, pageInfo} = collectionsResult.collections;
+    return {
+      collections: nodes.map(c => ({
+        id: c.id,
+        title: c.title,
+        handle: c.handle,
+        image: c.image?.url || null,
+        productsCount: c.productsCount?.count || 0,
+        customFieldsEnabled: enabledIds.includes(c.id)
+      })),
+      pageInfo
+    };
+  } catch (error) {
+    console.error('Error listing collections:', error);
+    throw new Error(`Failed to list collections: ${error.message}`);
+  }
+}
 
 /**
  * Get shop info via GraphQL.
@@ -75,6 +232,21 @@ export async function publishTheme(shopify, themeId) {
   } catch (error) {
     console.error('Error publishing theme:', error);
     throw new Error(`Failed to publish theme: ${error.message}`);
+  }
+}
+
+/**
+ * Ensure a metafield definition exists with storefront access.
+ */
+export async function ensureMetafieldDefinition(shopify, {name, key, type, ownerType, description}) {
+  const existing = await getMetafieldDefinitions(shopify, ownerType);
+  const found = existing.find(d => d.namespace === CF_NAMESPACE && d.key === key);
+
+  if (!found) {
+    await createMetafieldDefinition(shopify, {
+      name, namespace: CF_NAMESPACE, key, type, ownerType, description,
+      access: {storefront: 'PUBLIC_READ'}
+    });
   }
 }
 

@@ -66,6 +66,10 @@ export class ShopifyService {
   getMetafieldDefinitions(ownerType) { return shopSvc.getMetafieldDefinitions(this.shopify, ownerType); }
   createMetafieldDefinition(definition) { return shopSvc.createMetafieldDefinition(this.shopify, definition); }
   deleteMetafieldDefinition(id, deleteValues) { return shopSvc.deleteMetafieldDefinition(this.shopify, id, deleteValues); }
+  createStorefrontToken() { return shopSvc.createStorefrontToken(this.shopify); }
+  saveFieldConfig(config) { return shopSvc.saveFieldConfig(this.shopify, config); }
+  toggleCollection(collectionId, enabled) { return shopSvc.toggleCollection(this.shopify, collectionId, enabled); }
+  listCollections(opts) { return shopSvc.listCollections(this.shopify, opts); }
   getShopPolicies() { return shopSvc.getShopPolicies(this.shopify); }
   updateShopPolicy(type, body) { return shopSvc.updateShopPolicy(this.shopify, type, body); }
   getPrivacySettings() { return shopSvc.getPrivacySettings(this.shopify); }

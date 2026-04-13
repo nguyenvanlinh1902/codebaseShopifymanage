@@ -67,6 +67,51 @@
         {%- if block_settings.gift_card_form and product.gift_card? -%}
           {%- render 'gift-card-recipient-form', product: product, form: form, section: section, block: block -%}
         {%- endif -%}
+        {% comment %} ToolShopify: Custom fields via JS + Storefront API {% endcomment %}
+        {% assign cf_token = shop.metafields.toolshopify_cf.storefront_token.value %}
+        {% assign cf_config = shop.metafields.toolshopify_cf.config.value | json %}
+        {% assign cf_collections = shop.metafields.toolshopify_cf.collections.value | json %}
+        {% if cf_token != blank %}
+          <style>
+            .custom-fields-container{width:100%;margin-bottom:16px}
+            .custom-field{margin-bottom:12px}
+            .custom-field label{display:block;margin-bottom:4px;font-weight:600;font-size:14px}
+            .custom-field input,.custom-field textarea{width:100%;padding:10px 12px;border:1px solid var(--color-input-border,#ccc);border-radius:var(--style-border-radius-inputs,4px);font-size:14px;font-family:inherit;background:var(--color-input-background,#fff);color:var(--color-input-text,#000)}
+            .custom-field input:focus,.custom-field textarea:focus{outline:2px solid var(--color-primary,#000);outline-offset:1px}
+            .cf-required{color:#e51c23;margin-left:2px}
+          </style>
+          <div id="custom-fields-root" class="custom-fields-container"></div>
+          <script>
+            (async function(){
+              var r=document.getElementById('custom-fields-root');if(!r)return;
+              var pid='{{ product.id }}',fid='{{ product_form_id }}',tk='{{ cf_token }}';
+              var cfg={{ cf_config | default: '[]' }},cols={{ cf_collections | default: '[]' }};
+              if(!cfg.length||!cols.length)return;
+              var shop=window.Shopify?.shop||location.hostname;
+              try{
+                var res=await fetch('https://'+shop+'/api/2025-01/graphql.json',{
+                  method:'POST',
+                  headers:{'Content-Type':'application/json','X-Shopify-Storefront-Access-Token':tk},
+                  body:JSON.stringify({query:'{ product(id: "gid://shopify/Product/'+pid+'") { collections(first:20) { nodes { id } } } }'})
+                });
+                var d=await res.json(),pc=d?.data?.product?.collections?.nodes||[];
+                if(!pc.some(function(c){return cols.includes(c.id)}))return;
+                var h='';
+                cfg.forEach(function(f){
+                  var req=f.required?' required':'',star=f.required?'<span class="cf-required">*</span>':'';
+                  var nm='properties['+f.label+']',id='cf-'+f.key;
+                  if(f.inputType==='textarea'){
+                    h+='<div class="custom-field"><label for="'+id+'">'+f.label+' '+star+'</label><textarea id="'+id+'" name="'+nm+'" form="'+fid+'" class="field__input"'+req+' rows="3"></textarea></div>';
+                  }else{
+                    h+='<div class="custom-field"><label for="'+id+'">'+f.label+' '+star+'</label><input type="text" id="'+id+'" name="'+nm+'" form="'+fid+'" class="field__input"'+req+'></div>';
+                  }
+                });
+                r.innerHTML=h;
+              }catch(e){console.error('[ToolShopify]',e)}
+            })();
+          </script>
+        {% endif %}
+
         <div
           class="product-form-buttons spacing-style{% if block_settings.stacking %} product-form-buttons--stacked{% endif %}"
           style="{% render 'spacing-style', settings: block_settings %}"
@@ -217,6 +262,24 @@
 {% endif %}
 
 {% stylesheet %}
+  .custom-fields-container {
+    width: 100%;
+    margin-bottom: var(--padding-md);
+  }
+  .custom-field {
+    margin-bottom: var(--padding-sm);
+  }
+  .custom-field label {
+    display: block;
+    margin-bottom: var(--padding-2xs);
+    font-weight: 500;
+    font-size: var(--font-size--sm);
+  }
+  .custom-field input,
+  .custom-field textarea {
+    width: 100%;
+  }
+
   .buy-buttons-block {
     width: 100%;
   }

@@ -124,6 +124,15 @@ export async function create(req, res) {
       await collectionProductsSvc.addProductsToCollection(shopify, data.id, productIds);
     }
 
+    // Publish to selected sales channels
+    if (formData._publishIds?.length > 0) {
+      try {
+        await collectionSvc.publishCollection(shopify, data.id, formData._publishIds);
+      } catch (pubErr) {
+        console.warn('[collection] publish after create failed:', pubErr.message);
+      }
+    }
+
     res.status(201).json({success: true, data});
   } catch (error) {
     const status = error.status || 500;
@@ -248,6 +257,52 @@ export async function uploadImage(req, res) {
   } catch (error) {
     const status = error.status || 500;
     console.error('[collection] uploadImage error:', error.message);
+    res.status(status).json({success: false, error: error.message});
+  }
+}
+
+/** GET /api/collections/publications — list sales channels for a store */
+export async function getPublications(req, res) {
+  try {
+    const {storeId} = req.query;
+    await validateStoreAccess(req, storeId);
+    const shopify = await getShopify(storeId);
+    const data = await collectionSvc.listPublications(shopify);
+    res.json({success: true, data});
+  } catch (error) {
+    const status = error.status || 500;
+    console.error('[collection] getPublications error:', error.message);
+    res.status(status).json({success: false, error: error.message});
+  }
+}
+
+/** GET /api/collections/:id/publications — which channels a collection is published to */
+export async function getCollectionPublications(req, res) {
+  try {
+    const {storeId} = req.query;
+    await validateStoreAccess(req, storeId);
+    const shopify = await getShopify(storeId);
+    const data = await collectionSvc.getCollectionPublications(shopify, req.params.id);
+    res.json({success: true, data});
+  } catch (error) {
+    const status = error.status || 500;
+    console.error('[collection] getCollectionPublications error:', error.message);
+    res.status(status).json({success: false, error: error.message});
+  }
+}
+
+/** PUT /api/collections/:id/publish — publish/unpublish to channels */
+export async function updatePublishing(req, res) {
+  try {
+    const {storeId, publishIds, unpublishIds} = req.body;
+    await validateStoreAccess(req, storeId);
+    const shopify = await getShopify(storeId);
+    if (publishIds?.length) await collectionSvc.publishCollection(shopify, req.params.id, publishIds);
+    if (unpublishIds?.length) await collectionSvc.unpublishCollection(shopify, req.params.id, unpublishIds);
+    res.json({success: true});
+  } catch (error) {
+    const status = error.status || 500;
+    console.error('[collection] updatePublishing error:', error.message);
     res.status(status).json({success: false, error: error.message});
   }
 }

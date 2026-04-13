@@ -178,6 +178,92 @@ export async function createFileFromStagedUpload(shopify, {originalSource, filen
 }
 
 /**
+ * List all publications (sales channels) for the shop.
+ * Falls back to app installation's accessible channels if publications scope unavailable.
+ */
+export async function listPublications(shopify) {
+  try {
+    const result = await shopify.graphql(`
+      query {
+        publications(first: 20) {
+          nodes { id name }
+        }
+      }
+    `);
+    return result.publications.nodes || [];
+  } catch (err) {
+    // Fallback: if publications scope not available, try appInstallation
+    console.warn('publications query failed, trying fallback:', err.message);
+    try {
+      const result = await shopify.graphql(`
+        query {
+          appInstallation {
+            accessScopes { handle }
+            publication { id }
+          }
+        }
+      `);
+      if (result.appInstallation?.publication) {
+        return [{id: result.appInstallation.publication.id, name: 'Online Store'}];
+      }
+    } catch {
+      // Ignore fallback errors
+    }
+    return [];
+  }
+}
+
+/**
+ * Get which publications a collection is published to.
+ */
+export async function getCollectionPublications(shopify, collectionId) {
+  const result = await shopify.graphql(`
+    query($id: ID!) {
+      collection(id: $id) {
+        resourcePublicationsV2(first: 20) {
+          nodes {
+            publication { id name }
+            isPublished
+          }
+        }
+      }
+    }
+  `, {id: collectionId});
+  if (!result.collection) return [];
+  return result.collection.resourcePublicationsV2.nodes
+    .filter(n => n.isPublished)
+    .map(n => ({id: n.publication.id, name: n.publication.name}));
+}
+
+/**
+ * Publish a collection to specific publications.
+ */
+export async function publishCollection(shopify, collectionId, publicationIds) {
+  const result = await shopify.graphql(`
+    mutation($id: ID!, $input: [PublicationInput!]!) {
+      publishablePublish(id: $id, input: $input) {
+        userErrors { field message }
+      }
+    }
+  `, {id: collectionId, input: publicationIds.map(id => ({publicationId: id}))});
+  validateGraphqlResult(result, 'publishablePublish');
+}
+
+/**
+ * Unpublish a collection from specific publications.
+ */
+export async function unpublishCollection(shopify, collectionId, publicationIds) {
+  const result = await shopify.graphql(`
+    mutation($id: ID!, $input: [PublicationInput!]!) {
+      publishableUnpublish(id: $id, input: $input) {
+        userErrors { field message }
+      }
+    }
+  `, {id: collectionId, input: publicationIds.map(id => ({publicationId: id}))});
+  validateGraphqlResult(result, 'publishableUnpublish');
+}
+
+/**
  * Delete a collection by GID.
  */
 export async function deleteCollection(shopify, id) {

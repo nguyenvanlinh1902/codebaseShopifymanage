@@ -176,6 +176,7 @@ export default function CollectionDetail() {
               storeId={storeId}
               onStoreChange={setStoreId}
               isNew={isNew}
+              collectionId={id}
             />
           </Layout.Section>
         </Layout>

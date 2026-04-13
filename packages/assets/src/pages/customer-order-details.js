@@ -167,6 +167,15 @@ export default function CustomerOrderDetails() {
                               SKU: {li.sku}
                             </Text>
                           )}
+                          {li.customAttributes?.length > 0 && (
+                            <div style={{marginTop: '4px'}}>
+                              {li.customAttributes.map((attr, ai) => (
+                                <Text key={ai} tone="subdued" variant="bodySm">
+                                  {attr.key}: {attr.value}
+                                </Text>
+                              ))}
+                            </div>
+                          )}
                         </div>
                         <Text variant="bodyMd">{fmtMoney(li.discountedUnitPrice)}</Text>
                         <Text variant="bodyMd" tone="subdued">× {li.quantity}</Text>

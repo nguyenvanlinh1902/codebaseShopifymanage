@@ -79,6 +79,7 @@ query OrderDetails($id: ID!) {
           image { url altText }
           originalUnitPriceSet { shopMoney { amount currencyCode } }
           discountedUnitPriceSet { shopMoney { amount currencyCode } }
+          customAttributes { key value }
         }
       }
     }
@@ -316,7 +317,10 @@ export async function getOrderDetails(req, res) {
         quantity: node.quantity,
         image: node.image?.url || null,
         unitPrice: money(node.originalUnitPriceSet),
-        discountedUnitPrice: money(node.discountedUnitPriceSet)
+        discountedUnitPrice: money(node.discountedUnitPriceSet),
+        customAttributes: (node.customAttributes || [])
+          .filter(a => a.key && !a.key.startsWith('_'))
+          .map(a => ({key: a.key, value: a.value}))
       })),
       fulfillments: (o.fulfillments || []).map(f => ({
         status: f.status,

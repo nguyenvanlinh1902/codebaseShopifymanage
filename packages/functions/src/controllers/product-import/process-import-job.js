@@ -17,6 +17,7 @@ const storeRepo = new StoreRepository();
  * Entry point from PubSub trigger.
  */
 export async function processProductImport(messageData) {
+  console.log('[import] PubSub message received:', JSON.stringify(messageData?.message?.json || {}).slice(0, 500));
   const data = messageData.message.json;
   const {importJobs, batchId, fileNames} = data;
 

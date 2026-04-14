@@ -158,7 +158,7 @@ export const api = onRequest(
 
 /** PubSub: Product Import */
 export const processProductImportQueue = onMessagePublished(
-  {topic: 'product-import', memory: '256MiB', timeoutSeconds: 540, retry: true},
+  {topic: 'product-import', memory: '6GiB', timeoutSeconds: 1800, retry: true},
   async event => {
     await productImportController.processProductImport(event.data);
   }

@@ -229,6 +229,7 @@ export async function runConcurrentBulkImport(shopify, products, {
 async function processChunk(shopify, chunk, chunkIndex, importId, onChunkProgress) {
   const label = `[import:${importId}:chunk${chunkIndex}]`;
 
+  try {
   // Build JSONL
   const jsonl = buildProductJsonl(chunk);
   const fileSize = Buffer.byteLength(jsonl, 'utf8');
@@ -281,7 +282,9 @@ function aggregateResults(settledResults, chunks) {
     } else {
       // Entire chunk failed — use actual chunk size
       failedCount += chunks[i].length;
-      errors.push({title: 'Chunk failure', message: result.reason?.message || 'Unknown error'});
+      const errMsg = result.reason?.message || 'Unknown error';
+      console.error(`[bulk-import] Chunk ${i} failed:`, result.reason);
+      errors.push({title: `Chunk ${i} failure`, message: errMsg});
     }
   }
 

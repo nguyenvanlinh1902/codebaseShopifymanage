@@ -103,7 +103,7 @@ async function handleStorageFlow(req, res, {batchId, fileNames, storeIds, storeI
 
   // Create 1 import job per store
   const importResults = await createImportJobs(stores, mergedProducts, {
-    userId, fileNames, invalidProducts, overwriteExisting
+    userId, fileNames, invalidProducts, overwriteExisting, batchId
   });
 
   const totalProducts = mergedProducts.length;
@@ -170,8 +170,11 @@ async function handleLegacyFlow(req, res, {storeIds, storeId, csvData, fileName,
   });
 }
 
-/** Create import jobs and publish PubSub messages. Shared by both flows. */
-async function createImportJobs(stores, products, {userId, fileNames, invalidProducts = [], overwriteExisting}) {
+/** Create import jobs and publish PubSub message.
+ * No products saved to Firestore — worker reads directly from Storage CSV files.
+ * 1 PubSub message with all store jobs + batchId for Storage reference.
+ */
+async function createImportJobs(stores, products, {userId, fileNames, invalidProducts = [], overwriteExisting, batchId}) {
   const results = [];
   const totalVariants = products.reduce((sum, p) => sum + (p.variants?.length || 1), 0);
 
@@ -185,45 +188,38 @@ async function createImportJobs(stores, products, {userId, fileNames, invalidPro
       totalProducts: products.length,
       totalVariants,
       processedProducts: 0,
-      processedVariants: 0,
       successCount: 0,
       failedCount: 0,
-      skippedCount: 0,
       status: 'pending',
       overwriteExisting: overwriteExisting !== false,
       invalidProducts: invalidProducts.slice(0, 100),
       totalInvalidProducts: invalidProducts.length,
-      failedProductDetails: [],
-      products: products.map((p, i) => ({
-        index: i, title: p.title || 'Unknown', handle: p.handle || '',
-        variantCount: p.variants?.length || 1, status: 'pending', error: null
-      }))
+      failedProductDetails: []
     });
-
-    await importHistoryRepo.saveImportProducts(importJob.id, products);
-
-    await getOrCreateTopic(PRODUCT_IMPORT_TOPIC);
-    await publishMessage(PRODUCT_IMPORT_TOPIC, {
-      importId: importJob.id,
-      storeId: store.id,
-      userId,
-      storeName: store.name,
-      shopDomain: store.shopDomain,
-      totalProducts: products.length,
-      overwriteExisting: overwriteExisting !== false
-    });
-
-    await importHistoryRepo.updateProgress(importJob.id, {status: 'processing'});
 
     results.push({
       storeId: store.id,
       storeName: store.name,
       importId: importJob.id,
-      fileName: fileNames.join(', '),
       totalProducts: products.length,
       invalidProducts: invalidProducts.length
     });
   }
+
+  // 1 PubSub message → worker reads CSV from Storage via batchId
+  await getOrCreateTopic(PRODUCT_IMPORT_TOPIC);
+  await publishMessage(PRODUCT_IMPORT_TOPIC, {
+    importJobs: results.map(r => ({importId: r.importId, storeId: r.storeId, storeName: r.storeName})),
+    batchId,
+    fileNames,
+    userId,
+    totalProducts: products.length,
+    overwriteExisting: overwriteExisting !== false
+  });
+
+  await Promise.all(results.map(r =>
+    importHistoryRepo.updateProgress(r.importId, {status: 'processing'})
+  ));
 
   return results;
 }

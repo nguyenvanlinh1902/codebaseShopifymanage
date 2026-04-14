@@ -1,6 +1,6 @@
 [
   {
-    "origin": ["*"],
+    "origin": ["https://trackingorder-1c98b.web.app", "https://trackingorder-1c98b.firebaseapp.com", "http://localhost:3000", "http://localhost:5173"],
     "method": ["GET", "PUT", "POST", "HEAD"],
     "responseHeader": ["Content-Type", "Content-Length"],
     "maxAgeSeconds": 3600

@@ -83,7 +83,15 @@ const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB per file
 /** Download, decode, parse and group a single CSV file from Storage. */
 async function processOneFile(bucket, batchId, fileName) {
   const filePath = `csv-imports/${batchId}/${fileName}`;
-  const [buffer] = await bucket.file(filePath).download();
+  let buffer;
+  try {
+    [buffer] = await bucket.file(filePath).download();
+  } catch (err) {
+    if (err.code === 404 || err.message?.includes('No such object')) {
+      throw new Error(`File not found: ${fileName}. CSV files expire after 24h — please re-upload.`);
+    }
+    throw err;
+  }
 
   if (buffer.length > MAX_FILE_SIZE) {
     throw new Error(`File too large (${(buffer.length / 1024 / 1024).toFixed(1)}MB, max 50MB)`);

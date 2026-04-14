@@ -12,8 +12,9 @@ import {ImportIcon} from '@shopify/polaris-icons';
 import {useSearchParams} from 'react-router-dom';
 import {api} from '../helpers/api';
 import {uploadCsvFiles} from '../helpers/storage-upload';
+import {useAuth} from '../context/AuthContext';
 import {usePermittedStores} from '../hooks/usePermittedStores';
-import useImportProgress from '../hooks/useImportProgress';
+import useImportProgressAllStores from '../hooks/useImportProgressAllStores';
 import ProductsTableSection from './products/ProductsTableSection';
 import ImportProgressCard from './embed-products/ImportProgressCard';
 import UploadCsvModal from './products/UploadCsvModal';
@@ -63,43 +64,63 @@ export default function Products() {
   const [overwriteExisting, setOverwriteExisting] = useState(true);
   const [importProgress, setImportProgress] = useState(null);
 
-  // Real-time import progress (tracks active imports for selected store)
-  const {importHistory} = useImportProgress({storeId: selectedStore});
-  const [lastCompletedId, setLastCompletedId] = useState(null);
+  // Real-time import progress across all stores for this user
+  const {user} = useAuth();
+  const {importHistory} = useImportProgressAllStores({userId: user?.id});
+  const [completedIds, setCompletedIds] = useState(new Set());
 
+  // Aggregate all active import jobs into 1 progress card
   useEffect(() => {
     if (!importHistory.length) return;
-    const latest = importHistory[0];
 
-    if (latest.status === 'pending' || latest.status === 'processing') {
-      const total = latest.totalProducts || 0;
-      const processed = latest.processedProducts || 0;
+    const activeJobs = importHistory.filter(j => j.status === 'pending' || j.status === 'processing');
+    const justCompleted = importHistory.filter(
+      j => (j.status === 'completed' || j.status === 'partial' || j.status === 'failed') && !completedIds.has(j.id)
+    );
+
+    // Show aggregated progress for all active jobs
+    if (activeJobs.length > 0) {
+      const totalProducts = activeJobs.reduce((s, j) => s + (j.totalProducts || 0), 0);
+      const processed = activeJobs.reduce((s, j) => s + (j.processedProducts || 0), 0);
+      const totalVariants = activeJobs.reduce((s, j) => s + (j.totalVariants || 0), 0);
+      const processedVariants = activeJobs.reduce((s, j) => s + (j.processedVariants || 0), 0);
+      const success = activeJobs.reduce((s, j) => s + (j.successCount || 0), 0);
+      const failed = activeJobs.reduce((s, j) => s + (j.failedCount || 0), 0);
+      const storeNames = [...new Set(activeJobs.map(j => j.storeName))].join(', ');
+
       setImportProgress({
-        jobId: latest.id,
-        status: latest.status,
-        fileName: latest.fileName,
-        totalProducts: total,
-        totalVariants: latest.totalVariants || 0,
-        processedProducts: processed,
-        processedVariants: latest.processedVariants || 0,
-        successCount: latest.successCount || 0,
-        failedCount: latest.failedCount || 0,
-        completionPercentage: total > 0 ? Math.round((processed / total) * 100) : 0
+        status: 'processing',
+        fileName: `${storeNames} (${activeJobs.length} job${activeJobs.length > 1 ? 's' : ''})`,
+        totalProducts, processedProducts: processed,
+        totalVariants, processedVariants,
+        successCount: success, failedCount: failed,
+        completionPercentage: totalProducts > 0 ? Math.round((processed / totalProducts) * 100) : 0
       });
+    } else {
+      setImportProgress(null);
     }
 
-    const isComplete = latest.status === 'completed' || latest.status === 'partial' || latest.status === 'failed';
-    if (isComplete && lastCompletedId !== latest.id) {
-      setLastCompletedId(latest.id);
-      setTimeout(() => setImportProgress(null), 3000);
+    // Handle newly completed jobs
+    if (justCompleted.length > 0) {
+      const newIds = new Set(completedIds);
+      let totalSuccess = 0, totalFailed = 0;
+      const storeResults = [];
 
-      if (latest.status === 'completed') {
-        setSuccessMessage(`Import complete: ${latest.successCount || 0} products imported successfully.`);
-      } else if (latest.status === 'failed') {
-        const errMsg = latest.error || latest.statusMessage || `${latest.failedCount || 0} products could not be imported`;
+      for (const job of justCompleted) {
+        newIds.add(job.id);
+        totalSuccess += job.successCount || 0;
+        totalFailed += job.failedCount || 0;
+        storeResults.push(`${job.storeName}: ${job.successCount || 0} success${job.failedCount ? `, ${job.failedCount} failed` : ''}`);
+      }
+
+      setCompletedIds(newIds);
+
+      const allFailed = justCompleted.every(j => j.status === 'failed');
+      if (allFailed) {
+        const errMsg = justCompleted[0].error || justCompleted[0].statusMessage || 'Import failed';
         setError(`Import failed: ${errMsg}`);
       } else {
-        setSuccessMessage(`Import partial: ${latest.successCount || 0} success, ${latest.failedCount || 0} failed.`);
+        setSuccessMessage(`Import complete: ${totalSuccess} products imported. ${storeResults.join(' | ')}`);
       }
       fetchProducts(null);
     }

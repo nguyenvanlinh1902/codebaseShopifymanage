@@ -1,101 +1,117 @@
 /**
- * Background handler: Process entire import job from PubSub
- * Uses Shopify Bulk Operations API with up to 5 concurrent ops (API 2026-04).
+ * Background handler: Process import jobs from PubSub.
+ * Multi-store: reads products once from Storage, runs Bulk Operations per store sequentially.
+ * Each store uses up to 5 concurrent bulk ops (API 2026-04).
  */
 
 import {ImportHistoryRepository} from '../../repositories/importHistoryRepository.js';
 import {StoreRepository} from '../../repositories/storeRepository.js';
 import {ShopifyService} from '../../services/shopifyService.js';
 import {runConcurrentBulkImport} from '../../services/shopify-bulk-import-service.js';
+import {readAndMergeCsvFiles} from '../../helpers/storage-csv-reader.js';
 
 const importHistoryRepo = new ImportHistoryRepository();
 const storeRepo = new StoreRepository();
 
 /**
- * Process product import from PubSub message via Bulk Operations API.
- * Splits products into up to 5 chunks and runs them concurrently.
+ * Entry point from PubSub trigger.
  */
 export async function processProductImport(messageData) {
   const data = messageData.message.json;
-  const {importId, storeId, storeName, shopDomain} = data;
+  const {importJobs, batchId, fileNames} = data;
 
-  // Read accessToken from Firestore (never sent via PubSub for security)
+  // Load products from Storage CSV or Firestore subcollection (legacy)
+  let products;
+  if (batchId && fileNames?.length) {
+    const result = await readAndMergeCsvFiles(batchId, fileNames);
+    products = result.mergedProducts;
+    if (result.errors?.length) {
+      console.warn(`[import] ${result.errors.length} file(s) failed to parse`);
+    }
+  } else if (data.importId) {
+    products = await importHistoryRepo.getImportProducts(data.importId);
+  }
+
+  if (!products?.length) {
+    const jobs = importJobs || [{importId: data.importId}];
+    for (const job of jobs) {
+      await importHistoryRepo.markFailed(job.importId, 'No products found. CSV files may have expired — please re-upload.');
+    }
+    return;
+  }
+
+  const jobs = importJobs || [{
+    importId: data.importId, storeId: data.storeId, storeName: data.storeName
+  }];
+
+  console.log(`[import] ${products.length} products → ${jobs.length} store(s)`);
+
+  // Process each store sequentially (Bulk Ops only allows 1 set of ops per store at a time)
+  for (const job of jobs) {
+    await processStoreImport(job, products);
+  }
+}
+
+/** Import products to a single store via Bulk Operations (up to 5 concurrent). */
+async function processStoreImport(job, products) {
+  const {importId, storeId, storeName} = job;
+
   const store = await storeRepo.getById(storeId);
-  const accessToken = store?.accessToken;
-
-  if (!accessToken) {
+  if (!store?.accessToken) {
     await importHistoryRepo.markFailed(importId,
-      `Missing access token for ${storeName} (${shopDomain}). Please reinstall the app.`);
+      `Missing access token for ${storeName}. Please reinstall the app.`);
     return;
   }
 
-  const acquired = await importHistoryRepo.acquireLock(importId, 'pubsub');
-  if (!acquired) {
-    console.log(`Import ${importId} already locked, skipping`);
-    return;
-  }
-
-  const shopifyService = new ShopifyService({shopDomain, accessToken});
+  const shopifyService = new ShopifyService({
+    shopDomain: store.shopDomain, accessToken: store.accessToken
+  });
 
   try {
-    // Verify credentials before starting
-    try {
-      await shopifyService.verifyCredentials();
-    } catch (err) {
-      await importHistoryRepo.markFailed(importId,
-        `Cannot connect to ${storeName}: ${err.message}. Please reinstall the app.`);
-      return;
-    }
+    await shopifyService.verifyCredentials();
+  } catch (err) {
+    await importHistoryRepo.markFailed(importId,
+      `Cannot connect to ${storeName}: ${err.message}`);
+    return;
+  }
 
-    // Read products from Firestore
-    const products = await importHistoryRepo.getImportProducts(importId);
-    if (!products?.length) {
-      await importHistoryRepo.markFailed(importId, 'No products found in import job');
-      return;
-    }
+  const total = products.length;
+  console.log(`[import:${importId}] Starting: ${total} products → ${storeName}`);
 
-    const total = products.length;
-    console.log(`[import:${importId}] Starting concurrent bulk import: ${total} products → ${storeName}`);
-    await updateStatus(importId, 'processing', `Importing ${total} products (up to 5 concurrent ops)...`);
+  await importHistoryRepo.updateProgress(importId, {
+    status: 'processing',
+    statusMessage: `Importing ${total} products to ${storeName}...`
+  });
 
-    // Run concurrent bulk operations (up to 5 chunks)
+  try {
     const result = await runConcurrentBulkImport(shopifyService.shopify, products, {
       importId,
       maxConcurrent: 5,
       onChunkProgress: ({chunkIndex, status, objectCount, totalInChunk}) => {
         importHistoryRepo.updateProgress(importId, {
           status: 'processing',
-          statusMessage: `Chunk ${chunkIndex + 1}: ${status} (${objectCount}/${totalInChunk} objects)`
+          processedProducts: objectCount,
+          statusMessage: `Chunk ${chunkIndex + 1}: ${status} (${objectCount}/${totalInChunk})`
         }).catch(() => {});
       }
     });
 
-    // Mark final status
     const {successCount, failedCount, errors} = result;
 
     if (failedCount >= total) {
-      await importHistoryRepo.markFailed(importId, 'All products failed to import', {
+      await importHistoryRepo.markFailed(importId, `All products failed to import to ${storeName}`, {
         failedProductDetails: errors
       });
     } else {
       await importHistoryRepo.markCompleted(importId, {
-        successCount,
-        failedCount,
-        processedProducts: total,
+        successCount, failedCount, processedProducts: total,
         failedProductDetails: errors
       });
     }
 
-    console.log(`[import:${importId}] Done: ${successCount} success, ${failedCount} failed`);
+    console.log(`[import:${importId}] ${storeName}: ${successCount} success, ${failedCount} failed`);
   } catch (error) {
-    console.error(`[import:${importId}] Error:`, error);
-    await importHistoryRepo.markFailed(importId, error.message || 'Unexpected error');
-  } finally {
-    await importHistoryRepo.releaseLock(importId);
+    console.error(`[import:${importId}] ${storeName} error:`, error);
+    await importHistoryRepo.markFailed(importId, `${storeName}: ${error.message}`);
   }
-}
-
-/** Helper: update progress with status message */
-async function updateStatus(importId, status, statusMessage) {
-  await importHistoryRepo.updateProgress(importId, {status, statusMessage});
 }

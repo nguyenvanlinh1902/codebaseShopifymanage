@@ -115,7 +115,7 @@ export default function Collections() {
       id={collection.id}
       key={collection.id}
       position={index}
-      onClick={() => navigate(`/collections/${encodeURIComponent(collection.id)}?store=${selectedStore}`)}
+      onClick={() => navigate(`/collections/${collection.id.split('/').pop()}?store=${selectedStore}`)}
     >
       <IndexTable.Cell>
         <Text fontWeight="semibold">{collection.title}</Text>

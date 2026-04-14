@@ -50,7 +50,7 @@ export default function CollectionSidebar({
 
   useEffect(() => {
     if (!collectionId || !storeId) return;
-    api(`/api/collections/${encodeURIComponent(collectionId)}/publications?storeId=${storeId}`)
+    api(`/api/collections/${collectionId}/publications?storeId=${storeId}`)
       .then(r => r.json())
       .then(result => {
         if (result.success) setPublishedIds(new Set((result.data || []).map(p => p.id)));
@@ -80,7 +80,7 @@ export default function CollectionSidebar({
     }
     try {
       setSavingPublish(true);
-      await api(`/api/collections/${encodeURIComponent(collectionId)}/publish`, {
+      await api(`/api/collections/${collectionId}/publish`, {
         method: 'PUT',
         body: JSON.stringify({
           storeId,

@@ -13,6 +13,11 @@ import * as collectionProductsSvc from '../services/shopify-collection-products-
 const storeRepo = new StoreRepository();
 const adminUserRepo = new AdminUserRepository();
 
+/** Ensure collection ID is a full Shopify GID. Accepts numeric or GID format. */
+function toCollectionGid(id) {
+  return String(id).startsWith('gid://') ? id : `gid://shopify/Collection/${id}`;
+}
+
 async function getPermittedStoreIds(req) {
   if (req.userRole === 'admin') return null;
   const userRecord = await adminUserRepo.getById(req.userId);
@@ -101,7 +106,7 @@ export async function getById(req, res) {
     const {storeId} = req.query;
     await validateStoreAccess(req, storeId);
     const shopify = await getShopify(storeId);
-    const data = await collectionSvc.getCollection(shopify, req.params.id);
+    const data = await collectionSvc.getCollection(shopify, toCollectionGid(req.params.id));
     res.json({success: true, data});
   } catch (error) {
     const status = error.status || 500;
@@ -149,7 +154,7 @@ export async function update(req, res) {
     await validateStoreAccess(req, storeId);
     const shopify = await getShopify(storeId);
     const input = buildCollectionInput(formData);
-    const data = await collectionSvc.updateCollection(shopify, req.params.id, input);
+    const data = await collectionSvc.updateCollection(shopify, toCollectionGid(req.params.id), input);
     res.json({success: true, data});
   } catch (error) {
     const status = error.status || 500;
@@ -164,7 +169,7 @@ export async function remove(req, res) {
     const {storeId} = req.query;
     await validateStoreAccess(req, storeId);
     const shopify = await getShopify(storeId);
-    const data = await collectionSvc.deleteCollection(shopify, req.params.id);
+    const data = await collectionSvc.deleteCollection(shopify, toCollectionGid(req.params.id));
     res.json({success: true, data});
   } catch (error) {
     const status = error.status || 500;
@@ -182,7 +187,7 @@ export async function addProducts(req, res) {
     }
     await validateStoreAccess(req, storeId);
     const shopify = await getShopify(storeId);
-    const data = await collectionProductsSvc.addProductsToCollection(shopify, req.params.id, productIds);
+    const data = await collectionProductsSvc.addProductsToCollection(shopify, toCollectionGid(req.params.id), productIds);
     res.json({success: true, data});
   } catch (error) {
     const status = error.status || 500;
@@ -200,7 +205,7 @@ export async function removeProducts(req, res) {
     }
     await validateStoreAccess(req, storeId);
     const shopify = await getShopify(storeId);
-    const data = await collectionProductsSvc.removeProductsFromCollection(shopify, req.params.id, productIds);
+    const data = await collectionProductsSvc.removeProductsFromCollection(shopify, toCollectionGid(req.params.id), productIds);
     res.json({success: true, data});
   } catch (error) {
     const status = error.status || 500;
@@ -283,7 +288,7 @@ export async function getCollectionPublications(req, res) {
     const {storeId} = req.query;
     await validateStoreAccess(req, storeId);
     const shopify = await getShopify(storeId);
-    const data = await collectionSvc.getCollectionPublications(shopify, req.params.id);
+    const data = await collectionSvc.getCollectionPublications(shopify, toCollectionGid(req.params.id));
     res.json({success: true, data});
   } catch (error) {
     const status = error.status || 500;
@@ -298,8 +303,8 @@ export async function updatePublishing(req, res) {
     const {storeId, publishIds, unpublishIds} = req.body;
     await validateStoreAccess(req, storeId);
     const shopify = await getShopify(storeId);
-    if (publishIds?.length) await collectionSvc.publishCollection(shopify, req.params.id, publishIds);
-    if (unpublishIds?.length) await collectionSvc.unpublishCollection(shopify, req.params.id, unpublishIds);
+    if (publishIds?.length) await collectionSvc.publishCollection(shopify, toCollectionGid(req.params.id), publishIds);
+    if (unpublishIds?.length) await collectionSvc.unpublishCollection(shopify, toCollectionGid(req.params.id), unpublishIds);
     res.json({success: true});
   } catch (error) {
     const status = error.status || 500;

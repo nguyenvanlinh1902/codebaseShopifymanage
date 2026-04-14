@@ -54,7 +54,7 @@ export default function CollectionDetail() {
   const fetchCollection = async () => {
     try {
       setLoading(true);
-      const res = await api(`/api/collections/${encodeURIComponent(id)}?storeId=${storeId}`);
+      const res = await api(`/api/collections/${id}?storeId=${storeId}`);
       const result = await res.json();
       if (result.success && result.data) {
         const c = result.data;
@@ -103,7 +103,7 @@ export default function CollectionDetail() {
       const body = {storeId, ...formData};
       const res = isNew
         ? await api('/api/collections/', {method: 'POST', body: JSON.stringify(body)})
-        : await api(`/api/collections/${encodeURIComponent(id)}`, {
+        : await api(`/api/collections/${id}`, {
             method: 'PUT',
             body: JSON.stringify(body)
           });
@@ -111,7 +111,8 @@ export default function CollectionDetail() {
       if (result.success) {
         localStorage.setItem(STORE_HISTORY_KEY, storeId);
         if (isNew && result.data?.id) {
-          navigate(`/collections/${encodeURIComponent(result.data.id)}?store=${storeId}`, {replace: true});
+          const newId = result.data.id?.split('/').pop() || result.data.id;
+          navigate(`/collections/${newId}?store=${storeId}`, {replace: true});
         } else {
           navigate(`/collections?store=${storeId}`);
         }
@@ -128,7 +129,7 @@ export default function CollectionDetail() {
   const handleDelete = async () => {
     try {
       setDeleting(true);
-      const res = await api(`/api/collections/${encodeURIComponent(id)}?storeId=${storeId}`, {
+      const res = await api(`/api/collections/${id}?storeId=${storeId}`, {
         method: 'DELETE'
       });
       const result = await res.json();

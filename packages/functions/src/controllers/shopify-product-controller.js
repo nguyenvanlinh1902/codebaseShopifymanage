@@ -79,19 +79,27 @@ export async function listCollections(req, res) {
     const {storeId, query} = req.query;
     await validateStoreAccess(req, storeId);
     const shopify = await getShopify(storeId);
-    const q = query ? `title:*${query}*` : '';
+    // Build query — filter custom collections only (smart collections can't be modified)
+    const queryParts = ['collection_type:custom'];
+    if (query) queryParts.push(`title:*${query}*`);
     const result = await shopify.graphql(
       `query listCollections($first: Int!, $query: String) {
-        collections(first: $first, query: $query) {
-          nodes { id title productsCount }
+        collections(first: $first, query: $query, sortKey: TITLE) {
+          nodes {
+            id
+            title
+            productsCount { count }
+            ruleSet { rules { column relation condition } }
+          }
         }
       }`,
-      {first: 50, query: q || null}
+      {first: 50, query: queryParts.join(' ')}
     );
     const collections = (result?.collections?.nodes || []).map(c => ({
       id: c.id,
       title: c.title,
-      productsCount: c.productsCount
+      productsCount: c.productsCount?.count ?? 0,
+      smart: !!(c.ruleSet?.rules?.length)
     }));
     res.json({success: true, data: collections});
   } catch (error) {

@@ -310,11 +310,15 @@ export default function Products() {
       });
       const result = await response.json();
       if (result.success) {
-        const {successCount, failedCount} = result.data;
+        const {successCount, failedCount, skippedCount} = result.data;
+        const parts = [];
+        if (successCount > 0) parts.push(`${successCount} succeeded`);
+        if (skippedCount > 0) parts.push(`${skippedCount} already in collection`);
+        if (failedCount > 0) parts.push(`${failedCount} failed`);
         if (failedCount > 0) {
-          setError(`${successCount} succeeded, ${failedCount} failed to ${label}.`);
+          setError(parts.join(', ') + '.');
         } else {
-          setSuccessMessage(`${successCount} product(s) updated successfully.`);
+          setSuccessMessage(parts.join(', ') + '.');
         }
         clearSelection();
         fetchProducts(cursor);

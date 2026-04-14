@@ -27,7 +27,6 @@ export {
   getSuccessfulImports
 } from './product-import/import-history-routes.js';
 
-export {getProducts, getProductFilterOptions} from './product-import/product-query-routes.js';
 
 // Re-export background processor
 export {processProductImport} from './product-import/process-import-job.js';

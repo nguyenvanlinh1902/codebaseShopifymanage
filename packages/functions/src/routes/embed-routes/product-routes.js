@@ -16,7 +16,6 @@ router.post(
   productImportController.uploadAndImport
 );
 
-router.get('/list', productImportController.getProducts);
 router.get('/template', productImportController.downloadTemplate);
 router.get('/successful-imports', productImportController.getSuccessfulImports);
 router.get('/import-status/:jobId', productImportController.getImportStatus);

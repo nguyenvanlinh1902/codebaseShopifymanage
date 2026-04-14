@@ -8,8 +8,6 @@ router.post('/upload-csv', productImportController.uploadAndImport);
 router.post('/direct-import', directImport);
 router.get('/import-history', productImportController.getImportHistory);
 router.get('/successful-imports', productImportController.getSuccessfulImports);
-router.get('/list', productImportController.getProducts);
-router.get('/filter-options', productImportController.getProductFilterOptions);
 router.get('/template', productImportController.downloadTemplate);
 router.get('/imports/:importId', productImportController.getImportDetails);
 router.post('/imports/:importId/retry', productImportController.retryImport);

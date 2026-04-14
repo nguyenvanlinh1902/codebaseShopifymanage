@@ -23,6 +23,8 @@ import useImportProgressAllStores from '../hooks/useImportProgressAllStores';
 import ProductsTableSection from './products/ProductsTableSection';
 import UploadCsvModal from './products/UploadCsvModal';
 import ImportDetailModal from './embed-products/ImportDetailModal';
+import BulkTagModal from './products/BulkTagModal';
+import BulkCollectionModal from './products/BulkCollectionModal';
 
 const STATUS_TABS = [
   {content: 'All', id: 'all', index: 0},
@@ -44,6 +46,9 @@ const SORT_OPTIONS = [
 
 export default function Products() {
   const {stores, groups, isAdmin} = usePermittedStores();
+  const [bulkLoading, setBulkLoading] = useState(false);
+  const [bulkTagModal, setBulkTagModal] = useState(null); // {mode, productIds, clearSelection}
+  const [bulkCollectionModal, setBulkCollectionModal] = useState(null); // {mode, productIds, clearSelection}
   const [searchParams, setSearchParams] = useSearchParams();
   const {mode, setMode} = useSetIndexFiltersMode();
 
@@ -295,6 +300,70 @@ export default function Products() {
     }
   };
 
+  const executeBulkApi = useCallback(async (body, label, clearSelection) => {
+    try {
+      setBulkLoading(true);
+      setError(null);
+      const response = await api('/api/shopify-products/bulk-action', {
+        method: 'POST',
+        body: JSON.stringify({storeId: selectedStore, ...body})
+      });
+      const result = await response.json();
+      if (result.success) {
+        const {successCount, failedCount} = result.data;
+        if (failedCount > 0) {
+          setError(`${successCount} succeeded, ${failedCount} failed to ${label}.`);
+        } else {
+          setSuccessMessage(`${successCount} product(s) updated successfully.`);
+        }
+        clearSelection();
+        fetchProducts(cursor);
+      } else {
+        setError(result.error || `Failed to ${label} products`);
+      }
+    } catch (err) {
+      setError(err.message || `Failed to ${label} products`);
+    } finally {
+      setBulkLoading(false);
+    }
+  }, [selectedStore, fetchProducts, cursor]);
+
+  const handleBulkAction = useCallback((action, productIds, clearSelection) => {
+    if (!selectedStore || productIds.length === 0) return;
+
+    // Actions that need a modal
+    if (action === 'ADD_TAGS' || action === 'REMOVE_TAGS') {
+      setBulkTagModal({mode: action === 'ADD_TAGS' ? 'add' : 'remove', productIds, clearSelection});
+      return;
+    }
+    if (action === 'ADD_TO_COLLECTION' || action === 'REMOVE_FROM_COLLECTION') {
+      setBulkCollectionModal({mode: action === 'ADD_TO_COLLECTION' ? 'add' : 'remove', productIds, clearSelection});
+      return;
+    }
+
+    // Direct actions with confirmation
+    const actionLabels = {ACTIVE: 'activate', DRAFT: 'set as draft', ARCHIVED: 'archive', DELETE: 'delete'};
+    const label = actionLabels[action] || action;
+    if (!window.confirm(`Are you sure you want to ${label} ${productIds.length} product(s)?`)) return;
+    executeBulkApi({productIds, action}, label, clearSelection);
+  }, [selectedStore, executeBulkApi]);
+
+  const handleBulkTagSubmit = useCallback((tags) => {
+    if (!bulkTagModal) return;
+    const {mode, productIds, clearSelection} = bulkTagModal;
+    const action = mode === 'add' ? 'ADD_TAGS' : 'REMOVE_TAGS';
+    setBulkTagModal(null);
+    executeBulkApi({productIds, action, tags}, `${mode} tags`, clearSelection);
+  }, [bulkTagModal, executeBulkApi]);
+
+  const handleBulkCollectionSubmit = useCallback((collectionId) => {
+    if (!bulkCollectionModal) return;
+    const {mode, productIds, clearSelection} = bulkCollectionModal;
+    const action = mode === 'add' ? 'ADD_TO_COLLECTION' : 'REMOVE_FROM_COLLECTION';
+    setBulkCollectionModal(null);
+    executeBulkApi({productIds, action, collectionId}, `${mode} collection`, clearSelection);
+  }, [bulkCollectionModal, executeBulkApi]);
+
   const storeOptions = [
     {label: 'Select a store', value: ''},
     ...stores.map(s => ({label: `${s.name} (${s.shopDomain})`, value: s.id}))
@@ -338,11 +407,12 @@ export default function Products() {
           />
           <ProductsTableSection
             products={products}
-            loading={loading}
+            loading={bulkLoading || loading}
             pageInfo={pageInfo}
             hasPrev={hasPrev}
             onNextPage={handleNextPage}
             onPrevPage={handlePrevPage}
+            onBulkAction={handleBulkAction}
           />
         </Card>
       </BlockStack>
@@ -410,6 +480,25 @@ export default function Products() {
       </Modal>
 
       <ImportDetailModal detail={detailModal} onClose={() => setDetailModal(null)} />
+
+      <BulkTagModal
+        open={!!bulkTagModal}
+        mode={bulkTagModal?.mode || 'add'}
+        productCount={bulkTagModal?.productIds?.length || 0}
+        loading={bulkLoading}
+        onClose={() => setBulkTagModal(null)}
+        onSubmit={handleBulkTagSubmit}
+      />
+
+      <BulkCollectionModal
+        open={!!bulkCollectionModal}
+        mode={bulkCollectionModal?.mode || 'add'}
+        storeId={selectedStore}
+        productCount={bulkCollectionModal?.productIds?.length || 0}
+        loading={bulkLoading}
+        onClose={() => setBulkCollectionModal(null)}
+        onSubmit={handleBulkCollectionSubmit}
+      />
     </Page>
   );
 }

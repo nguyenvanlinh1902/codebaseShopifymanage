@@ -8,6 +8,7 @@ import {AdminUserRepository} from '../repositories/adminUserRepository.js';
 import {ShopifyService} from '../services/shopifyService.js';
 import {extractStoreIds} from '../utils/store-access.js';
 import {listShopifyProducts} from '../services/shopify-product-list-service.js';
+import {executeBulkAction} from '../services/shopify-product-bulk-service.js';
 
 const storeRepo = new StoreRepository();
 const adminUserRepo = new AdminUserRepository();
@@ -50,6 +51,52 @@ export async function list(req, res) {
   } catch (error) {
     const status = error.status || 500;
     console.error('[shopify-products] list error:', error.message);
+    res.status(status).json({success: false, error: error.message});
+  }
+}
+
+/** POST /api/shopify-products/bulk-action */
+export async function bulkAction(req, res) {
+  try {
+    const {storeId, productIds, action, tags, collectionId} = req.body;
+    if (!storeId || !Array.isArray(productIds) || productIds.length === 0) {
+      return res.status(400).json({success: false, error: 'storeId and productIds are required'});
+    }
+    await validateStoreAccess(req, storeId);
+    const shopify = await getShopify(storeId);
+    const data = await executeBulkAction(shopify, {productIds, action, tags, collectionId});
+    res.json({success: true, data});
+  } catch (error) {
+    const status = error.status || 500;
+    console.error('[shopify-products] bulkAction error:', error.message);
+    res.status(status).json({success: false, error: error.message});
+  }
+}
+
+/** GET /api/shopify-products/collections */
+export async function listCollections(req, res) {
+  try {
+    const {storeId, query} = req.query;
+    await validateStoreAccess(req, storeId);
+    const shopify = await getShopify(storeId);
+    const q = query ? `title:*${query}*` : '';
+    const result = await shopify.graphql(
+      `query listCollections($first: Int!, $query: String) {
+        collections(first: $first, query: $query) {
+          nodes { id title productsCount }
+        }
+      }`,
+      {first: 50, query: q || null}
+    );
+    const collections = (result?.collections?.nodes || []).map(c => ({
+      id: c.id,
+      title: c.title,
+      productsCount: c.productsCount
+    }));
+    res.json({success: true, data: collections});
+  } catch (error) {
+    const status = error.status || 500;
+    console.error('[shopify-products] listCollections error:', error.message);
     res.status(status).json({success: false, error: error.message});
   }
 }

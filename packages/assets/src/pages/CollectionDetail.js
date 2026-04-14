@@ -74,6 +74,8 @@ export default function CollectionDetail() {
             handle: c.handle || ''
           }
         });
+      } else {
+        setError(result.error || 'Failed to load collection');
       }
     } catch (err) {
       setError('Failed to load collection');

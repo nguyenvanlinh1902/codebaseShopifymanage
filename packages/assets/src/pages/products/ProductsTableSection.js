@@ -9,7 +9,8 @@ import {
   Thumbnail,
   Pagination,
   Box,
-  InlineStack
+  InlineStack,
+  useIndexResourceState
 } from '@shopify/polaris';
 import {ImageIcon} from '@shopify/polaris-icons';
 import {useBreakpoints} from '@shopify/polaris';
@@ -23,8 +24,17 @@ function formatInventory(product) {
   return `${total} in stock`;
 }
 
-export default function ProductsTableSection({products, loading, pageInfo, onNextPage, onPrevPage, hasPrev}) {
+export default function ProductsTableSection({
+  products, loading, pageInfo, onNextPage, onPrevPage, hasPrev,
+  onBulkAction
+}) {
   const {smDown} = useBreakpoints();
+  const {
+    selectedResources,
+    allResourcesSelected,
+    handleSelectionChange,
+    clearSelection
+  } = useIndexResourceState(products);
 
   if (loading) return <SkeletonBodyText lines={10} />;
 
@@ -36,13 +46,36 @@ export default function ProductsTableSection({products, loading, pageInfo, onNex
     );
   }
 
+  const handleBulk = (action) => {
+    if (onBulkAction) onBulkAction(action, selectedResources, clearSelection);
+  };
+
+  const promotedBulkActions = [
+    {content: 'Set as active', onAction: () => handleBulk('ACTIVE')},
+    {content: 'Set as draft', onAction: () => handleBulk('DRAFT')}
+  ];
+
+  const bulkActions = [
+    {content: 'Archive products', onAction: () => handleBulk('ARCHIVED')},
+    {content: 'Delete products', destructive: true, onAction: () => handleBulk('DELETE')},
+    {content: 'Add tags', onAction: () => handleBulk('ADD_TAGS')},
+    {content: 'Remove tags', onAction: () => handleBulk('REMOVE_TAGS')},
+    {content: 'Add to collection(s)', onAction: () => handleBulk('ADD_TO_COLLECTION')},
+    {content: 'Remove from collection(s)', onAction: () => handleBulk('REMOVE_FROM_COLLECTION')}
+  ];
+
   const rowMarkup = products.map((product, index) => {
     const status = product.status || 'ACTIVE';
     const label = status.charAt(0) + status.slice(1).toLowerCase();
     const inv = product.totalInventory ?? 0;
 
     return (
-      <IndexTable.Row id={product.id} key={product.id} position={index}>
+      <IndexTable.Row
+        id={product.id}
+        key={product.id}
+        position={index}
+        selected={selectedResources.includes(product.id)}
+      >
         <IndexTable.Cell>
           <InlineStack gap="300" blockAlign="center" wrap={false}>
             <Thumbnail
@@ -74,6 +107,10 @@ export default function ProductsTableSection({products, loading, pageInfo, onNex
         itemCount={products.length}
         selectable
         condensed={smDown}
+        selectedItemsCount={allResourcesSelected ? 'All' : selectedResources.length}
+        onSelectionChange={handleSelectionChange}
+        promotedBulkActions={promotedBulkActions}
+        bulkActions={bulkActions}
         headings={[
           {title: 'Product'},
           {title: 'Status'},

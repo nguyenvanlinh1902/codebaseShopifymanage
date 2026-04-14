@@ -165,6 +165,13 @@ export async function downloadBulkResults(resultUrl) {
   const text = await response.text();
   const lines = text.split('\n').filter(Boolean);
 
+  // Log first line for debugging response format
+  if (lines.length > 0) {
+    console.log(`[bulk-import] Results: ${lines.length} lines, first: ${lines[0].slice(0, 300)}`);
+  } else {
+    console.log('[bulk-import] Results: empty (0 lines)');
+  }
+
   let successCount = 0;
   let failedCount = 0;
   const errors = [];

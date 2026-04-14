@@ -60,6 +60,21 @@ export async function processProductImport(messageData) {
 }
 
 /** Import products to a single store via Bulk Operations (up to 5 concurrent). */
+/** Fetch all publication (sales channel) IDs for the store. */
+async function fetchPublicationIds(shopify) {
+  try {
+    const result = await shopify.graphql(`{
+      publications(first: 50) {
+        nodes { id }
+      }
+    }`);
+    return (result.publications?.nodes || []).map(n => n.id);
+  } catch (err) {
+    console.warn('[import] Failed to fetch publications:', err.message);
+    return [];
+  }
+}
+
 async function processStoreImport(job, products) {
   const {importId, storeId, storeName} = job;
 
@@ -85,6 +100,10 @@ async function processStoreImport(job, products) {
   const total = products.length;
   console.log(`[import:${importId}] Starting: ${total} products → ${storeName}`);
 
+  // Fetch all sales channel IDs for auto-publish
+  const publicationIds = await fetchPublicationIds(shopifyService.shopify);
+  console.log(`[import:${importId}] Publishing to ${publicationIds.length} sales channels`);
+
   await importHistoryRepo.updateProgress(importId, {
     status: 'processing',
     statusMessage: `Importing ${total} products to ${storeName}...`
@@ -94,6 +113,7 @@ async function processStoreImport(job, products) {
     const result = await runConcurrentBulkImport(shopifyService.shopify, products, {
       importId,
       maxConcurrent: 5,
+      publicationIds,
       onChunkProgress: ({chunkIndex, status, objectCount, totalInChunk}) => {
         importHistoryRepo.updateProgress(importId, {
           status: 'processing',

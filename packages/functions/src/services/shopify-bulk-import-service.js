@@ -217,6 +217,7 @@ export async function downloadBulkResults(resultUrl) {
 export async function runConcurrentBulkImport(shopify, products, {
   maxConcurrent = 5,
   importId = '',
+  publicationIds = [],
   onChunkProgress
 } = {}) {
   const chunkCount = Math.min(maxConcurrent, products.length);
@@ -232,7 +233,7 @@ export async function runConcurrentBulkImport(shopify, products, {
   const results = await Promise.allSettled(
     chunks.map((chunk, idx) =>
       delay(idx * 500).then(() =>
-        processChunk(shopify, chunk, idx, importId, onChunkProgress)
+        processChunk(shopify, chunk, idx, importId, onChunkProgress, publicationIds)
       )
     )
   );
@@ -241,11 +242,11 @@ export async function runConcurrentBulkImport(shopify, products, {
 }
 
 /** Process a single chunk through the full bulk import pipeline. */
-async function processChunk(shopify, chunk, chunkIndex, importId, onChunkProgress) {
+async function processChunk(shopify, chunk, chunkIndex, importId, onChunkProgress, publicationIds) {
   const label = `[import:${importId}:chunk${chunkIndex}]`;
 
-  // Build JSONL
-  const jsonl = buildProductJsonl(chunk);
+  // Build JSONL (with publication IDs for auto-publish to sales channels)
+  const jsonl = buildProductJsonl(chunk, {publicationIds});
   const fileSize = Buffer.byteLength(jsonl, 'utf8');
   console.log(`${label} JSONL built: ${chunk.length} products, ${(fileSize / 1024).toFixed(0)}KB`);
 

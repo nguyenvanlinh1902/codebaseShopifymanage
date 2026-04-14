@@ -178,9 +178,17 @@ export async function downloadBulkResults(resultUrl) {
       const userErrors = data.userErrors || [];
       if (userErrors.length > 0) {
         failedCount++;
+        const title = data.product?.title || `Product ${successCount + failedCount}`;
+        const details = userErrors.map(e => ({
+          field: e.field?.join('.') || '',
+          message: e.message || '',
+          code: e.code || ''
+        }));
+        console.error(`[bulk-import] Failed: "${title}" →`, JSON.stringify(details));
         errors.push({
-          title: data.product?.title || `Line ${successCount + failedCount}`,
-          message: userErrors.map(e => `${e.field?.join('.')}: ${e.message}`).join('; ')
+          title,
+          message: details.map(d => `[${d.code}] ${d.field}: ${d.message}`).join('; '),
+          details
         });
       } else {
         successCount++;

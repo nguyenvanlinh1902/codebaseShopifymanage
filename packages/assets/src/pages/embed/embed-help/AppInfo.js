@@ -32,7 +32,7 @@ export default function AppInfo() {
               API Version
             </Text>
             <Text variant="bodySm" fontWeight="medium">
-              2026-01
+              2026-04
             </Text>
           </InlineStack>
         </BlockStack>

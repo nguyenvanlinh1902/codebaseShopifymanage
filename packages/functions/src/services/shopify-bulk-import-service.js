@@ -5,7 +5,8 @@
 import fetch from 'node-fetch';
 import FormData from 'form-data';
 
-export {buildProductJsonl} from './shopify-bulk-product-jsonl-builder.js';
+import {buildProductJsonl} from './shopify-bulk-product-jsonl-builder.js';
+export {buildProductJsonl};
 
 // ─── Staged Upload ────────────────────────────────────────────────────────────
 

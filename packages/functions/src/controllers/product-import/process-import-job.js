@@ -60,42 +60,56 @@ export async function processProductImport(messageData) {
 }
 
 /** Import products to a single store via Bulk Operations (up to 5 concurrent). */
-/** Publish imported products to all sales channels via publishablePublishToCurrentChannel. */
+/** Publish imported products to all sales channels. */
 async function publishProducts(shopify, products, publicationIds, importId) {
-  try {
-    console.log(`[import:${importId}] Publishing ${products.length} products to ${publicationIds.length} channels...`);
-    // Use productSet's handle to find product IDs, then publish
-    // Simpler: just set status to ACTIVE (productSet already does this)
-    // The real publish is via publishablePublish mutation per product per channel
-    for (let i = 0; i < products.length; i += 50) {
-      const batch = products.slice(i, i + 50);
-      await Promise.all(batch.map(async (product) => {
-        if (!product.handle) return;
-        try {
-          // Get product ID by handle
-          const result = await shopify.graphql(`{
-            productByHandle(handle: "${product.handle}") { id }
-          }`);
-          const productId = result.productByHandle?.id;
-          if (!productId) return;
+  let published = 0;
+  let failed = 0;
 
-          // Publish to all channels
-          await Promise.all(publicationIds.map(pubId =>
-            shopify.graphql(`mutation {
-              publishablePublish(id: "${productId}", input: [{publicationId: "${pubId}"}]) {
-                userErrors { field message }
-              }
-            }`).catch(() => {})
-          ));
-        } catch {
-          // Skip publish errors — product was imported successfully
+  console.log(`[import:${importId}] Publishing ${products.length} products to ${publicationIds.length} channels...`);
+
+  for (let i = 0; i < products.length; i += 10) {
+    const batch = products.slice(i, i + 10);
+    await Promise.all(batch.map(async (product) => {
+      if (!product.handle) return;
+      try {
+        // Look up product ID by handle
+        const lookup = await shopify.graphql(`{
+          products(first: 1, query: "handle:${product.handle}") {
+            nodes { id }
+          }
+        }`);
+        const productId = lookup.products?.nodes?.[0]?.id;
+        if (!productId) {
+          console.warn(`[publish] Product not found: ${product.handle}`);
+          return;
         }
-      }));
-    }
-    console.log(`[import:${importId}] Publishing complete`);
-  } catch (err) {
-    console.warn(`[import:${importId}] Publishing failed (non-blocking):`, err.message);
+
+        // Publish to all channels at once
+        const pubInput = publicationIds.map(id => ({publicationId: id}));
+        const result = await shopify.graphql(`
+          mutation publishProduct($id: ID!, $input: [PublicationInput!]!) {
+            publishablePublish(id: $id, input: $input) {
+              publishable { ... on Product { id } }
+              userErrors { field message }
+            }
+          }
+        `, {id: productId, input: pubInput});
+
+        const errors = result.publishablePublish?.userErrors || [];
+        if (errors.length > 0) {
+          console.warn(`[publish] ${product.handle}: ${errors.map(e => e.message).join('; ')}`);
+          failed++;
+        } else {
+          published++;
+        }
+      } catch (err) {
+        console.warn(`[publish] ${product.handle} error: ${err.message}`);
+        failed++;
+      }
+    }));
   }
+
+  console.log(`[import:${importId}] Publishing done: ${published} ok, ${failed} failed`);
 }
 
 /** Fetch all publication (sales channel) IDs for the store. */

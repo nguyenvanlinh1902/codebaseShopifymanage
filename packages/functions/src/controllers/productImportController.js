@@ -1,22 +1,12 @@
 /**
  * Product Import Controller
- * Main controller file - delegates to modular handlers.
- * Supports two flows:
- *   - Storage flow (new): batchId + fileNames → read from Firebase Storage
- *   - Legacy flow: csvFiles inline in JSON body
+ * Upload CSVs to Firebase Storage → worker reads & imports via Bulk Operations.
  */
 
 import {ImportHistoryRepository} from '../repositories/importHistoryRepository.js';
 import {AdminUserRepository} from '../repositories/adminUserRepository.js';
 import {getOrCreateTopic, publishMessage} from '../helpers/pubsubHelper.js';
-import {
-  validateUploadInput,
-  buildFilesToProcess,
-  validateAndFetchStores,
-  parseAndValidateCsvFiles,
-  getCsvTemplate
-} from './product-import/csv-upload-handler.js';
-import {readAndMergeCsvFiles} from '../helpers/storage-csv-reader.js';
+import {validateAndFetchStores, getCsvTemplate} from './product-import/csv-upload-handler.js';
 import {extractStoreIds} from '../utils/store-access.js';
 
 // Re-export all route handlers
@@ -47,10 +37,10 @@ export async function uploadAndImport(req, res) {
     const userId = req.userId;
     const isStorageFlow = !!batchId;
 
-    if (isStorageFlow) {
-      return await handleStorageFlow(req, res, {batchId, fileNames, storeIds, storeId, userId, overwriteExisting});
+    if (!batchId) {
+      return res.status(400).json({success: false, error: 'batchId is required. Upload files to Storage first.'});
     }
-    return await handleLegacyFlow(req, res, {storeIds, storeId, csvData, fileName, csvFiles, userId});
+    return await handleStorageFlow(req, res, {batchId, fileNames, storeIds, storeId, userId, overwriteExisting});
   } catch (error) {
     console.error('Upload and import error:', error);
     return res.status(500).json({success: false, error: error.message});
@@ -107,107 +97,7 @@ async function handleStorageFlow(req, res, {batchId, fileNames, storeIds, storeI
   });
 }
 
-/** Legacy flow: CSV data inline in JSON body (backward compat). */
-async function handleLegacyFlow(req, res, {storeIds, storeId, csvData, fileName, csvFiles, userId}) {
-  const targetStoreIds = storeIds || (storeId ? [storeId] : []);
-  const filesToProcess = buildFilesToProcess(csvData, fileName, csvFiles);
-  const inputError = validateUploadInput(userId, targetStoreIds, filesToProcess);
-  if (inputError) return res.status(400).json({success: false, error: inputError});
-
-  if (req.userRole !== 'admin') {
-    const userRecord = await adminUserRepo.getById(userId);
-    const assignedIds = extractStoreIds(userRecord?.assignedStores);
-    const unauthorized = targetStoreIds.filter(id => !assignedIds.includes(id));
-    if (unauthorized.length > 0) {
-      return res.status(403).json({success: false, error: 'Access denied to one or more stores'});
-    }
-  }
-
-  const {stores, error: storeError} = await validateAndFetchStores(targetStoreIds);
-  if (storeError) return res.status(404).json({success: false, error: storeError});
-
-  const {parsedFiles, fileErrors} = await parseAndValidateCsvFiles(filesToProcess);
-  if (fileErrors.length > 0) {
-    return res.status(400).json({success: false, error: 'File validation failed', fileErrors});
-  }
-  if (parsedFiles.length === 0) {
-    return res.status(400).json({success: false, error: 'No valid files to process'});
-  }
-
-  // Legacy: 1 job per file per store
-  const importResults = [];
-  for (const store of stores) {
-    for (const parsedFile of parsedFiles) {
-      const jobs = await createImportJobs([store], parsedFile.validProducts, {
-        userId, fileNames: [parsedFile.fileName], invalidProducts: parsedFile.invalidProducts
-      });
-      importResults.push(...jobs);
-    }
-  }
-
-  return res.json({
-    success: true,
-    message: `Import started. ${parsedFiles.length} file(s) queued for ${stores.length} store(s).`,
-    data: {importResults, storesCount: stores.length, filesCount: parsedFiles.length}
-  });
-}
-
-/** Create import jobs and publish PubSub message.
- * No products saved to Firestore — worker reads directly from Storage CSV files.
- * 1 PubSub message with all store jobs + batchId for Storage reference.
- */
-async function createImportJobs(stores, products, {userId, fileNames, invalidProducts = [], overwriteExisting, batchId}) {
-  const results = [];
-  const totalVariants = products.reduce((sum, p) => sum + (p.variants?.length || 1), 0);
-
-  for (const store of stores) {
-    const importJob = await importHistoryRepo.create({
-      userId,
-      batchId: batchId || null,
-      storeId: store.id,
-      storeName: store.name,
-      shopDomain: store.shopDomain,
-      fileName: fileNames.join(', '),
-      totalProducts: products.length,
-      totalVariants,
-      processedProducts: 0,
-      successCount: 0,
-      failedCount: 0,
-      status: 'pending',
-      overwriteExisting: overwriteExisting !== false,
-      invalidProducts: invalidProducts.slice(0, 100),
-      totalInvalidProducts: invalidProducts.length,
-      failedProductDetails: []
-    });
-
-    results.push({
-      storeId: store.id,
-      storeName: store.name,
-      importId: importJob.id,
-      totalProducts: products.length,
-      invalidProducts: invalidProducts.length
-    });
-  }
-
-  // 1 PubSub message → worker reads CSV from Storage via batchId
-  await getOrCreateTopic(PRODUCT_IMPORT_TOPIC);
-  await publishMessage(PRODUCT_IMPORT_TOPIC, {
-    importJobs: results.map(r => ({importId: r.importId, storeId: r.storeId, storeName: r.storeName})),
-    batchId,
-    fileNames,
-    userId,
-    totalProducts: products.length,
-    overwriteExisting: overwriteExisting !== false
-  });
-
-  await Promise.all(results.map(r =>
-    importHistoryRepo.updateProgress(r.importId, {status: 'processing'})
-  ));
-
-  return results;
-}
-
-/** Lightweight: create import jobs from batch metadata only (no CSV parsing).
+/** Create import jobs from batch metadata (no CSV parsing).
  * Worker will read + parse CSVs from Storage.
  */
 async function createImportJobsFromBatch(stores, {userId, fileNames, batchId, overwriteExisting}) {
@@ -315,6 +205,6 @@ export async function retryImport(req, res) {
     });
   } catch (error) {
     console.error('Retry import error:', error);
-    return res.status(500).json({success: false, error: error.message, stack: error.stack});
+    return res.status(500).json({success: false, error: error.message});
   }
 }

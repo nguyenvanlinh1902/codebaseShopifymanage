@@ -6,7 +6,7 @@ service firebase.storage {
     match /csv-imports/{batchId}/{fileName} {
       allow read: if false;
       allow write: if request.resource.size < 52428800
-                   && request.resource.contentType.matches('text/.*');
+                   && request.resource.contentType == 'text/csv';
     }
 
     // Themes: public read (existing behavior)

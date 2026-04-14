@@ -390,12 +390,13 @@ export default function Products() {
                         </Text>
                       </BlockStack>
                       <InlineStack gap="200" blockAlign="center">
-                        {(imp.successCount || 0) > 0 && <Badge tone="success">{imp.successCount} success</Badge>}
+                        <Text variant="bodySm">{imp.totalProducts || 0} products</Text>
+                        {(imp.successCount || 0) > 0 && <Badge tone="success">{imp.successCount} ok</Badge>}
                         {(imp.failedCount || 0) > 0 && <Badge tone="critical">{imp.failedCount} failed</Badge>}
                         <Badge tone={imp.status === 'completed' ? 'success' : imp.status === 'failed' ? 'critical' : 'info'}>{imp.status}</Badge>
-                        {(imp.failedCount || 0) > 0 && (
+                        {(imp.status === 'failed' || (imp.failedCount || 0) > 0) && (
                           <Button size="slim" onClick={() => { setHistoryModalOpen(false); setDetailModal(imp); }}>
-                            View errors
+                            Details
                           </Button>
                         )}
                       </InlineStack>

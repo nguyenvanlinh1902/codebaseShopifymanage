@@ -111,13 +111,19 @@ export default function ImportDetailModal({detail, onClose}) {
               </>
             )}
 
-            {detail.failedProductDetails?.length > 0 && (
+            {detail.failedProductDetails?.length > 0 ? (
               <>
                 <Divider />
                 <Text variant="headingSm">Failed Products ({detail.failedProductDetails.length})</Text>
                 {renderGroupedErrors(detail.failedProductDetails)}
               </>
-            )}
+            ) : (detail.status === 'failed' && (detail.error || detail.statusMessage)) ? (
+              <>
+                <Divider />
+                <Text variant="headingSm">Error</Text>
+                <Text variant="bodySm" tone="critical">{detail.error || detail.statusMessage}</Text>
+              </>
+            ) : null}
 
             {detail.products?.length > 0 && (
               <>

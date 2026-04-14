@@ -181,6 +181,7 @@ async function createImportJobs(stores, products, {userId, fileNames, invalidPro
   for (const store of stores) {
     const importJob = await importHistoryRepo.create({
       userId,
+      batchId: batchId || null,
       storeId: store.id,
       storeName: store.name,
       shopDomain: store.shopDomain,
@@ -234,5 +235,58 @@ export async function downloadTemplate(req, res) {
   } catch (error) {
     console.error('Download template error:', error);
     return res.status(500).json({success: false, error: error.message});
+  }
+}
+
+/**
+ * Retry a failed import — re-trigger processing directly (no PubSub).
+ * Useful for debugging: calls processProductImport synchronously and returns result.
+ */
+/**
+ * Retry a failed import — calls processProductImport directly (no PubSub).
+ * Returns detailed error info for debugging.
+ */
+export async function retryImport(req, res) {
+  try {
+    const {importId} = req.params;
+    const job = await importHistoryRepo.getById(importId);
+    if (!job) return res.status(404).json({success: false, error: 'Import not found'});
+
+    // Reset status
+    await importHistoryRepo.updateProgress(importId, {
+      status: 'pending', processedProducts: 0, successCount: 0, failedCount: 0,
+      statusMessage: 'Retrying...'
+    });
+
+    const {processProductImport} = await import('./product-import/process-import-job.js');
+
+    // Reconstruct PubSub-like message
+    await processProductImport({
+      message: {
+        json: {
+          importJobs: [{importId, storeId: job.storeId, storeName: job.storeName}],
+          batchId: job.batchId || null,
+          fileNames: job.fileName?.split(', ') || [],
+          userId: job.userId,
+          totalProducts: job.totalProducts,
+          overwriteExisting: job.overwriteExisting !== false
+        }
+      }
+    });
+
+    const updated = await importHistoryRepo.getById(importId);
+    return res.json({
+      success: true,
+      data: {
+        status: updated.status,
+        successCount: updated.successCount,
+        failedCount: updated.failedCount,
+        error: updated.error,
+        failedProductDetails: updated.failedProductDetails?.slice(0, 10)
+      }
+    });
+  } catch (error) {
+    console.error('Retry import error:', error);
+    return res.status(500).json({success: false, error: error.message, stack: error.stack});
   }
 }

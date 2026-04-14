@@ -12,5 +12,6 @@ router.get('/list', productImportController.getProducts);
 router.get('/filter-options', productImportController.getProductFilterOptions);
 router.get('/template', productImportController.downloadTemplate);
 router.get('/imports/:importId', productImportController.getImportDetails);
+router.post('/imports/:importId/retry', productImportController.retryImport);
 
 export default router;

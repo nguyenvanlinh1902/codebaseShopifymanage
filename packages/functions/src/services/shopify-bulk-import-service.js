@@ -229,7 +229,6 @@ export async function runConcurrentBulkImport(shopify, products, {
 async function processChunk(shopify, chunk, chunkIndex, importId, onChunkProgress) {
   const label = `[import:${importId}:chunk${chunkIndex}]`;
 
-  try {
   // Build JSONL
   const jsonl = buildProductJsonl(chunk);
   const fileSize = Buffer.byteLength(jsonl, 'utf8');

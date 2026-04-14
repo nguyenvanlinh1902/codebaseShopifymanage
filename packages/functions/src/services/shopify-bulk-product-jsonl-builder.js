@@ -5,7 +5,7 @@
 
 const MAX_VARIANTS_PER_PRODUCT = 2000; // Shopify limit is 2048, keep margin
 
-function buildProductSetInput(productData, {publicationIds} = {}) {
+function buildProductSetInput(productData) {
   let csvVariants = productData.variants?.length > 0 ? productData.variants : [productData];
   const optionNames = [productData.option1Name, productData.option2Name, productData.option3Name].filter(Boolean);
 
@@ -95,20 +95,13 @@ function buildProductSetInput(productData, {publicationIds} = {}) {
     return variant;
   });
 
-  // Publish to all sales channels
-  if (publicationIds?.length > 0) {
-    input.productPublications = publicationIds.map(id => ({publicationId: id}));
-  }
-
   return input;
 }
 
 /**
  * Convert array of parsed CSV products to JSONL string.
- * @param {Array} products
- * @param {Object} options
- * @param {string[]} options.publicationIds - Sales channel IDs to publish to
+ * Each line is {"input": <ProductSetInput>}.
  */
-export function buildProductJsonl(products, {publicationIds} = {}) {
-  return products.map(p => JSON.stringify({input: buildProductSetInput(p, {publicationIds})})).join('\n');
+export function buildProductJsonl(products) {
+  return products.map(p => JSON.stringify({input: buildProductSetInput(p)})).join('\n');
 }

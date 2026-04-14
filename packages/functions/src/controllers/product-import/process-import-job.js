@@ -60,6 +60,44 @@ export async function processProductImport(messageData) {
 }
 
 /** Import products to a single store via Bulk Operations (up to 5 concurrent). */
+/** Publish imported products to all sales channels via publishablePublishToCurrentChannel. */
+async function publishProducts(shopify, products, publicationIds, importId) {
+  try {
+    console.log(`[import:${importId}] Publishing ${products.length} products to ${publicationIds.length} channels...`);
+    // Use productSet's handle to find product IDs, then publish
+    // Simpler: just set status to ACTIVE (productSet already does this)
+    // The real publish is via publishablePublish mutation per product per channel
+    for (let i = 0; i < products.length; i += 50) {
+      const batch = products.slice(i, i + 50);
+      await Promise.all(batch.map(async (product) => {
+        if (!product.handle) return;
+        try {
+          // Get product ID by handle
+          const result = await shopify.graphql(`{
+            productByHandle(handle: "${product.handle}") { id }
+          }`);
+          const productId = result.productByHandle?.id;
+          if (!productId) return;
+
+          // Publish to all channels
+          await Promise.all(publicationIds.map(pubId =>
+            shopify.graphql(`mutation {
+              publishablePublish(id: "${productId}", input: [{publicationId: "${pubId}"}]) {
+                userErrors { field message }
+              }
+            }`).catch(() => {})
+          ));
+        } catch {
+          // Skip publish errors — product was imported successfully
+        }
+      }));
+    }
+    console.log(`[import:${importId}] Publishing complete`);
+  } catch (err) {
+    console.warn(`[import:${importId}] Publishing failed (non-blocking):`, err.message);
+  }
+}
+
 /** Fetch all publication (sales channel) IDs for the store. */
 async function fetchPublicationIds(shopify) {
   try {
@@ -100,9 +138,9 @@ async function processStoreImport(job, products) {
   const total = products.length;
   console.log(`[import:${importId}] Starting: ${total} products → ${storeName}`);
 
-  // Fetch all sales channel IDs for auto-publish
+  // Fetch all sales channel IDs for auto-publish after import
   const publicationIds = await fetchPublicationIds(shopifyService.shopify);
-  console.log(`[import:${importId}] Publishing to ${publicationIds.length} sales channels`);
+  console.log(`[import:${importId}] Will publish to ${publicationIds.length} sales channels after import`);
 
   await importHistoryRepo.updateProgress(importId, {
     status: 'processing',
@@ -113,7 +151,6 @@ async function processStoreImport(job, products) {
     const result = await runConcurrentBulkImport(shopifyService.shopify, products, {
       importId,
       maxConcurrent: 5,
-      publicationIds,
       onChunkProgress: ({chunkIndex, status, objectCount, totalInChunk}) => {
         importHistoryRepo.updateProgress(importId, {
           status: 'processing',
@@ -137,6 +174,10 @@ async function processStoreImport(job, products) {
         failedProductDetails: errors
       });
     } else {
+      // Auto-publish to all sales channels (productSet doesn't support publications inline)
+      if (publicationIds.length > 0 && successCount > 0) {
+        await publishProducts(shopifyService.shopify, products, publicationIds, importId);
+      }
       await importHistoryRepo.markCompleted(importId, {
         successCount, failedCount, processedProducts: total,
         failedProductDetails: errors

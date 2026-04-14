@@ -198,7 +198,13 @@ export async function downloadBulkResults(resultUrl) {
     }
   }
 
-  return {successCount, failedCount, errors};
+  // Detect daily variant throttle
+  const isVariantThrottled = errors.some(e =>
+    e.message?.includes('Daily variant creation limit') ||
+    e.details?.some(d => d.code === 'VARIANT_THROTTLE_EXCEEDED')
+  );
+
+  return {successCount, failedCount, errors, isVariantThrottled};
 }
 
 // ─── Concurrent Bulk Import ─────────────────────────────────────────────────

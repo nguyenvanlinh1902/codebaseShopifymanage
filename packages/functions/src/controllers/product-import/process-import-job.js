@@ -103,9 +103,16 @@ async function processStoreImport(job, products) {
       }
     });
 
-    const {successCount, failedCount, errors} = result;
+    const {successCount, failedCount, errors, isVariantThrottled} = result;
 
-    if (failedCount >= total) {
+    if (isVariantThrottled) {
+      const msg = `Daily variant limit reached for ${storeName}. ${successCount} imported, ${failedCount} remaining. Retry after midnight UTC.`;
+      console.warn(`[import:${importId}] ${msg}`);
+      await importHistoryRepo.markFailed(importId, msg, {
+        failedProductDetails: errors,
+        variantThrottled: true
+      });
+    } else if (failedCount >= total) {
       await importHistoryRepo.markFailed(importId, `All products failed to import to ${storeName}`, {
         failedProductDetails: errors
       });

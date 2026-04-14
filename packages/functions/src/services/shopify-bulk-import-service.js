@@ -76,7 +76,7 @@ export async function uploadToStagedTarget(target, jsonlContent) {
 // ─── Bulk Mutation ────────────────────────────────────────────────────────────
 
 const PRODUCT_SET_MUTATION_STR =
-  'mutation productSet($input: ProductSetInput!) { productSet(input: $input, synchronous: false) { product { id title } userErrors { field message code } } }';
+  'mutation productSet($input: ProductSetInput!, $identifier: ProductSetIdentifiers) { productSet(input: $input, identifier: $identifier, synchronous: false) { product { id title } userErrors { field message code } } }';
 
 const RUN_BULK_MUTATION = `
   mutation bulkOperationRunMutation($mutation: String!, $stagedUploadPath: String!) {

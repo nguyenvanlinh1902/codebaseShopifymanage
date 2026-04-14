@@ -100,8 +100,17 @@ function buildProductSetInput(productData) {
 
 /**
  * Convert array of parsed CSV products to JSONL string.
- * Each line is {"input": <ProductSetInput>}.
+ * Each line: {"input": <ProductSetInput>, "identifier": {"handle": "..."}}
+ * The identifier enables upsert — update existing product if handle matches.
  */
 export function buildProductJsonl(products) {
-  return products.map(p => JSON.stringify({input: buildProductSetInput(p)})).join('\n');
+  return products.map(p => {
+    const input = buildProductSetInput(p);
+    const line = {input};
+    // Add identifier for upsert by handle (update if exists, create if not)
+    if (p.handle) {
+      line.identifier = {handle: p.handle};
+    }
+    return JSON.stringify(line);
+  }).join('\n');
 }

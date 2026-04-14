@@ -6,7 +6,12 @@ import {
   Select,
   IndexFilters,
   useSetIndexFiltersMode,
-  Banner
+  Banner,
+  Modal,
+  Badge,
+  Text,
+  InlineStack,
+  Button
 } from '@shopify/polaris';
 import {ImportIcon} from '@shopify/polaris-icons';
 import {useSearchParams} from 'react-router-dom';
@@ -17,6 +22,7 @@ import {usePermittedStores} from '../hooks/usePermittedStores';
 import useImportProgressAllStores from '../hooks/useImportProgressAllStores';
 import ProductsTableSection from './products/ProductsTableSection';
 import UploadCsvModal from './products/UploadCsvModal';
+import ImportDetailModal from './embed-products/ImportDetailModal';
 
 const STATUS_TABS = [
   {content: 'All', id: 'all', index: 0},
@@ -61,6 +67,9 @@ export default function Products() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadingFileName, setUploadingFileName] = useState('');
   const [overwriteExisting, setOverwriteExisting] = useState(true);
+  const [historyModalOpen, setHistoryModalOpen] = useState(false);
+  const [detailModal, setDetailModal] = useState(null);
+
   // Real-time import completion notification
   const {user} = useAuth();
   const {importHistory} = useImportProgressAllStores({userId: user?.id});
@@ -296,6 +305,7 @@ export default function Products() {
       title="Products"
       fullWidth
       primaryAction={{content: 'Import', icon: ImportIcon, onAction: () => setUploadModalOpen(true)}}
+      secondaryActions={[{content: 'Import History', onAction: () => setHistoryModalOpen(true)}]}
     >
       <BlockStack gap="400">
         {error && <Banner tone="critical" onDismiss={() => setError(null)}>{error}</Banner>}
@@ -356,6 +366,49 @@ export default function Products() {
         overwriteExisting={overwriteExisting}
         onOverwriteChange={setOverwriteExisting}
       />
+
+      <Modal
+        open={historyModalOpen}
+        onClose={() => setHistoryModalOpen(false)}
+        title="Import History"
+        secondaryActions={[{content: 'Close', onAction: () => setHistoryModalOpen(false)}]}
+        large
+      >
+        <Modal.Section>
+          {importHistory.length === 0 ? (
+            <Text tone="subdued">No import history yet.</Text>
+          ) : (
+            <BlockStack gap="300">
+              {importHistory.map(imp => (
+                <Card key={imp.id}>
+                  <BlockStack gap="200">
+                    <InlineStack align="space-between" blockAlign="center">
+                      <BlockStack gap="100">
+                        <Text variant="bodyMd" fontWeight="semibold">{imp.storeName} — {imp.fileName || 'Unknown'}</Text>
+                        <Text variant="bodySm" tone="subdued">
+                          {imp.createdAt ? new Date(imp.createdAt.seconds ? imp.createdAt.seconds * 1000 : imp.createdAt).toLocaleString() : '-'}
+                        </Text>
+                      </BlockStack>
+                      <InlineStack gap="200" blockAlign="center">
+                        {(imp.successCount || 0) > 0 && <Badge tone="success">{imp.successCount} success</Badge>}
+                        {(imp.failedCount || 0) > 0 && <Badge tone="critical">{imp.failedCount} failed</Badge>}
+                        <Badge tone={imp.status === 'completed' ? 'success' : imp.status === 'failed' ? 'critical' : 'info'}>{imp.status}</Badge>
+                        {(imp.failedCount || 0) > 0 && (
+                          <Button size="slim" onClick={() => { setHistoryModalOpen(false); setDetailModal(imp); }}>
+                            View errors
+                          </Button>
+                        )}
+                      </InlineStack>
+                    </InlineStack>
+                  </BlockStack>
+                </Card>
+              ))}
+            </BlockStack>
+          )}
+        </Modal.Section>
+      </Modal>
+
+      <ImportDetailModal detail={detailModal} onClose={() => setDetailModal(null)} />
     </Page>
   );
 }

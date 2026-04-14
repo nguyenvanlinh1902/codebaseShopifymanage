@@ -6,6 +6,34 @@ function formatTimestamp(ts) {
   return new Date(ts.seconds ? ts.seconds * 1000 : ts).toLocaleString();
 }
 
+/** Group failed products by error message for concise display */
+function renderGroupedErrors(failures) {
+  // Group by error message
+  const groups = {};
+  for (const f of failures) {
+    const msg = f.message || f.error || 'Unknown error';
+    if (!groups[msg]) groups[msg] = [];
+    groups[msg].push(f.title);
+  }
+
+  const entries = Object.entries(groups);
+  return (
+    <BlockStack gap="300">
+      {entries.map(([msg, titles], i) => (
+        <BlockStack key={i} gap="100">
+          <InlineStack gap="200" blockAlign="center">
+            <Badge tone="critical" size="small">{titles.length}x</Badge>
+            <Text variant="bodySm" tone="critical">{msg}</Text>
+          </InlineStack>
+          <Text variant="bodySm" tone="subdued">
+            {titles.length <= 3 ? titles.join(', ') : `${titles.slice(0, 3).join(', ')} +${titles.length - 3} more`}
+          </Text>
+        </BlockStack>
+      ))}
+    </BlockStack>
+  );
+}
+
 export default function ImportDetailModal({detail, onClose}) {
   return (
     <Modal
@@ -86,24 +114,8 @@ export default function ImportDetailModal({detail, onClose}) {
             {detail.failedProductDetails?.length > 0 && (
               <>
                 <Divider />
-                <Text variant="headingSm">Failed Products</Text>
-                <BlockStack gap="200">
-                  {detail.failedProductDetails.slice(0, 50).map((p, i) => (
-                    <InlineStack key={i} gap="200" blockAlign="start">
-                      <Badge tone="critical" size="small">
-                        {i + 1}
-                      </Badge>
-                      <BlockStack gap="0">
-                        <Text variant="bodySm" fontWeight="semibold">
-                          {p.title}
-                        </Text>
-                        <Text variant="bodySm" tone="critical">
-                          {p.error}
-                        </Text>
-                      </BlockStack>
-                    </InlineStack>
-                  ))}
-                </BlockStack>
+                <Text variant="headingSm">Failed Products ({detail.failedProductDetails.length})</Text>
+                {renderGroupedErrors(detail.failedProductDetails)}
               </>
             )}
 

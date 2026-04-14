@@ -69,20 +69,26 @@ async function publishProducts(shopify, products, publicationIds, importId) {
   console.log(`[import:${importId}] Publishing ${products.length} products to ${publicationIds.length} channels...`);
 
   try {
-    // Step 1: Look up all product IDs by handles in one query batch
+    // Step 1: Look up all product IDs by handles
     const handles = products.map(p => p.handle).filter(Boolean);
     const productIds = [];
 
     for (let i = 0; i < handles.length; i += 50) {
       const batch = handles.slice(i, i + 50);
-      const query = batch.map(h => `handle:${h}`).join(' OR ');
-      const result = await shopify.graphql(`{
-        products(first: 50, query: "${query}") {
-          nodes { id }
-        }
-      }`);
+      // Escape quotes in handles and wrap each in quotes for exact match
+      const query = batch.map(h => `handle:${h.replace(/'/g, "\\'")}`).join(' OR ');
+      const result = await shopify.graphql(
+        `query lookupProducts($query: String!) {
+          products(first: 50, query: $query) {
+            nodes { id }
+          }
+        }`,
+        {query}
+      );
       productIds.push(...(result.products?.nodes?.map(n => n.id) || []));
     }
+
+    console.log(`[import:${importId}] Found ${productIds.length}/${handles.length} products for publishing`);
 
     if (productIds.length === 0) {
       console.warn(`[import:${importId}] No products found for publishing`);

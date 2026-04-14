@@ -90,10 +90,10 @@ const RUN_BULK_MUTATION = `
  * Start a bulk productSet mutation.
  * Retries up to 3 times with backoff if another bulk operation is running.
  */
-export async function runBulkMutation(shopify, stagedUploadPath) {
+export async function runBulkMutation(shopify, stagedUploadPath, mutationStr = PRODUCT_SET_MUTATION_STR) {
   for (let attempt = 0; attempt < 3; attempt++) {
     const result = await shopify.graphql(RUN_BULK_MUTATION, {
-      mutation: PRODUCT_SET_MUTATION_STR,
+      mutation: mutationStr,
       stagedUploadPath
     });
 

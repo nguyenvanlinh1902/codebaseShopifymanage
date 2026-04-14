@@ -60,56 +60,60 @@ export async function processProductImport(messageData) {
 }
 
 /** Import products to a single store via Bulk Operations (up to 5 concurrent). */
-/** Publish imported products to all sales channels. */
+/** Publish imported products to all sales channels via bulk mutation. */
 async function publishProducts(shopify, products, publicationIds, importId) {
-  let published = 0;
-  let failed = 0;
+  const {
+    createStagedUpload, uploadToStagedTarget, runBulkMutation, pollBulkOperation
+  } = await import('../../services/shopify-bulk-import-service.js');
 
   console.log(`[import:${importId}] Publishing ${products.length} products to ${publicationIds.length} channels...`);
 
-  for (let i = 0; i < products.length; i += 10) {
-    const batch = products.slice(i, i + 10);
-    await Promise.all(batch.map(async (product) => {
-      if (!product.handle) return;
-      try {
-        // Look up product ID by handle
-        const lookup = await shopify.graphql(`{
-          products(first: 1, query: "handle:${product.handle}") {
-            nodes { id }
-          }
-        }`);
-        const productId = lookup.products?.nodes?.[0]?.id;
-        if (!productId) {
-          console.warn(`[publish] Product not found: ${product.handle}`);
-          return;
-        }
+  try {
+    // Step 1: Look up all product IDs by handles in one query batch
+    const handles = products.map(p => p.handle).filter(Boolean);
+    const productIds = [];
 
-        // Publish to all channels at once
-        const pubInput = publicationIds.map(id => ({publicationId: id}));
-        const result = await shopify.graphql(`
-          mutation publishProduct($id: ID!, $input: [PublicationInput!]!) {
-            publishablePublish(id: $id, input: $input) {
-              publishable { ... on Product { id } }
-              userErrors { field message }
-            }
-          }
-        `, {id: productId, input: pubInput});
-
-        const errors = result.publishablePublish?.userErrors || [];
-        if (errors.length > 0) {
-          console.warn(`[publish] ${product.handle}: ${errors.map(e => e.message).join('; ')}`);
-          failed++;
-        } else {
-          published++;
+    for (let i = 0; i < handles.length; i += 50) {
+      const batch = handles.slice(i, i + 50);
+      const query = batch.map(h => `handle:${h}`).join(' OR ');
+      const result = await shopify.graphql(`{
+        products(first: 50, query: "${query}") {
+          nodes { id }
         }
-      } catch (err) {
-        console.warn(`[publish] ${product.handle} error: ${err.message}`);
-        failed++;
-      }
-    }));
+      }`);
+      productIds.push(...(result.products?.nodes?.map(n => n.id) || []));
+    }
+
+    if (productIds.length === 0) {
+      console.warn(`[import:${importId}] No products found for publishing`);
+      return;
+    }
+
+    // Step 2: Build JSONL for publishablePublish bulk mutation
+    const pubInput = publicationIds.map(id => ({publicationId: id}));
+    const jsonl = productIds.map(id =>
+      JSON.stringify({id, input: pubInput})
+    ).join('\n');
+
+    const fileSize = Buffer.byteLength(jsonl, 'utf8');
+    console.log(`[import:${importId}] Publish JSONL: ${productIds.length} products, ${(fileSize / 1024).toFixed(0)}KB`);
+
+    // Step 3: Staged upload → bulk mutation → poll
+    const target = await createStagedUpload(shopify, {
+      filename: `publish-${importId}.jsonl`, fileSize
+    });
+    await uploadToStagedTarget(target, jsonl);
+    const uploadPath = target.parameters.find(p => p.name === 'key')?.value || target.resourceUrl;
+
+    const PUBLISH_MUTATION = 'mutation publishablePublish($id: ID!, $input: [PublicationInput!]!) { publishablePublish(id: $id, input: $input) { userErrors { field message } } }';
+    const operation = await runBulkMutation(shopify, uploadPath, PUBLISH_MUTATION);
+    console.log(`[import:${importId}] Publish bulk op started: ${operation.id}`);
+
+    const result = await pollBulkOperation(shopify, operation.id, {maxWait: 600000});
+    console.log(`[import:${importId}] Publishing ${result.status}: ${productIds.length} products`);
+  } catch (err) {
+    console.warn(`[import:${importId}] Publishing failed (non-blocking): ${err.message}`);
   }
-
-  console.log(`[import:${importId}] Publishing done: ${published} ok, ${failed} failed`);
 }
 
 /** Fetch all publication (sales channel) IDs for the store. */

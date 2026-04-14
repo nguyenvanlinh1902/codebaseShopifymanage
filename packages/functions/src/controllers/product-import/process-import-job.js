@@ -47,6 +47,12 @@ export async function processProductImport(messageData) {
 
   console.log(`[import] ${products.length} products → ${jobs.length} store(s)`);
 
+  // Update totalProducts now that we've parsed (controller skips parsing for speed)
+  const totalVariants = products.reduce((sum, p) => sum + (p.variants?.length || 1), 0);
+  await Promise.all(jobs.map(job =>
+    importHistoryRepo.updateProgress(job.importId, {totalProducts: products.length, totalVariants})
+  ));
+
   // Process each store sequentially (Bulk Ops only allows 1 set of ops per store at a time)
   for (const job of jobs) {
     await processStoreImport(job, products);

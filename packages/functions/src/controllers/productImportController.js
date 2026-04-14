@@ -90,36 +90,19 @@ async function handleStorageFlow(req, res, {batchId, fileNames, storeIds, storeI
   const {stores, error: storeError} = await validateAndFetchStores(targetStoreIds);
   if (storeError) return res.status(404).json({success: false, error: storeError});
 
-  // Read & merge CSVs from Storage
-  const {mergedProducts, invalidProducts, fileStats, errors: fileErrors} = await readAndMergeCsvFiles(batchId, fileNames);
-
-  if (fileErrors.length > 0 && mergedProducts.length === 0) {
-    return res.status(400).json({success: false, error: 'All files failed to parse', fileErrors});
-  }
-  if (mergedProducts.length === 0) {
-    return res.status(400).json({success: false, error: 'No valid products found after merge'});
-  }
-
-  // Create 1 import job per store
-  const importResults = await createImportJobs(stores, mergedProducts, {
-    userId, fileNames, invalidProducts, overwriteExisting, batchId
+  // Don't parse CSV here — let worker do it (avoids API timeout on large files)
+  // Just create import jobs and send PubSub message with batchId + fileNames
+  const importResults = await createImportJobsFromBatch(stores, {
+    userId, fileNames, batchId, overwriteExisting
   });
-
-  const totalProducts = mergedProducts.length;
-  const originalCount = fileStats.reduce((sum, f) => sum + f.productCount, 0);
 
   return res.json({
     success: true,
-    message: `Import started. ${totalProducts} products queued for ${stores.length} store(s).`,
+    message: `Import started. ${fileNames.length} file(s) queued for ${stores.length} store(s).`,
     data: {
       importResults,
       storesCount: stores.length,
-      filesCount: fileNames.length,
-      mergedProductCount: totalProducts,
-      originalProductCount: originalCount,
-      duplicatesRemoved: originalCount - totalProducts,
-      fileStats,
-      fileErrors: fileErrors.length > 0 ? fileErrors : undefined
+      filesCount: fileNames.length
     }
   });
 }
@@ -214,6 +197,52 @@ async function createImportJobs(stores, products, {userId, fileNames, invalidPro
     fileNames,
     userId,
     totalProducts: products.length,
+    overwriteExisting: overwriteExisting !== false
+  });
+
+  await Promise.all(results.map(r =>
+    importHistoryRepo.updateProgress(r.importId, {status: 'processing'})
+  ));
+
+  return results;
+}
+
+/** Lightweight: create import jobs from batch metadata only (no CSV parsing).
+ * Worker will read + parse CSVs from Storage.
+ */
+async function createImportJobsFromBatch(stores, {userId, fileNames, batchId, overwriteExisting}) {
+  const results = [];
+
+  for (const store of stores) {
+    const importJob = await importHistoryRepo.create({
+      userId,
+      batchId,
+      storeId: store.id,
+      storeName: store.name,
+      shopDomain: store.shopDomain,
+      fileName: fileNames.join(', '),
+      totalProducts: 0, // Worker will update after parsing
+      processedProducts: 0,
+      successCount: 0,
+      failedCount: 0,
+      status: 'pending',
+      overwriteExisting: overwriteExisting !== false,
+      failedProductDetails: []
+    });
+
+    results.push({
+      storeId: store.id,
+      storeName: store.name,
+      importId: importJob.id
+    });
+  }
+
+  await getOrCreateTopic(PRODUCT_IMPORT_TOPIC);
+  await publishMessage(PRODUCT_IMPORT_TOPIC, {
+    importJobs: results.map(r => ({importId: r.importId, storeId: r.storeId, storeName: r.storeName})),
+    batchId,
+    fileNames,
+    userId,
     overwriteExisting: overwriteExisting !== false
   });
 

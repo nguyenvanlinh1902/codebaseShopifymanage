@@ -1,27 +1,27 @@
 /**
  * Background handler: Process entire import job from PubSub
- * Uses Shopify Bulk Operations API for fast async processing (no rate limits).
+ * Uses Shopify Bulk Operations API with up to 5 concurrent ops (API 2026-04).
  */
 
 import {ImportHistoryRepository} from '../../repositories/importHistoryRepository.js';
+import {StoreRepository} from '../../repositories/storeRepository.js';
 import {ShopifyService} from '../../services/shopifyService.js';
-import {
-  buildProductJsonl,
-  createStagedUpload,
-  uploadToStagedTarget,
-  runBulkMutation,
-  pollBulkOperation,
-  downloadBulkResults
-} from '../../services/shopify-bulk-import-service.js';
+import {runConcurrentBulkImport} from '../../services/shopify-bulk-import-service.js';
 
 const importHistoryRepo = new ImportHistoryRepository();
+const storeRepo = new StoreRepository();
 
 /**
  * Process product import from PubSub message via Bulk Operations API.
+ * Splits products into up to 5 chunks and runs them concurrently.
  */
 export async function processProductImport(messageData) {
   const data = messageData.message.json;
-  const {importId, storeName, shopDomain, accessToken} = data;
+  const {importId, storeId, storeName, shopDomain} = data;
+
+  // Read accessToken from Firestore (never sent via PubSub for security)
+  const store = await storeRepo.getById(storeId);
+  const accessToken = store?.accessToken;
 
   if (!accessToken) {
     await importHistoryRepo.markFailed(importId,
@@ -55,73 +55,34 @@ export async function processProductImport(messageData) {
     }
 
     const total = products.length;
-    console.log(`[import:${importId}] Starting bulk import: ${total} products → ${storeName}`);
+    console.log(`[import:${importId}] Starting concurrent bulk import: ${total} products → ${storeName}`);
+    await updateStatus(importId, 'processing', `Importing ${total} products (up to 5 concurrent ops)...`);
 
-    // Step 1: Build JSONL
-    await updateStatus(importId, 'preparing', `Building JSONL for ${total} products...`);
-    const jsonl = buildProductJsonl(products);
-    const fileSize = Buffer.byteLength(jsonl, 'utf8');
-
-    // Step 2: Staged upload
-    await updateStatus(importId, 'uploading', `Uploading ${(fileSize / 1024).toFixed(0)}KB to Shopify...`);
-    const target = await createStagedUpload(shopifyService.shopify, {
-      filename: `import-${importId}.jsonl`,
-      fileSize
-    });
-
-    // Step 3: Upload JSONL file
-    await uploadToStagedTarget(target, jsonl);
-    const uploadPath = target.parameters.find(p => p.name === 'key')?.value || target.resourceUrl;
-    console.log(`[import:${importId}] JSONL uploaded (${fileSize} bytes)`);
-
-    // Step 4: Start bulk mutation
-    await updateStatus(importId, 'processing', 'Shopify is processing products...');
-    const operation = await runBulkMutation(shopifyService.shopify, uploadPath);
-    console.log(`[import:${importId}] Bulk operation started: ${operation.id}`);
-
-    // Step 5: Poll with progress updates
-    const result = await pollBulkOperation(shopifyService.shopify, operation.id, {
-      maxWait: 1800000, // 30 minutes
-      onProgress: ({status, objectCount}) => {
-        // Fire-and-forget progress updates (don't await to avoid slowing poll)
+    // Run concurrent bulk operations (up to 5 chunks)
+    const result = await runConcurrentBulkImport(shopifyService.shopify, products, {
+      importId,
+      maxConcurrent: 5,
+      onChunkProgress: ({chunkIndex, status, objectCount, totalInChunk}) => {
         importHistoryRepo.updateProgress(importId, {
           status: 'processing',
-          statusMessage: `Processing... ${objectCount} objects handled`,
-          processedProducts: Math.min(objectCount, total)
+          statusMessage: `Chunk ${chunkIndex + 1}: ${status} (${objectCount}/${totalInChunk} objects)`
         }).catch(() => {});
       }
     });
 
-    // Step 6: Handle result
-    if (result.status !== 'COMPLETED') {
-      const errMsg = `Bulk operation ${result.status}${result.errorCode ? `: ${result.errorCode}` : ''}`;
-      await importHistoryRepo.markFailed(importId, errMsg);
-      return;
-    }
-
-    // Parse results JSONL
-    let successCount = total;
-    let failedCount = 0;
-    let failedDetails = [];
-
-    if (result.url) {
-      const parsed = await downloadBulkResults(result.url);
-      successCount = parsed.successCount;
-      failedCount = parsed.failedCount;
-      failedDetails = parsed.errors.slice(0, 100);
-    }
-
     // Mark final status
+    const {successCount, failedCount, errors} = result;
+
     if (failedCount >= total) {
       await importHistoryRepo.markFailed(importId, 'All products failed to import', {
-        failedProductDetails: failedDetails
+        failedProductDetails: errors
       });
     } else {
       await importHistoryRepo.markCompleted(importId, {
         successCount,
         failedCount,
         processedProducts: total,
-        failedProductDetails: failedDetails
+        failedProductDetails: errors
       });
     }
 

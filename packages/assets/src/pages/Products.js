@@ -6,14 +6,16 @@ import {
   Select,
   IndexFilters,
   useSetIndexFiltersMode,
-  InlineStack,
   Banner
 } from '@shopify/polaris';
 import {ImportIcon} from '@shopify/polaris-icons';
 import {useSearchParams} from 'react-router-dom';
 import {api} from '../helpers/api';
+import {uploadCsvFiles} from '../helpers/storage-upload';
 import {usePermittedStores} from '../hooks/usePermittedStores';
+import useImportProgress from '../hooks/useImportProgress';
 import ProductsTableSection from './products/ProductsTableSection';
+import ImportProgressCard from './embed-products/ImportProgressCard';
 import UploadCsvModal from './products/UploadCsvModal';
 
 const STATUS_TABS = [
@@ -56,6 +58,52 @@ export default function Products() {
   const [files, setFiles] = useState([]);
   const [selectedStores, setSelectedStores] = useState([]);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadingFileName, setUploadingFileName] = useState('');
+  const [overwriteExisting, setOverwriteExisting] = useState(true);
+  const [importProgress, setImportProgress] = useState(null);
+
+  // Real-time import progress (tracks active imports for selected store)
+  const {importHistory} = useImportProgress({storeId: selectedStore});
+  const [lastCompletedId, setLastCompletedId] = useState(null);
+
+  useEffect(() => {
+    if (!importHistory.length) return;
+    const latest = importHistory[0];
+
+    if (latest.status === 'pending' || latest.status === 'processing') {
+      const total = latest.totalProducts || 0;
+      const processed = latest.processedProducts || 0;
+      setImportProgress({
+        jobId: latest.id,
+        status: latest.status,
+        fileName: latest.fileName,
+        totalProducts: total,
+        totalVariants: latest.totalVariants || 0,
+        processedProducts: processed,
+        processedVariants: latest.processedVariants || 0,
+        successCount: latest.successCount || 0,
+        failedCount: latest.failedCount || 0,
+        completionPercentage: total > 0 ? Math.round((processed / total) * 100) : 0
+      });
+    }
+
+    const isComplete = latest.status === 'completed' || latest.status === 'partial' || latest.status === 'failed';
+    if (isComplete && lastCompletedId !== latest.id) {
+      setLastCompletedId(latest.id);
+      setTimeout(() => setImportProgress(null), 3000);
+
+      if (latest.status === 'completed') {
+        setSuccessMessage(`Import complete: ${latest.successCount || 0} products imported successfully.`);
+      } else if (latest.status === 'failed') {
+        const errMsg = latest.error || latest.statusMessage || `${latest.failedCount || 0} products could not be imported`;
+        setError(`Import failed: ${errMsg}`);
+      } else {
+        setSuccessMessage(`Import partial: ${latest.successCount || 0} success, ${latest.failedCount || 0} failed.`);
+      }
+      fetchProducts(null);
+    }
+  }, [importHistory]);
 
   // Cursor pagination
   const cursorStackRef = useRef([]);
@@ -159,44 +207,55 @@ export default function Products() {
     setFiles(prev => prev.filter((_, i) => i !== index));
   }, []);
 
-  const readFileAsText = file =>
-    new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = e => resolve(e.target.result);
-      reader.onerror = () => reject(new Error(`Failed to read: ${file.name}`));
-      reader.readAsText(file);
-    });
-
   const handleUpload = async () => {
     if (selectedStores.length === 0 || files.length === 0) return;
     try {
       setUploading(true);
       setError(null);
-      const csvFiles = [];
-      for (const f of files) {
-        const csvData = await readFileAsText(f);
-        csvFiles.push({csvData, fileName: f.name});
-      }
+      setUploadProgress(0);
+
+      // Step 1: Upload files to Firebase Storage
+      const {batchId, fileNames} = await uploadCsvFiles(files, {
+        onProgress: ({fileName, overall}) => {
+          setUploadProgress(Math.round(overall));
+          setUploadingFileName(fileName);
+        }
+      });
+
+      // Step 2: POST metadata only (no CSV content in body)
+      setUploadingFileName('Processing...');
+      setUploadProgress(100);
+
       const response = await api('/api/products/upload-csv', {
         method: 'POST',
-        body: JSON.stringify({storeIds: selectedStores, csvFiles})
+        body: JSON.stringify({
+          batchId,
+          fileNames,
+          storeIds: selectedStores,
+          overwriteExisting
+        })
       });
+
       const result = await response.json();
       if (result.success) {
-        const jobs = result.data.importResults || [];
-        const total = jobs.reduce((s, j) => s + (j.totalProducts || 0), 0);
+        const {mergedProductCount, duplicatesRemoved, storesCount} = result.data;
+        const dupeMsg = duplicatesRemoved > 0 ? ` (${duplicatesRemoved} duplicates merged)` : '';
         setFiles([]);
         setSelectedStores([]);
         setUploadModalOpen(false);
-        setSuccessMessage(`Import started! ${total} products queued for ${jobs.length} store(s).`);
+        setSuccessMessage(
+          `Import started! ${mergedProductCount} products${dupeMsg} queued for ${storesCount} store(s).`
+        );
         fetchProducts(null);
       } else {
         setError(result.error || 'Import failed');
       }
-    } catch {
-      setError('Failed to upload CSV files');
+    } catch (err) {
+      setError(err.message || 'Failed to upload CSV files');
     } finally {
       setUploading(false);
+      setUploadProgress(0);
+      setUploadingFileName('');
     }
   };
 
@@ -240,11 +299,11 @@ export default function Products() {
         {error && <Banner tone="critical" onDismiss={() => setError(null)}>{error}</Banner>}
         {successMessage && <Banner tone="success" onDismiss={() => setSuccessMessage(null)}>{successMessage}</Banner>}
 
-        <InlineStack align="start">
-          <div style={{minWidth: 300}}>
-            <Select label="Store" labelHidden options={storeOptions} value={selectedStore} onChange={handleStoreChange} />
-          </div>
-        </InlineStack>
+        <ImportProgressCard importProgress={importProgress} />
+
+        <div style={{maxWidth: 300, width: '100%'}}>
+          <Select label="Store" labelHidden options={storeOptions} value={selectedStore} onChange={handleStoreChange} />
+        </div>
 
         <Card padding="0">
           <IndexFilters
@@ -286,11 +345,15 @@ export default function Products() {
         onUpload={handleUpload}
         onDownloadTemplate={handleDownloadTemplate}
         uploading={uploading}
+        uploadProgress={uploadProgress}
+        uploadingFileName={uploadingFileName}
         stores={stores.filter(s => s.status === 'active')}
         selectedStores={selectedStores}
         onStoresChange={setSelectedStores}
         groups={groups}
         isAdmin={isAdmin}
+        overwriteExisting={overwriteExisting}
+        onOverwriteChange={setOverwriteExisting}
       />
     </Page>
   );

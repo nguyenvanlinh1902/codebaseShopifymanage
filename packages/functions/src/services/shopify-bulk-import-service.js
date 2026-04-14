@@ -191,3 +191,103 @@ export async function downloadBulkResults(resultUrl) {
 
   return {successCount, failedCount, errors};
 }
+
+// ─── Concurrent Bulk Import ─────────────────────────────────────────────────
+
+/**
+ * Run up to 5 concurrent bulk operations for a product list.
+ * Splits products into chunks, each chunk gets its own staged upload + bulk mutation.
+ * API 2026-04 supports 5 concurrent bulk ops per store.
+ */
+export async function runConcurrentBulkImport(shopify, products, {
+  maxConcurrent = 5,
+  importId = '',
+  onChunkProgress
+} = {}) {
+  const chunkCount = Math.min(maxConcurrent, products.length);
+  const chunkSize = Math.ceil(products.length / chunkCount);
+  const chunks = [];
+  for (let i = 0; i < products.length; i += chunkSize) {
+    chunks.push(products.slice(i, i + chunkSize));
+  }
+
+  console.log(`[import:${importId}] Splitting ${products.length} products into ${chunks.length} chunks`);
+
+  // Stagger start by 500ms to avoid rate-limit burst on staged uploads
+  const results = await Promise.allSettled(
+    chunks.map((chunk, idx) =>
+      delay(idx * 500).then(() =>
+        processChunk(shopify, chunk, idx, importId, onChunkProgress)
+      )
+    )
+  );
+
+  return aggregateResults(results, chunks);
+}
+
+/** Process a single chunk through the full bulk import pipeline. */
+async function processChunk(shopify, chunk, chunkIndex, importId, onChunkProgress) {
+  const label = `[import:${importId}:chunk${chunkIndex}]`;
+
+  // Build JSONL
+  const jsonl = buildProductJsonl(chunk);
+  const fileSize = Buffer.byteLength(jsonl, 'utf8');
+  console.log(`${label} JSONL built: ${chunk.length} products, ${(fileSize / 1024).toFixed(0)}KB`);
+
+  // Staged upload
+  const target = await createStagedUpload(shopify, {
+    filename: `import-${importId}-chunk${chunkIndex}.jsonl`,
+    fileSize
+  });
+  await uploadToStagedTarget(target, jsonl);
+
+  const uploadPath = target.parameters.find(p => p.name === 'key')?.value || target.resourceUrl;
+
+  // Bulk mutation
+  const operation = await runBulkMutation(shopify, uploadPath);
+  console.log(`${label} Bulk op started: ${operation.id}`);
+
+  // Poll with progress
+  const result = await pollBulkOperation(shopify, operation.id, {
+    maxWait: 1800000,
+    onProgress: ({status, objectCount}) => {
+      onChunkProgress?.({chunkIndex, status, objectCount, totalInChunk: chunk.length});
+    }
+  });
+
+  // Parse results
+  if (result.status !== 'COMPLETED') {
+    throw new Error(`Chunk ${chunkIndex} ${result.status}${result.errorCode ? `: ${result.errorCode}` : ''}`);
+  }
+
+  if (result.url) {
+    return await downloadBulkResults(result.url);
+  }
+  return {successCount: chunk.length, failedCount: 0, errors: []};
+}
+
+/** Aggregate results from all chunks (handles rejected promises). */
+function aggregateResults(settledResults, chunks) {
+  let successCount = 0;
+  let failedCount = 0;
+  const errors = [];
+
+  for (let i = 0; i < settledResults.length; i++) {
+    const result = settledResults[i];
+    if (result.status === 'fulfilled') {
+      successCount += result.value.successCount;
+      failedCount += result.value.failedCount;
+      errors.push(...result.value.errors);
+    } else {
+      // Entire chunk failed — use actual chunk size
+      failedCount += chunks[i].length;
+      errors.push({title: 'Chunk failure', message: result.reason?.message || 'Unknown error'});
+    }
+  }
+
+  return {successCount, failedCount, errors: errors.slice(0, 100)};
+}
+
+function delay(ms) {
+  return new Promise(r => setTimeout(r, ms));
+}

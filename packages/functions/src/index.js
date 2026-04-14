@@ -64,7 +64,7 @@ initializeApp();
 
 const app = express();
 app.set('trust proxy', true);
-app.use(express.json());
+app.use(express.json({limit: '10mb'}));
 
 // ============ HEALTH CHECK ============
 app.get('/', (req, res) => {
@@ -190,19 +190,6 @@ export const processRecheckTrackingGroup = onMessagePublished(
   {topic: 'recheck-tracking-group', memory: '256MiB', timeoutSeconds: 540, retry: true},
   async event => {
     await trackingStatusController.processTrackingGroup(event.data);
-  }
-);
-
-/** Cron: Process Product Queue (every 1 min) */
-export const productQueueCron = onSchedule(
-  {
-    schedule: 'every 1 minutes',
-    memory: '256MiB',
-    timeoutSeconds: 540,
-    retryConfig: {retryCount: 3, maxRetrySeconds: 600}
-  },
-  async () => {
-    await productImportController.processProductQueue();
   }
 );
 

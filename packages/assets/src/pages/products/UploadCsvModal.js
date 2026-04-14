@@ -11,8 +11,11 @@ import {
   ChoiceList,
   Banner,
   Select,
+  ProgressBar,
+  Checkbox
 } from '@shopify/polaris';
 import {DeleteIcon} from '@shopify/polaris-icons';
+import {MAX_FILES} from '../../helpers/storage-upload';
 
 /** Shopify daily variant limit resets at midnight UTC */
 function isThrottledToday(store) {
@@ -30,11 +33,15 @@ export default function UploadCsvModal({
   onUpload,
   onDownloadTemplate,
   uploading,
+  uploadProgress = 0,
+  uploadingFileName = '',
   stores,
   selectedStores,
   onStoresChange,
   groups = [],
-  isAdmin = false
+  isAdmin = false,
+  overwriteExisting = true,
+  onOverwriteChange
 }) {
   const [selectedGroup, setSelectedGroup] = useState('');
 
@@ -60,41 +67,41 @@ export default function UploadCsvModal({
     ...groups.map(g => ({label: g.name, value: g.id}))
   ];
 
+  const tooManyFiles = files.length > MAX_FILES;
+
   return (
     <Modal
       open={open}
       onClose={onClose}
       title="Import Products from CSV"
       primaryAction={{
-        content:
-          files.length > 0 && selectedStores.length > 0
-            ? `Upload ${files.length} File${files.length !== 1 ? 's' : ''} to ${selectedStores.length} Store${selectedStores.length !== 1 ? 's' : ''}`
-            : 'Upload',
+        content: files.length > 0 && selectedStores.length > 0
+          ? `Upload ${files.length} File${files.length !== 1 ? 's' : ''} to ${selectedStores.length} Store${selectedStores.length !== 1 ? 's' : ''}`
+          : 'Upload',
         onAction: onUpload,
         loading: uploading,
-        disabled: files.length === 0 || selectedStores.length === 0
+        disabled: files.length === 0 || selectedStores.length === 0 || tooManyFiles
       }}
       secondaryActions={[{content: 'Cancel', onAction: onClose, disabled: uploading}]}
     >
       <Modal.Section>
         <BlockStack gap="400">
-          <Text variant="headingSm" as="h3">
-            Step 1: Select CSV Files
-          </Text>
-          <DropZone
-            onDrop={onDrop}
-            accept=".csv,text/csv"
-            type="file"
-            allowMultiple
-            disabled={uploading}
-          >
-            <DropZone.FileUpload actionHint="Accepts .csv files" />
+          <Text variant="headingSm" as="h3">Step 1: Select CSV Files</Text>
+          <DropZone onDrop={onDrop} accept=".csv,text/csv" type="file" allowMultiple disabled={uploading}>
+            <DropZone.FileUpload actionHint={`Accepts .csv files (max ${MAX_FILES})`} />
           </DropZone>
+
+          {tooManyFiles && (
+            <Banner tone="critical">
+              Too many files selected ({files.length}). Maximum {MAX_FILES} files per batch.
+            </Banner>
+          )}
 
           {files.length > 0 && (
             <BlockStack gap="200">
               <Text variant="bodySm" fontWeight="semibold">
                 {files.length} file{files.length !== 1 ? 's' : ''} selected
+                ({(files.reduce((s, f) => s + f.size, 0) / (1024 * 1024)).toFixed(1)} MB total)
               </Text>
               <Divider />
               {files.map((f, index) => (
@@ -116,6 +123,15 @@ export default function UploadCsvModal({
             </BlockStack>
           )}
 
+          {uploading && (
+            <BlockStack gap="200">
+              <Text variant="bodySm">
+                Uploading{uploadingFileName ? `: ${uploadingFileName}` : '...'}
+              </Text>
+              <ProgressBar progress={uploadProgress} size="small" />
+            </BlockStack>
+          )}
+
           <Button onClick={onDownloadTemplate} variant="plain" size="slim">
             Download CSV template
           </Button>
@@ -124,9 +140,7 @@ export default function UploadCsvModal({
 
       <Modal.Section>
         <BlockStack gap="400">
-          <Text variant="headingSm" as="h3">
-            Step 2: Select Target Stores
-          </Text>
+          <Text variant="headingSm" as="h3">Step 2: Select Target Stores</Text>
 
           {isAdmin && groups.length > 0 && (
             <Select
@@ -166,11 +180,19 @@ export default function UploadCsvModal({
             />
           )}
 
+          <Checkbox
+            label="Overwrite existing products (match by handle)"
+            checked={overwriteExisting}
+            onChange={onOverwriteChange}
+            disabled={uploading}
+            helpText="If a product with the same handle already exists, it will be updated with new data"
+          />
+
           {selectedStores.length > 0 && files.length > 0 && (
             <Banner tone="info">
               <Text as="p">
-                {files.length} file(s) will be imported to {selectedStores.length} store(s)
-                simultaneously.
+                {files.length} file(s) will be merged and imported to {selectedStores.length} store(s).
+                Duplicate products (same handle) will be merged automatically.
               </Text>
             </Banner>
           )}

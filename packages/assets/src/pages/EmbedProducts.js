@@ -2,6 +2,7 @@ import React, {useState, useEffect, useCallback} from 'react';
 import {Page, Banner, BlockStack, Tabs} from '@shopify/polaris';
 import {ImportIcon} from '@shopify/polaris-icons';
 import {api} from '../helpers/api';
+import {uploadCsvFiles} from '../helpers/storage-upload';
 import useImportProgress from '../hooks/useImportProgress';
 import ImportProgressCard from './embed-products/ImportProgressCard';
 import ProductsTab from './embed-products/ProductsTab';
@@ -13,6 +14,9 @@ export default function EmbedProducts() {
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [files, setFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadingFileName, setUploadingFileName] = useState('');
+  const [overwriteExisting, setOverwriteExisting] = useState(true);
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -152,31 +156,28 @@ export default function EmbedProducts() {
     setFiles(prev => prev.filter((_, i) => i !== index));
   }, []);
 
-  const readFileAsText = file =>
-    new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = e => resolve(e.target.result);
-      reader.onerror = () => reject(new Error(`Failed to read file: ${file.name}`));
-      reader.readAsText(file);
-    });
-
   const handleUpload = async () => {
     if (files.length === 0) return;
     try {
       setUploading(true);
       setError(null);
       setSuccessMessage(null);
+      setUploadProgress(0);
 
-      const csvFiles = [];
-      for (const f of files) {
-        const csvData = await readFileAsText(f);
-        csvFiles.push({csvData, fileName: f.name});
-      }
+      // Upload files to Storage via signed URLs
+      const {batchId, fileNames} = await uploadCsvFiles(files, {
+        onProgress: ({fileName, overall}) => {
+          setUploadProgress(Math.round(overall));
+          setUploadingFileName(fileName);
+        }
+      });
+
+      setUploadingFileName('Processing...');
+      setUploadProgress(100);
 
       const response = await api('/api/embed/products/upload-csv', {
         method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({csvFiles})
+        body: JSON.stringify({batchId, fileNames, overwriteExisting})
       });
 
       const result = await response.json();
@@ -194,9 +195,11 @@ export default function EmbedProducts() {
         setError(errorMsg);
       }
     } catch (err) {
-      setError('Failed to upload CSV files');
+      setError(err.message || 'Failed to upload CSV files');
     } finally {
       setUploading(false);
+      setUploadProgress(0);
+      setUploadingFileName('');
     }
   };
 
@@ -284,6 +287,10 @@ export default function EmbedProducts() {
         onUpload={handleUpload}
         onDownloadTemplate={handleDownloadTemplate}
         uploading={uploading}
+        uploadProgress={uploadProgress}
+        uploadingFileName={uploadingFileName}
+        overwriteExisting={overwriteExisting}
+        onOverwriteChange={setOverwriteExisting}
       />
     </Page>
   );

@@ -18,8 +18,6 @@ router.post(
 
 router.get('/list', productImportController.getProducts);
 router.get('/template', productImportController.downloadTemplate);
-router.get('/queue-stats', productImportController.getQueueStats);
-router.post('/process-queue', productImportController.processQueueManual);
 router.get('/successful-imports', productImportController.getSuccessfulImports);
 router.get('/import-status/:jobId', productImportController.getImportStatus);
 router.get('/import-history', productImportController.getImportHistory);

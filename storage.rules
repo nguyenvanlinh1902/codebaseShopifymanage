@@ -1,0 +1,17 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // CSV imports: allow write with size and content type restrictions
+    // Backend reads via admin SDK (bypasses rules)
+    match /csv-imports/{batchId}/{fileName} {
+      allow read: if false;
+      allow write: if request.resource.size < 52428800
+                   && request.resource.contentType.matches('text/.*');
+    }
+
+    // Themes: public read (existing behavior)
+    match /themes/{allPaths=**} {
+      allow read: if true;
+    }
+  }
+}

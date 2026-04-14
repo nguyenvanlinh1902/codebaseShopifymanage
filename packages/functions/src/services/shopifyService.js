@@ -15,7 +15,7 @@ export class ShopifyService {
       this.shopify = new Shopify({
         shopName: shopConfig.shopDomain,
         accessToken: shopConfig.accessToken,
-        apiVersion: shopConfig.apiVersion || shopifyConfig.apiVersion || '2026-01',
+        apiVersion: shopConfig.apiVersion || shopifyConfig.apiVersion || '2026-04',
         autoLimit: { calls: 2, interval: 1000, bucketSize: 35 },
         timeout: 180000
       });

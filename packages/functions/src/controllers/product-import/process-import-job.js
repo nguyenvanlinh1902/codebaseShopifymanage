@@ -180,14 +180,16 @@ async function processStoreImport(job, products) {
         failedProductDetails: errors
       });
     } else {
-      // Auto-publish to all sales channels (productSet doesn't support publications inline)
-      if (publicationIds.length > 0 && successCount > 0) {
-        await publishProducts(shopifyService.shopify, importedIds || [], publicationIds, importId);
-      }
+      // Mark completed first, then publish (non-blocking — user sees result faster)
       await importHistoryRepo.markCompleted(importId, {
         successCount, failedCount, processedProducts: total,
         failedProductDetails: errors
       });
+
+      // Auto-publish to all sales channels (fire-and-forget, don't block next store)
+      if (publicationIds.length > 0 && (importedIds?.length || 0) > 0) {
+        publishProducts(shopifyService.shopify, importedIds, publicationIds, importId).catch(() => {});
+      }
     }
 
     console.log(`[import:${importId}] ${storeName}: ${successCount} success, ${failedCount} failed`);

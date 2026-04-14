@@ -16,7 +16,6 @@ import {useAuth} from '../context/AuthContext';
 import {usePermittedStores} from '../hooks/usePermittedStores';
 import useImportProgressAllStores from '../hooks/useImportProgressAllStores';
 import ProductsTableSection from './products/ProductsTableSection';
-import ImportProgressCard from './embed-products/ImportProgressCard';
 import UploadCsvModal from './products/UploadCsvModal';
 
 const STATUS_TABS = [
@@ -62,76 +61,50 @@ export default function Products() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadingFileName, setUploadingFileName] = useState('');
   const [overwriteExisting, setOverwriteExisting] = useState(true);
-  const [importProgress, setImportProgress] = useState(null);
-
-  // Real-time import progress across all stores for this user
+  // Real-time import completion notification
   const {user} = useAuth();
   const {importHistory} = useImportProgressAllStores({userId: user?.id});
-  // Initialize with existing completed IDs so we only notify on NEW completions
   const completedIdsRef = useRef(null);
 
-  // Aggregate active import jobs into 1 progress card
   useEffect(() => {
     if (!importHistory.length) return;
 
-    // On first load: mark all already-completed jobs so we don't re-notify
+    // On first load: mark all existing completed jobs
     if (completedIdsRef.current === null) {
       completedIdsRef.current = new Set(
         importHistory.filter(j => j.status === 'completed' || j.status === 'partial' || j.status === 'failed').map(j => j.id)
       );
+      return;
     }
 
-    const activeJobs = importHistory.filter(j => j.status === 'pending' || j.status === 'processing');
-
-    // Show aggregated progress for active jobs
-    if (activeJobs.length > 0) {
-      const totalProducts = activeJobs.reduce((s, j) => s + (j.totalProducts || 0), 0);
-      const processed = activeJobs.reduce((s, j) => s + (j.processedProducts || j.successCount || 0), 0);
-      const success = activeJobs.reduce((s, j) => s + (j.successCount || 0), 0);
-      const failed = activeJobs.reduce((s, j) => s + (j.failedCount || 0), 0);
-      const storeNames = [...new Set(activeJobs.map(j => j.storeName))].join(', ');
-
-      setImportProgress({
-        status: 'processing',
-        fileName: `${storeNames} (${activeJobs.length} job${activeJobs.length > 1 ? 's' : ''})`,
-        totalProducts,
-        processedProducts: processed,
-        totalVariants: activeJobs.reduce((s, j) => s + (j.totalVariants || 0), 0),
-        processedVariants: activeJobs.reduce((s, j) => s + (j.processedVariants || 0), 0),
-        successCount: success,
-        failedCount: failed,
-        completionPercentage: totalProducts > 0 ? Math.round((processed / totalProducts) * 100) : 0
-      });
-    } else {
-      setImportProgress(null);
-    }
-
-    // Handle NEWLY completed jobs only (not ones that were already done on page load)
+    // Detect NEWLY completed jobs
     const justCompleted = importHistory.filter(
       j => (j.status === 'completed' || j.status === 'partial' || j.status === 'failed') && !completedIdsRef.current.has(j.id)
     );
 
-    if (justCompleted.length > 0) {
-      for (const job of justCompleted) {
-        completedIdsRef.current.add(job.id);
-      }
+    if (justCompleted.length === 0) return;
 
-      // Only show notification for these specific jobs
-      const totalSuccess = justCompleted.reduce((s, j) => s + (j.successCount || 0), 0);
-      const totalFailed = justCompleted.reduce((s, j) => s + (j.failedCount || 0), 0);
-      const failedDetails = justCompleted.flatMap(j => (j.failedProductDetails || []).map(d => `${d.title}: ${d.message}`));
-
-      const allFailed = justCompleted.every(j => j.status === 'failed');
-      if (allFailed) {
-        const errMsg = justCompleted[0].error || justCompleted[0].statusMessage || 'Import failed';
-        setError(`Import failed: ${errMsg}${failedDetails.length ? '\n' + failedDetails.slice(0, 5).join('\n') : ''}`);
-      } else if (totalFailed > 0) {
-        setSuccessMessage(`Import: ${totalSuccess} success, ${totalFailed} failed.${failedDetails.length ? ' Errors: ' + failedDetails.slice(0, 3).join('; ') : ''}`);
-      } else {
-        setSuccessMessage(`Import complete: ${totalSuccess} products imported successfully.`);
-      }
-      fetchProducts(null);
+    for (const job of justCompleted) {
+      completedIdsRef.current.add(job.id);
     }
+
+    const totalSuccess = justCompleted.reduce((s, j) => s + (j.successCount || 0), 0);
+    const totalFailed = justCompleted.reduce((s, j) => s + (j.failedCount || 0), 0);
+    const failedDetails = justCompleted.flatMap(j =>
+      (j.failedProductDetails || []).map(d => `• ${d.title}: ${d.message}`)
+    );
+
+    const allFailed = justCompleted.every(j => j.status === 'failed');
+    if (allFailed) {
+      const errMsg = justCompleted[0].error || justCompleted[0].statusMessage || 'All products failed';
+      setError(`Import failed: ${errMsg}${failedDetails.length ? '\n' + failedDetails.slice(0, 10).join('\n') : ''}`);
+    } else if (totalFailed > 0) {
+      setError(`Import: ${totalSuccess} success, ${totalFailed} failed.\n${failedDetails.slice(0, 10).join('\n')}`);
+      if (totalSuccess > 0) setSuccessMessage(`${totalSuccess} products imported successfully.`);
+    } else {
+      setSuccessMessage(`Import complete: ${totalSuccess} products imported successfully.`);
+    }
+    fetchProducts(null);
   }, [importHistory]);
 
   // Cursor pagination
@@ -328,7 +301,6 @@ export default function Products() {
         {error && <Banner tone="critical" onDismiss={() => setError(null)}>{error}</Banner>}
         {successMessage && <Banner tone="success" onDismiss={() => setSuccessMessage(null)}>{successMessage}</Banner>}
 
-<ImportProgressCard importProgress={importProgress} />
 
         <div style={{maxWidth: 300, width: '100%'}}>
           <Select label="Store" labelHidden options={storeOptions} value={selectedStore} onChange={handleStoreChange} />

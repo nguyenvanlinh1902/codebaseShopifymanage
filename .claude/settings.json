@@ -8,7 +8,9 @@
       "WebFetch(domain:docs.ship24.com)",
       "WebFetch(domain:www.aftership.com)",
       "WebFetch(domain:parcelsapp.com)",
-      "WebFetch(domain:www.ship24.com)"
+      "WebFetch(domain:www.ship24.com)",
+      "Bash(rm \"docs/theme-TM.zip\")",
+      "Bash(zip -r ~/Desktop/theme-TM.zip .)"
     ],
     "additionalDirectories": [
       "/Users/linhnv/Project/toolShopify/plans/reports"

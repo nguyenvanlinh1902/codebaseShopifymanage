@@ -175,6 +175,7 @@ export async function downloadBulkResults(resultUrl) {
   let successCount = 0;
   let failedCount = 0;
   const errors = [];
+  const productIds = []; // Collect created/updated product IDs for publishing
 
   for (const line of lines) {
     try {
@@ -199,6 +200,7 @@ export async function downloadBulkResults(resultUrl) {
         });
       } else {
         successCount++;
+        if (data.product?.id) productIds.push(data.product.id);
       }
     } catch {
       // Skip malformed lines
@@ -211,7 +213,7 @@ export async function downloadBulkResults(resultUrl) {
     e.details?.some(d => d.code === 'VARIANT_THROTTLE_EXCEEDED')
   );
 
-  return {successCount, failedCount, errors, isVariantThrottled};
+  return {successCount, failedCount, errors, isVariantThrottled, productIds};
 }
 
 // ─── Concurrent Bulk Import ─────────────────────────────────────────────────
@@ -284,7 +286,7 @@ async function processChunk(shopify, chunk, chunkIndex, importId, onChunkProgres
   if (result.url) {
     return await downloadBulkResults(result.url);
   }
-  return {successCount: chunk.length, failedCount: 0, errors: []};
+  return {successCount: chunk.length, failedCount: 0, errors: [], productIds: []};
 }
 
 /** Aggregate results from all chunks (handles rejected promises). */
@@ -292,6 +294,7 @@ function aggregateResults(settledResults, chunks) {
   let successCount = 0;
   let failedCount = 0;
   const errors = [];
+  const productIds = [];
 
   for (let i = 0; i < settledResults.length; i++) {
     const result = settledResults[i];
@@ -299,6 +302,7 @@ function aggregateResults(settledResults, chunks) {
       successCount += result.value.successCount;
       failedCount += result.value.failedCount;
       errors.push(...result.value.errors);
+      productIds.push(...(result.value.productIds || []));
     } else {
       // Entire chunk failed — use actual chunk size
       failedCount += chunks[i].length;
@@ -308,7 +312,7 @@ function aggregateResults(settledResults, chunks) {
     }
   }
 
-  return {successCount, failedCount, errors: errors.slice(0, 100)};
+  return {successCount, failedCount, errors: errors.slice(0, 100), productIds};
 }
 
 function delay(ms) {

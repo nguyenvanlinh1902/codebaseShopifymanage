@@ -60,42 +60,24 @@ export async function processProductImport(messageData) {
 }
 
 /** Import products to a single store via Bulk Operations (up to 5 concurrent). */
-/** Publish imported products to all sales channels via bulk mutation. */
-async function publishProducts(shopify, products, publicationIds, importId) {
+/**
+ * Publish products to all sales channels via bulk mutation.
+ * Uses product IDs from bulk import results (no extra query needed).
+ */
+async function publishProducts(shopify, productIds, publicationIds, importId) {
   const {
     createStagedUpload, uploadToStagedTarget, runBulkMutation, pollBulkOperation
   } = await import('../../services/shopify-bulk-import-service.js');
 
-  console.log(`[import:${importId}] Publishing ${products.length} products to ${publicationIds.length} channels...`);
+  console.log(`[import:${importId}] Publishing ${productIds.length} products to ${publicationIds.length} channels...`);
+
+  if (productIds.length === 0) {
+    console.warn(`[import:${importId}] No product IDs to publish`);
+    return;
+  }
 
   try {
-    // Step 1: Look up all product IDs by handles
-    const handles = products.map(p => p.handle).filter(Boolean);
-    const productIds = [];
-
-    for (let i = 0; i < handles.length; i += 50) {
-      const batch = handles.slice(i, i + 50);
-      // Escape quotes in handles and wrap each in quotes for exact match
-      const query = batch.map(h => `handle:${h.replace(/'/g, "\\'")}`).join(' OR ');
-      const result = await shopify.graphql(
-        `query lookupProducts($query: String!) {
-          products(first: 50, query: $query) {
-            nodes { id }
-          }
-        }`,
-        {query}
-      );
-      productIds.push(...(result.products?.nodes?.map(n => n.id) || []));
-    }
-
-    console.log(`[import:${importId}] Found ${productIds.length}/${handles.length} products for publishing`);
-
-    if (productIds.length === 0) {
-      console.warn(`[import:${importId}] No products found for publishing`);
-      return;
-    }
-
-    // Step 2: Build JSONL for publishablePublish bulk mutation
+    // Build JSONL — each line: {"id": "gid://shopify/Product/xxx", "input": [{publicationId: "..."}]}
     const pubInput = publicationIds.map(id => ({publicationId: id}));
     const jsonl = productIds.map(id =>
       JSON.stringify({id, input: pubInput})
@@ -104,7 +86,7 @@ async function publishProducts(shopify, products, publicationIds, importId) {
     const fileSize = Buffer.byteLength(jsonl, 'utf8');
     console.log(`[import:${importId}] Publish JSONL: ${productIds.length} products, ${(fileSize / 1024).toFixed(0)}KB`);
 
-    // Step 3: Staged upload → bulk mutation → poll
+    // Staged upload → bulk mutation → poll
     const target = await createStagedUpload(shopify, {
       filename: `publish-${importId}.jsonl`, fileSize
     });
@@ -184,7 +166,7 @@ async function processStoreImport(job, products) {
       }
     });
 
-    const {successCount, failedCount, errors, isVariantThrottled} = result;
+    const {successCount, failedCount, errors, isVariantThrottled, productIds: importedIds} = result;
 
     if (isVariantThrottled) {
       const msg = `Daily variant limit reached for ${storeName}. ${successCount} imported, ${failedCount} remaining. Retry after midnight UTC.`;
@@ -200,7 +182,7 @@ async function processStoreImport(job, products) {
     } else {
       // Auto-publish to all sales channels (productSet doesn't support publications inline)
       if (publicationIds.length > 0 && successCount > 0) {
-        await publishProducts(shopifyService.shopify, products, publicationIds, importId);
+        await publishProducts(shopifyService.shopify, importedIds || [], publicationIds, importId);
       }
       await importHistoryRepo.markCompleted(importId, {
         successCount, failedCount, processedProducts: total,

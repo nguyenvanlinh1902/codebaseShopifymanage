@@ -84,7 +84,7 @@ export default function ManualCheckTab({apiKeys, onCheckSingle, loading}) {
             </Text>
 
             <InlineStack gap="300" blockAlign="end" wrap>
-              <div style={{flex: 1, minWidth: '200px'}}>
+              <div className="filter-item filter-item--md">
                 <TextField
                   label="Tracking Number"
                   value={trackingNumber}
@@ -93,7 +93,7 @@ export default function ManualCheckTab({apiKeys, onCheckSingle, loading}) {
                   autoComplete="off"
                 />
               </div>
-              <div style={{minWidth: '160px'}}>
+              <div className="filter-item filter-item--sm">
                 <TextField
                   label="Carrier (optional)"
                   value={carrier}
@@ -102,7 +102,7 @@ export default function ManualCheckTab({apiKeys, onCheckSingle, loading}) {
                   autoComplete="off"
                 />
               </div>
-              <div style={{minWidth: '220px'}}>
+              <div className="filter-item filter-item--md">
                 <Select
                   label="API Key"
                   options={keyOptions}

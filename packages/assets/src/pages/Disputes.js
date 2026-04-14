@@ -159,7 +159,7 @@ export default function Disputes() {
         <Layout.Section>
           <Card>
             <InlineStack align="start" gap="400" wrap>
-              <div style={{minWidth: 240}}>
+              <div className="filter-item filter-item--lg">
                 <Select
                   label="Store"
                   options={storeOptions}
@@ -167,7 +167,7 @@ export default function Disputes() {
                   onChange={setSelectedStoreId}
                 />
               </div>
-              <div style={{minWidth: 160}}>
+              <div className="filter-item filter-item--sm">
                 <Select
                   label="Status"
                   options={STATUS_OPTIONS}
@@ -175,7 +175,7 @@ export default function Disputes() {
                   onChange={setStatusFilter}
                 />
               </div>
-              <div style={{minWidth: 140}}>
+              <div className="filter-item filter-item--xs">
                 <TextField
                   label="From"
                   type="date"
@@ -184,7 +184,7 @@ export default function Disputes() {
                   autoComplete="off"
                 />
               </div>
-              <div style={{minWidth: 140}}>
+              <div className="filter-item filter-item--xs">
                 <TextField
                   label="To"
                   type="date"

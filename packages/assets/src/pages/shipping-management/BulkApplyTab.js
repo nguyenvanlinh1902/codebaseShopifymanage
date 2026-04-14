@@ -167,8 +167,8 @@ export default function BulkApplyTab({templates, stores, groups, onError, onSucc
               onChange={setSelectedTemplate}
             />
 
-            <InlineStack gap="300" blockAlign="end">
-              <div style={{minWidth: '120px'}}>
+            <InlineStack gap="300" blockAlign="end" wrap>
+              <div className="filter-item filter-item--xs">
                 <Select
                   label="Apply to"
                   options={[
@@ -181,7 +181,7 @@ export default function BulkApplyTab({templates, stores, groups, onError, onSucc
                 />
               </div>
               {filterType === 'group' && (
-                <div style={{minWidth: '200px'}}>
+                <div className="filter-item filter-item--md">
                   <Select
                     label="Group"
                     options={[{label: '-- Select Group --', value: ''}, ...groupOptions]}

@@ -3,6 +3,7 @@ import PropTypes from 'prop-types';
 import {BrowserRouter, Routes, Route, Link as RouterLink, Navigate} from 'react-router-dom';
 import {AppProvider} from '@shopify/polaris';
 import '@shopify/polaris/build/esm/styles.css';
+import './styles/responsive.css';
 import enTranslations from '@shopify/polaris/locales/en.json';
 
 import {isEmbeddedApp, routePrefix, initAppBridge} from './config/app';

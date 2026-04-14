@@ -104,9 +104,9 @@ export default function Analytics() {
     <Page title="Analytics" subtitle="Real-time Shopify order metrics">
       <Layout>
         <Layout.Section>
-          <InlineStack align="start" gap="400">
+          <InlineStack align="start" gap="400" wrap>
             {isAdmin && groups.length > 0 && (
-              <div style={{minWidth: 200}}>
+              <div className="filter-item filter-item--md">
                 <Select
                   label="Group"
                   options={groupOptions}
@@ -115,7 +115,7 @@ export default function Analytics() {
                 />
               </div>
             )}
-            <div style={{minWidth: 280}}>
+            <div className="filter-item filter-item--lg">
               <Select
                 label="Store"
                 options={storeOptions}
@@ -123,7 +123,7 @@ export default function Analytics() {
                 onChange={setSelectedStoreId}
               />
             </div>
-            <div style={{minWidth: 180}}>
+            <div className="filter-item filter-item--sm">
               <Select
                 label="Period"
                 options={TIME_OPTIONS}

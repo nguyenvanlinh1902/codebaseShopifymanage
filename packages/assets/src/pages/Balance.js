@@ -58,9 +58,9 @@ export default function Balance() {
     <Page title="Balance" subtitle="Shopify Payments account balance & payouts">
       <Layout>
         <Layout.Section>
-          <InlineStack gap="400" align="start">
+          <InlineStack gap="400" align="start" wrap>
             {isAdmin && groups.length > 0 && (
-              <div style={{minWidth: 200}}>
+              <div className="filter-item filter-item--md">
                 <Select
                   label="Group"
                   options={groupOptions}
@@ -69,7 +69,7 @@ export default function Balance() {
                 />
               </div>
             )}
-            <div style={{minWidth: 280}}>
+            <div className="filter-item filter-item--lg">
               <Select
                 label="Store"
                 options={storeOptions}

@@ -52,8 +52,9 @@ export async function getCollection(shopify, id) {
     query($id: ID!) {
       collection(id: $id) {
         ${COLLECTION_FIELDS}
+        sortOrder
         products(first: 50) {
-          nodes { id title handle featuredImage { url altText } }
+          nodes { id title handle status featuredImage { url altText } }
         }
       }
     }
@@ -65,6 +66,7 @@ export async function getCollection(shopify, id) {
     ...c,
     type: c.ruleSet ? 'smart' : 'custom',
     productsCount: c.productsCount?.count || 0,
+    sortOrder: c.sortOrder || 'BEST_SELLING',
     products: c.products?.nodes || []
   };
 }

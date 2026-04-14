@@ -59,6 +59,9 @@ export default function StandaloneLayout({children}) {
   const {logout, user, updateUser} = useAuth();
   const isAdmin = user?.role === 'admin';
   const [userMenuActive, setUserMenuActive] = useState(false);
+  const [mobileNavActive, setMobileNavActive] = useState(false);
+
+  const toggleMobileNav = useCallback(() => setMobileNavActive(v => !v), []);
 
   const toggleUserMenu = useCallback(() => setUserMenuActive(v => !v), []);
 
@@ -170,7 +173,7 @@ export default function StandaloneLayout({children}) {
   );
 
   const topBarMarkup = (
-    <TopBar showNavigationToggle userMenu={userMenuMarkup} searchField={searchFieldMarkup} />
+    <TopBar showNavigationToggle onNavigationToggle={toggleMobileNav} userMenu={userMenuMarkup} searchField={searchFieldMarkup} />
   );
 
   const navigationMarkup = (
@@ -183,7 +186,12 @@ export default function StandaloneLayout({children}) {
   );
 
   return (
-    <Frame topBar={topBarMarkup} navigation={navigationMarkup}>
+    <Frame
+      topBar={topBarMarkup}
+      navigation={navigationMarkup}
+      showMobileNavigation={mobileNavActive}
+      onNavigationDismiss={toggleMobileNav}
+    >
       {children}
     </Frame>
   );

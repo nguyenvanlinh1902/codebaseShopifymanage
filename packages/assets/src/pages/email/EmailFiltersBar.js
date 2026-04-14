@@ -41,8 +41,8 @@ export default function EmailFiltersBar({labels, onFilter}) {
           </Button>
         ))}
       </ButtonGroup>
-      <InlineStack gap="300" blockAlign="end">
-        <div style={{minWidth: 300}}>
+      <InlineStack gap="300" blockAlign="end" wrap>
+        <div className="filter-item filter-item--lg">
           <TextField
             label="Search"
             value={query}
@@ -53,7 +53,7 @@ export default function EmailFiltersBar({labels, onFilter}) {
             onClearButtonClick={() => setQuery('')}
           />
         </div>
-        <div style={{minWidth: 200}}>
+        <div className="filter-item filter-item--md">
           <Select
             label="Label"
             options={labelOptions}

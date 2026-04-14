@@ -104,7 +104,7 @@ export default function OrderSearch() {
     <Page title="Order Search" subtitle="Search orders across your Shopify stores">
       <Layout>
         <Layout.Section>
-          <div style={{minWidth: 280}}>
+          <div style={{maxWidth: 300, width: '100%'}}>
             <Select
               label="Store"
               options={storeOptions}

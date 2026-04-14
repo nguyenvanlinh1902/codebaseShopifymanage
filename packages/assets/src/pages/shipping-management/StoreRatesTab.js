@@ -195,8 +195,8 @@ export default function StoreRatesTab({stores, groups, onError, onSuccess}) {
       <BlockStack gap="400">
         {/* Filters */}
         <Card>
-          <InlineStack gap="300" blockAlign="end" wrap={false}>
-            <div style={{minWidth: '120px'}}>
+          <InlineStack gap="300" blockAlign="end" wrap>
+            <div className="filter-item filter-item--xs">
               <Select
                 label="Filter by"
                 options={[{label: 'Store', value: 'store'}, {label: 'Group', value: 'group'}]}
@@ -205,7 +205,7 @@ export default function StoreRatesTab({stores, groups, onError, onSuccess}) {
               />
             </div>
             {filterType === 'store' && (
-              <div style={{minWidth: '250px'}}>
+              <div className="filter-item filter-item--lg">
                 <Select
                   label="Store"
                   options={[{label: '-- Select Store --', value: ''}, ...storeOptions]}
@@ -215,7 +215,7 @@ export default function StoreRatesTab({stores, groups, onError, onSuccess}) {
               </div>
             )}
             {filterType === 'group' && (
-              <div style={{minWidth: '250px'}}>
+              <div className="filter-item filter-item--lg">
                 <Select
                   label="Group"
                   options={[{label: '-- Select Group --', value: ''}, ...groupOptions]}

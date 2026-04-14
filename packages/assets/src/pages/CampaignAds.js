@@ -47,9 +47,9 @@ export default function CampaignAds() {
       <Layout>
         {/* Selectors */}
         <Layout.Section>
-          <InlineStack align="start" gap="400">
+          <InlineStack align="start" gap="400" wrap>
             {isAdmin && groups.length > 0 && (
-              <div style={{minWidth: 200}}>
+              <div className="filter-item filter-item--md">
                 <Select
                   label="Group"
                   options={groupOptions}
@@ -59,7 +59,7 @@ export default function CampaignAds() {
               </div>
             )}
             {storeOptions.length > 0 && (
-              <div style={{minWidth: 240}}>
+              <div className="filter-item filter-item--lg">
                 <Select
                   label="Store"
                   options={storeOptions}
@@ -68,7 +68,7 @@ export default function CampaignAds() {
                 />
               </div>
             )}
-            <div style={{minWidth: 180}}>
+            <div className="filter-item filter-item--sm">
               <Select
                 label="Period"
                 options={TIME_OPTIONS}

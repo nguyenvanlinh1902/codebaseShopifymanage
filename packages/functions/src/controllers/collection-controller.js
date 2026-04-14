@@ -44,6 +44,7 @@ function buildCollectionInput(formData) {
 
   if (formData.descriptionHtml) input.descriptionHtml = formData.descriptionHtml;
   if (formData.templateSuffix) input.templateSuffix = formData.templateSuffix;
+  if (formData.sortOrder) input.sortOrder = formData.sortOrder;
 
   // Handle (from seo.handle, top-level in CollectionInput)
   if (formData.seo?.handle) input.handle = formData.seo.handle;

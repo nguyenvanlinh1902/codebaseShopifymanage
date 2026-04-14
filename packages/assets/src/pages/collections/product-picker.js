@@ -9,12 +9,25 @@ import {
   Spinner,
   Checkbox,
   Thumbnail,
-  Modal
+  Modal,
+  Badge,
+  Select
 } from '@shopify/polaris';
 import {SearchIcon, XIcon} from '@shopify/polaris-icons';
 import {api} from '../../helpers/api';
 
-export default function ProductPicker({selectedProducts, onChange, storeId}) {
+const SORT_OPTIONS = [
+  {label: 'Most relevant', value: 'BEST_SELLING'},
+  {label: 'Product title A-Z', value: 'ALPHA_ASC'},
+  {label: 'Product title Z-A', value: 'ALPHA_DESC'},
+  {label: 'Highest price', value: 'PRICE_DESC'},
+  {label: 'Lowest price', value: 'PRICE_ASC'},
+  {label: 'Newest', value: 'CREATED_DESC'},
+  {label: 'Oldest', value: 'CREATED'},
+  {label: 'Manually', value: 'MANUAL'}
+];
+
+export default function ProductPicker({selectedProducts, onChange, storeId, sortOrder, onSortChange}) {
   const [modalOpen, setModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
@@ -73,7 +86,13 @@ export default function ProductPicker({selectedProducts, onChange, storeId}) {
     } else {
       setPendingSelection(prev => [
         ...prev,
-        {id: product.id, title: product.title, image: product.featuredImage?.url || ''}
+        {
+          id: product.id,
+          title: product.title,
+          status: product.status || 'ACTIVE',
+          image: product.featuredImage?.url || '',
+          featuredImage: product.featuredImage || null
+        }
       ]);
     }
   };
@@ -82,11 +101,38 @@ export default function ProductPicker({selectedProducts, onChange, storeId}) {
     onChange(selectedProducts.filter(p => p.id !== id));
   };
 
+  const getImageUrl = product => product.image || product.featuredImage?.url || '';
+
   return (
-    <BlockStack gap="400">
-      <Button onClick={openModal} fullWidth>
-        Browse products
-      </Button>
+    <BlockStack gap="300">
+      {/* Search + Browse + Sort row */}
+      <InlineStack gap="200" blockAlign="center" wrap={false}>
+        <div style={{flex: 1}}>
+          <TextField
+            label="Search products"
+            labelHidden
+            placeholder="Search products"
+            prefix={<SearchIcon />}
+            value=""
+            readOnly
+            onFocus={openModal}
+            autoComplete="off"
+            size="slim"
+          />
+        </div>
+        <Button onClick={openModal}>Browse</Button>
+        {onSortChange && (
+          <div style={{minWidth: 180}}>
+            <Select
+              label="Sort"
+              labelInline
+              options={SORT_OPTIONS}
+              value={sortOrder || 'BEST_SELLING'}
+              onChange={onSortChange}
+            />
+          </div>
+        )}
+      </InlineStack>
 
       {selectedProducts.length === 0 && (
         <Text as="p" tone="subdued" variant="bodySm">
@@ -94,26 +140,33 @@ export default function ProductPicker({selectedProducts, onChange, storeId}) {
         </Text>
       )}
 
+      {/* Product list — numbered, Shopify-style */}
       {selectedProducts.length > 0 && (
-        <BlockStack gap="200">
-          <Text as="p" variant="bodySm" fontWeight="medium">
-            {selectedProducts.length} product{selectedProducts.length !== 1 ? 's' : ''} selected
-          </Text>
-          {selectedProducts.map(product => (
-            <InlineStack key={product.id} gap="300" blockAlign="center" align="space-between">
-              <InlineStack gap="300" blockAlign="center">
-                <Thumbnail source={product.image || ''} alt={product.title} size="small" />
-                <Text as="span" variant="bodySm">
-                  {product.title}
-                </Text>
-              </InlineStack>
+        <BlockStack gap="0">
+          {selectedProducts.map((product, index) => (
+            <div key={product.id} style={{
+              display: 'flex', alignItems: 'center', gap: '12px',
+              padding: '10px 0',
+              borderBottom: index < selectedProducts.length - 1 ? '1px solid #e3e3e3' : 'none'
+            }}>
+              <Text as="span" variant="bodySm" tone="subdued">
+                {index + 1}.
+              </Text>
+              <Thumbnail source={getImageUrl(product)} alt={product.title} size="small" />
+              <div style={{flex: 1}}>
+                <Text as="span" variant="bodySm">{product.title}</Text>
+              </div>
+              <Badge tone={product.status === 'ACTIVE' ? 'success' : product.status === 'DRAFT' ? 'info' : 'attention'}>
+                {(product.status || 'Active').charAt(0).toUpperCase() + (product.status || 'Active').slice(1).toLowerCase()}
+              </Badge>
               <Button
                 icon={XIcon}
                 variant="plain"
+                tone="subdued"
                 onClick={() => handleRemove(product.id)}
                 accessibilityLabel={`Remove ${product.title}`}
               />
-            </InlineStack>
+            </div>
           ))}
         </BlockStack>
       )}
@@ -174,9 +227,12 @@ export default function ProductPicker({selectedProducts, onChange, storeId}) {
                       alt={product.title}
                       size="small"
                     />
-                    <Text as="span" variant="bodySm">
-                      {product.title}
-                    </Text>
+                    <div style={{flex: 1}}>
+                      <Text as="span" variant="bodySm">{product.title}</Text>
+                    </div>
+                    <Badge tone={product.status === 'ACTIVE' ? 'success' : product.status === 'DRAFT' ? 'info' : 'attention'}>
+                      {(product.status || 'Active').charAt(0).toUpperCase() + (product.status || 'Active').slice(1).toLowerCase()}
+                    </Badge>
                   </div>
                 ))}
               </BlockStack>
@@ -203,5 +259,7 @@ export default function ProductPicker({selectedProducts, onChange, storeId}) {
 ProductPicker.propTypes = {
   selectedProducts: PropTypes.array.isRequired,
   onChange: PropTypes.func.isRequired,
-  storeId: PropTypes.string
+  storeId: PropTypes.string,
+  sortOrder: PropTypes.string,
+  onSortChange: PropTypes.func
 };

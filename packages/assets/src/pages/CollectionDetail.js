@@ -6,6 +6,8 @@ import {usePermittedStores} from '../hooks/usePermittedStores';
 import CollectionForm from './collections/collection-form';
 import CollectionSidebar from './collections/collection-sidebar';
 
+const STORE_HISTORY_KEY = 'collections_last_store';
+
 const DEFAULT_FORM = {
   title: '',
   descriptionHtml: '',
@@ -13,6 +15,7 @@ const DEFAULT_FORM = {
   rules: [],
   disjunctive: false,
   products: [],
+  sortOrder: 'BEST_SELLING',
   image: '',
   templateSuffix: '',
   seo: {title: '', description: '', handle: ''}
@@ -26,7 +29,9 @@ export default function CollectionDetail() {
   const isNew = !id;
 
   const [formData, setFormData] = useState(DEFAULT_FORM);
-  const [storeId, setStoreId] = useState(() => searchParams.get('store') || '');
+  const [storeId, setStoreId] = useState(
+    () => searchParams.get('store') || localStorage.getItem(STORE_HISTORY_KEY) || ''
+  );
   const [loading, setLoading] = useState(!isNew);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -60,6 +65,7 @@ export default function CollectionDetail() {
           rules: c.ruleSet?.rules || [],
           disjunctive: c.ruleSet?.appliedDisjunctively || false,
           products: c.products || [],
+          sortOrder: c.sortOrder || 'BEST_SELLING',
           image: c.image?.url || '',
           templateSuffix: c.templateSuffix || '',
           seo: {
@@ -101,7 +107,12 @@ export default function CollectionDetail() {
           });
       const result = await res.json();
       if (result.success) {
-        navigate('/collections');
+        localStorage.setItem(STORE_HISTORY_KEY, storeId);
+        if (isNew && result.data?.id) {
+          navigate(`/collections/${encodeURIComponent(result.data.id)}?store=${storeId}`, {replace: true});
+        } else {
+          navigate(`/collections?store=${storeId}`);
+        }
       } else {
         setError(result.error || 'Failed to save collection');
       }
@@ -145,6 +156,10 @@ export default function CollectionDetail() {
     ? []
     : [
         {
+          content: 'Create new',
+          onAction: () => navigate(`/collections/new?store=${storeId}`)
+        },
+        {
           content: 'Delete collection',
           destructive: true,
           onAction: () => setDeleteModalOpen(true)
@@ -166,7 +181,7 @@ export default function CollectionDetail() {
         )}
         <Layout>
           <Layout.Section>
-            <CollectionForm formData={formData} onChange={handleChange} storeId={storeId} />
+            <CollectionForm formData={formData} onChange={handleChange} storeId={storeId} isNew={isNew} />
           </Layout.Section>
           <Layout.Section variant="oneThird">
             <CollectionSidebar

@@ -24,7 +24,9 @@ export default function Collections() {
   const {stores} = usePermittedStores();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const [selectedStore, setSelectedStore] = useState(() => searchParams.get('store') || '');
+  const [selectedStore, setSelectedStore] = useState(
+    () => searchParams.get('store') || localStorage.getItem('collections_last_store') || ''
+  );
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [collections, setCollections] = useState([]);
@@ -84,6 +86,7 @@ export default function Collections() {
     value => {
       setSelectedStore(value);
       setSearchParams(value ? {store: value} : {});
+      if (value) localStorage.setItem('collections_last_store', value);
     },
     [setSearchParams]
   );
@@ -146,8 +149,8 @@ export default function Collections() {
           </Banner>
         )}
         <Card>
-          <InlineStack align="space-between" blockAlign="center" gap="400">
-            <div style={{minWidth: 280}}>
+          <InlineStack align="space-between" blockAlign="center" gap="400" wrap>
+            <div className="filter-item filter-item--lg">
               <Select
                 label="Store"
                 labelHidden
@@ -156,7 +159,7 @@ export default function Collections() {
                 onChange={handleStoreChange}
               />
             </div>
-            <div style={{minWidth: 280}}>
+            <div className="filter-item filter-item--lg">
               <TextField
                 label="Search"
                 labelHidden

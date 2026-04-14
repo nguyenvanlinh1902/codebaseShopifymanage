@@ -448,7 +448,7 @@ export default function OrdersCheckPage() {
             <Card>
               <BlockStack gap="300">
                 <InlineStack gap="400" blockAlign="end" wrap>
-                  <div style={{minWidth: '140px'}}>
+                  <div className="filter-item filter-item--xs">
                     <Select
                       label="Filter by"
                       options={filterOptions}
@@ -461,7 +461,7 @@ export default function OrdersCheckPage() {
                     />
                   </div>
                   {filterType === 'store' && (
-                    <div style={{minWidth: '240px'}}>
+                    <div className="filter-item filter-item--lg">
                       <Select
                         label="Store"
                         options={storeOptions}
@@ -472,7 +472,7 @@ export default function OrdersCheckPage() {
                     </div>
                   )}
                   {filterType === 'group' && (
-                    <div style={{minWidth: '240px'}}>
+                    <div className="filter-item filter-item--lg">
                       <Select
                         label="Group"
                         options={groupOptions}
@@ -482,7 +482,7 @@ export default function OrdersCheckPage() {
                       />
                     </div>
                   )}
-                  <div style={{minWidth: '160px'}}>
+                  <div className="filter-item filter-item--sm">
                     <Select
                       label="API Key"
                       options={[

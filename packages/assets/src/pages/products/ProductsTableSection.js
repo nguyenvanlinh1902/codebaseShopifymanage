@@ -12,6 +12,7 @@ import {
   InlineStack
 } from '@shopify/polaris';
 import {ImageIcon} from '@shopify/polaris-icons';
+import {useBreakpoints} from '@shopify/polaris';
 
 const STATUS_TONE = {ACTIVE: 'success', DRAFT: 'info', ARCHIVED: 'subdued'};
 
@@ -23,6 +24,8 @@ function formatInventory(product) {
 }
 
 export default function ProductsTableSection({products, loading, pageInfo, onNextPage, onPrevPage, hasPrev}) {
+  const {smDown} = useBreakpoints();
+
   if (loading) return <SkeletonBodyText lines={10} />;
 
   if (products.length === 0) {
@@ -70,6 +73,7 @@ export default function ProductsTableSection({products, loading, pageInfo, onNex
         resourceName={{singular: 'product', plural: 'products'}}
         itemCount={products.length}
         selectable
+        condensed={smDown}
         headings={[
           {title: 'Product'},
           {title: 'Status'},

@@ -597,7 +597,7 @@ export default function Tracking() {
                 {error}
               </Banner>
             )}
-            <div style={{minWidth: '240px', maxWidth: '400px'}}>
+            <div style={{maxWidth: 400, width: '100%'}}>
               <Select
                 label="Target Store"
                 options={importStoreOptions}

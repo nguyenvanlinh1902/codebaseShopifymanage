@@ -15,12 +15,14 @@ function slugify(text) {
     .replace(/-+/g, '-');
 }
 
-export default function ProductCore({formData, onChange, storeId}) {
+export default function ProductCore({formData, onChange, storeId, isNew}) {
   useEffect(() => {
-    if (!formData.handleManuallyEdited) {
+    // Only auto-slugify handle from title for brand-new products. For existing
+    // products Shopify already has a handle — never overwrite it from the title.
+    if (isNew && !formData.handleManuallyEdited) {
       onChange('handle', slugify(formData.title));
     }
-  }, [formData.title]);
+  }, [formData.title, isNew]);
 
   return (
     <Card>

@@ -9,7 +9,7 @@ import ProductSeo from './product-seo';
 export default function ProductForm({formData, onChange, storeId, isNew, productId}) {
   return (
     <BlockStack gap="400">
-      <ProductCore formData={formData} onChange={onChange} storeId={storeId} />
+      <ProductCore formData={formData} onChange={onChange} storeId={storeId} isNew={isNew} />
       <ProductVariants
         formData={formData}
         onChange={onChange}

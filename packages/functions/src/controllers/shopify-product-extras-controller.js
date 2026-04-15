@@ -16,6 +16,16 @@ import {
 import {setInventoryQuantity} from '../services/shopify-product-inventory-service.js';
 import {toGid} from '../services/shopify-helpers.js';
 
+/** Map user-facing unit (lb/kg/g/oz) to Shopify WeightUnit enum. */
+function normalizeWeightUnit(raw) {
+  const s = String(raw || 'POUNDS').toUpperCase();
+  if (['LB', 'LBS', 'POUND', 'POUNDS'].includes(s)) return 'POUNDS';
+  if (['KG', 'KGS', 'KILOGRAM', 'KILOGRAMS'].includes(s)) return 'KILOGRAMS';
+  if (['G', 'GRAM', 'GRAMS'].includes(s)) return 'GRAMS';
+  if (['OZ', 'OUNCE', 'OUNCES'].includes(s)) return 'OUNCES';
+  return 'POUNDS';
+}
+
 /** POST /api/shopify-products/:id/variants — create a new variant */
 export async function addVariant(req, res) {
   try {
@@ -24,27 +34,37 @@ export async function addVariant(req, res) {
     await validateStoreAccess(req, storeId);
     const shopify = await getShopify(storeId);
 
+    const invItem = {
+      sku: variant.sku || '',
+      tracked: variant.inventoryItem?.tracked !== false,
+      requiresShipping: variant.requiresShipping !== false
+    };
+    if (variant.inventoryItem?.cost || variant.cost) {
+      invItem.cost = String(variant.inventoryItem?.cost || variant.cost);
+    }
+    const weightVal = Number(variant.weight);
+    if (Number.isFinite(weightVal) && weightVal > 0) {
+      invItem.measurement = {
+        weight: {value: weightVal, unit: normalizeWeightUnit(variant.weightUnit)}
+      };
+    }
+    if (variant.countryCodeOfOrigin) invItem.countryCodeOfOrigin = variant.countryCodeOfOrigin;
+    if (variant.harmonizedSystemCode) invItem.harmonizedSystemCode = variant.harmonizedSystemCode;
+
     const input = {
       optionValues: variant.optionValues,
       price: variant.price,
       barcode: variant.barcode || undefined,
       inventoryPolicy: variant.inventoryPolicy || 'DENY',
-      inventoryItem: {
-        sku: variant.sku || '',
-        tracked: variant.inventoryItem?.tracked !== false,
-        requiresShipping: variant.requiresShipping !== false
-      },
+      inventoryItem: invItem,
       taxable: variant.taxable !== false
     };
-    if (Array.isArray(variant.inventoryQuantities) && variant.inventoryQuantities.length > 0) {
-      input.inventoryQuantities = variant.inventoryQuantities.filter(q => q.locationId);
-    }
     if (variant.imageSrc) input.mediaSrc = [variant.imageSrc];
 
     const result = await shopify.graphql(
       `mutation productVariantsBulkCreate($productId: ID!, $variants: [ProductVariantsBulkInput!]!, $strategy: ProductVariantsBulkCreateStrategy) {
         productVariantsBulkCreate(productId: $productId, variants: $variants, strategy: $strategy) {
-          productVariants { id }
+          productVariants { id inventoryItem { id } }
           userErrors { field message code }
         }
       }`,
@@ -58,7 +78,39 @@ export async function addVariant(req, res) {
     if (payload?.userErrors?.length > 0) {
       throw new Error(payload.userErrors.map(e => e.message).join('; '));
     }
-    res.json({success: true, data: payload.productVariants?.[0] || null});
+    const created = payload.productVariants?.[0] || null;
+
+    // Set on-hand quantities via inventorySetOnHandQuantities (ProductVariantsBulkInput
+    // no longer accepts inventoryQuantities in API 2026-04).
+    const qtys = Array.isArray(variant.inventoryQuantities)
+      ? variant.inventoryQuantities.filter(q => q.locationId && q.availableQuantity != null)
+      : [];
+    if (created?.inventoryItem?.id && qtys.length > 0) {
+      // New variants start at on_hand = 0, so compareQuantity is 0.
+      await shopify.graphql(
+        `mutation inventorySetQuantities($input: InventorySetQuantitiesInput!) {
+          inventorySetQuantities(input: $input) {
+            userErrors { field message }
+          }
+        }`,
+        {
+          input: {
+            name: 'on_hand',
+            reason: 'correction',
+            quantities: qtys
+              .map(q => ({
+                inventoryItemId: created.inventoryItem.id,
+                locationId: q.locationId,
+                quantity: parseInt(q.availableQuantity, 10) || 0,
+                compareQuantity: 0
+              }))
+              .filter(q => q.quantity !== 0)
+          }
+        }
+      );
+    }
+
+    res.json({success: true, data: created});
   } catch (error) {
     handleError(res, 'addVariant', error);
   }

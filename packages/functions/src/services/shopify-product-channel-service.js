@@ -10,6 +10,7 @@ export async function createStagedUpload(shopify, {filename, mimeType, fileSize}
       stagedUploadsCreate(input: $input) {
         stagedTargets {
           url
+          resourceUrl
           parameters { name value }
         }
         userErrors { field message }
@@ -29,7 +30,11 @@ export async function createStagedUpload(shopify, {filename, mimeType, fileSize}
     throw new Error(payload.userErrors.map(e => e.message).join('; '));
   }
   const target = payload?.stagedTargets?.[0];
-  return {url: target?.url, parameters: target?.parameters || []};
+  return {
+    url: target?.url,
+    resourceUrl: target?.resourceUrl,
+    parameters: target?.parameters || []
+  };
 }
 
 /** Get all store publications (sales channels). */

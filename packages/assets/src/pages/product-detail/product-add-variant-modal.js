@@ -48,6 +48,8 @@ export default function ProductAddVariantModal({open, onClose, product, productI
   const [showPricingExtra, setShowPricingExtra] = useState(false);
   const [showInventoryExtra, setShowInventoryExtra] = useState(false);
   const [showShippingExtra, setShowShippingExtra] = useState(false);
+  const [countryOfOrigin, setCountryOfOrigin] = useState('');
+  const [hsCode, setHsCode] = useState('');
   const [variantSearch, setVariantSearch] = useState('');
 
   useEffect(() => {
@@ -104,6 +106,8 @@ export default function ProductAddVariantModal({open, onClose, product, productI
           requiresShipping: physical,
           weight: parseFloat(weight) || 0,
           weightUnit: weightUnit.toUpperCase(),
+          countryCodeOfOrigin: countryOfOrigin || undefined,
+          harmonizedSystemCode: hsCode || undefined,
           imageSrc: imageUrl || undefined,
           inventoryQuantities: Object.entries(inventory).map(([locationId, available]) => ({
             locationId,
@@ -377,12 +381,39 @@ export default function ProductAddVariantModal({open, onClose, product, productI
                   </div>
                 </InlineStack>
                 <InlineStack gap="200" blockAlign="center" align="space-between">
-                  <InlineStack gap="150" wrap>
-                    <button type="button" className="pav-badge-btn" onClick={() => setShowShippingExtra(v => !v)}>Country of origin</button>
-                    <button type="button" className="pav-badge-btn" onClick={() => setShowShippingExtra(v => !v)}>HS Code</button>
-                  </InlineStack>
+                  <Text as="p" variant="bodySm" tone="subdued">Customs information</Text>
                   <Button variant="tertiary" icon={showShippingExtra ? ChevronUpIcon : ChevronDownIcon} accessibilityLabel="Toggle shipping details" onClick={() => setShowShippingExtra(v => !v)} />
                 </InlineStack>
+                <Collapsible open={showShippingExtra} id="pav-ship-extra">
+                  <BlockStack gap="300">
+                    <Select
+                      label="Country code of origin"
+                      options={[
+                        {label: 'Select', value: ''},
+                        {label: 'United States (US)', value: 'US'},
+                        {label: 'Vietnam (VN)', value: 'VN'},
+                        {label: 'China (CN)', value: 'CN'},
+                        {label: 'India (IN)', value: 'IN'},
+                        {label: 'Japan (JP)', value: 'JP'},
+                        {label: 'Germany (DE)', value: 'DE'},
+                        {label: 'United Kingdom (GB)', value: 'GB'},
+                        {label: 'France (FR)', value: 'FR'},
+                        {label: 'Canada (CA)', value: 'CA'},
+                        {label: 'Mexico (MX)', value: 'MX'},
+                        {label: 'Australia (AU)', value: 'AU'}
+                      ]}
+                      value={countryOfOrigin}
+                      onChange={setCountryOfOrigin}
+                    />
+                    <TextField
+                      label="Harmonized System (HS) code"
+                      value={hsCode}
+                      onChange={setHsCode}
+                      placeholder="Enter a 6-digit code or search by keyword"
+                      autoComplete="off"
+                    />
+                  </BlockStack>
+                </Collapsible>
               </BlockStack>
             </Card>
           </div>

@@ -44,6 +44,39 @@ export default function ProductMetafields({formData, onChange, storeId}) {
   const metafields = formData.metafields || [];
   const PREVIEW_COUNT = 2;
 
+  const MEASUREMENT_TYPES = new Set(['dimension', 'weight', 'volume']);
+  const DEFAULT_UNIT = {dimension: 'CENTIMETERS', weight: 'GRAMS', volume: 'LITERS'};
+
+  const getTypeName = t => (t && typeof t === 'object' ? t.name : t) || 'single_line_text_field';
+
+  // For measurement metafields, Shopify stores value as JSON {value, unit}. Show just the number.
+  const displayValue = (type, raw) => {
+    const t = getTypeName(type);
+    if (!MEASUREMENT_TYPES.has(t) || !raw) return raw || '';
+    try {
+      const parsed = typeof raw === 'object' ? raw : JSON.parse(raw);
+      if (parsed && parsed.value !== undefined) return String(parsed.value);
+    } catch (_) {}
+    return String(raw);
+  };
+
+  // Wrap plain numeric input back into JSON for measurement types before storing in formData.
+  const encodeValue = (type, inputStr, existingRaw) => {
+    const t = getTypeName(type);
+    if (!MEASUREMENT_TYPES.has(t)) return inputStr;
+    if (inputStr === '' || inputStr === null || inputStr === undefined) return '';
+    const n = Number(inputStr);
+    if (!Number.isFinite(n)) return inputStr;
+    let unit = DEFAULT_UNIT[t];
+    if (existingRaw) {
+      try {
+        const parsed = typeof existingRaw === 'object' ? existingRaw : JSON.parse(existingRaw);
+        if (parsed && parsed.unit) unit = parsed.unit;
+      } catch (_) {}
+    }
+    return JSON.stringify({value: n, unit});
+  };
+
   // Merge definitions with existing metafield values so definition-only rows are editable too
   const rows = [];
   const seen = new Set();
@@ -111,14 +144,17 @@ export default function ProductMetafields({formData, onChange, storeId}) {
   };
 
   const handleUpdateRow = (row, value) => {
-    if (row.index >= 0) {
-      handleUpdateValue(row.index, value);
-      return;
+    const idx = metafields.findIndex(
+      m => m.namespace === row.namespace && m.key === row.key
+    );
+    if (idx >= 0) {
+      onChange('metafields', metafields.map((m, i) => (i === idx ? {...m, value} : m)));
+    } else {
+      onChange('metafields', [
+        ...metafields,
+        {namespace: row.namespace, key: row.key, type: row.type, value}
+      ]);
     }
-    onChange('metafields', [
-      ...metafields,
-      {namespace: row.namespace, key: row.key, type: row.type, value}
-    ]);
   };
 
   const handleDeleteLocal = async index => {
@@ -188,8 +224,8 @@ export default function ProductMetafields({formData, onChange, storeId}) {
                 <TextField
                   label={label}
                   labelHidden
-                  value={row.value}
-                  onChange={v => handleUpdateRow(row, v)}
+                  value={displayValue(row.type, row.value)}
+                  onChange={v => handleUpdateRow(row, encodeValue(row.type, v, row.value))}
                   autoComplete="off"
                 />
               </div>

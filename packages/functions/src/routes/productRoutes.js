@@ -11,5 +11,6 @@ router.get('/successful-imports', productImportController.getSuccessfulImports);
 router.get('/template', productImportController.downloadTemplate);
 router.get('/imports/:importId', productImportController.getImportDetails);
 router.post('/imports/:importId/retry', productImportController.retryImport);
+router.delete('/imports/:importId', productImportController.deleteImportHistory);
 
 export default router;

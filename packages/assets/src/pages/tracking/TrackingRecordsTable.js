@@ -1,5 +1,5 @@
 import React from 'react';
-import {Card, Text, Badge, Box, BlockStack, Spinner} from '@shopify/polaris';
+import {Card, Text, Badge, Box, BlockStack, SkeletonBodyText} from '@shopify/polaris';
 import PaginationControls from '../../components/pagination-controls';
 
 const STATUS_BADGE = {
@@ -33,11 +33,8 @@ export default function TrackingRecordsTable({
   if (loading) {
     return (
       <Card>
-        <Box padding="1000">
-          <BlockStack align="center" inlineAlign="center">
-            <Spinner size="small" />
-            <Text tone="subdued">Loading tracking records...</Text>
-          </BlockStack>
+        <Box padding="400">
+          <SkeletonBodyText lines={10} />
         </Box>
       </Card>
     );

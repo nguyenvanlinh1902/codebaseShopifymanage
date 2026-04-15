@@ -97,14 +97,18 @@ export class ImportHistoryRepository {
   }
 
   /**
-   * Mark import as failed
+   * Mark import as failed.
+   * @param {string} importId
+   * @param {Error|string} error
+   * @param {object} [extra] - Extra fields to persist (e.g. failedProductDetails, variantThrottled)
    */
-  async markFailed(importId, error) {
+  async markFailed(importId, error, extra = {}) {
     await this.collection.doc(importId).update({
       status: 'failed',
-      error: error.message || error,
+      error: error?.message || error,
       failedAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
+      ...extra
     });
   }
 
@@ -144,6 +148,21 @@ export class ImportHistoryRepository {
       .get();
 
     return snapshot.docs.map(doc => doc.data());
+  }
+
+  /**
+   * Delete import job and its subcollection of products
+   */
+  async delete(importId) {
+    const docRef = this.collection.doc(importId);
+    // Delete subcollection documents in batches
+    const subSnap = await docRef.collection('import_products').get();
+    if (!subSnap.empty) {
+      const batch = this.db.batch();
+      subSnap.docs.forEach(d => batch.delete(d.ref));
+      await batch.commit();
+    }
+    await docRef.delete();
   }
 
   /**

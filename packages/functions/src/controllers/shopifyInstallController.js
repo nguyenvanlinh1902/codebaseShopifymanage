@@ -154,16 +154,34 @@ export async function handleCallback(req, res) {
       return res.status(400).json({success: false, error: 'No access token received'});
     }
 
-    // Get shop info from Shopify API
-    const shopInfoUrl = `https://${shopDomain}.myshopify.com/admin/api/${shopifyConfig.apiVersion}/shop.json`;
+    // Get shop info from Shopify Admin GraphQL API
+    const shopInfoUrl = `https://${shopDomain}.myshopify.com/admin/api/${shopifyConfig.apiVersion}/graphql.json`;
     const shopInfoResponse = await fetch(shopInfoUrl, {
-      headers: {'X-Shopify-Access-Token': accessToken, 'Content-Type': 'application/json'}
+      method: 'POST',
+      headers: {'X-Shopify-Access-Token': accessToken, 'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        query: `query { shop {
+          name email currencyCode ianaTimezone
+          plan { displayName } shopOwnerName contactEmail
+          billingAddress { country phone }
+        } }`
+      })
     });
 
     let shopInfo = {};
     if (shopInfoResponse.ok) {
       const shopInfoData = await shopInfoResponse.json();
-      shopInfo = shopInfoData.shop || {};
+      const s = shopInfoData?.data?.shop || {};
+      shopInfo = {
+        name: s.name,
+        email: s.email || s.contactEmail,
+        currency: s.currencyCode,
+        timezone: s.ianaTimezone,
+        plan_display_name: s.plan?.displayName,
+        shop_owner: s.shopOwnerName,
+        phone: s.billingAddress?.phone,
+        country_name: s.billingAddress?.country
+      };
     }
 
     // Save or update store in Firestore

@@ -127,6 +127,27 @@ export async function getImportStatus(req, res) {
 }
 
 /**
+ * Delete an import history record (and its subcollection).
+ * Only allows deletion of non-processing jobs to avoid breaking in-flight workers.
+ */
+export async function deleteImportHistory(req, res) {
+  try {
+    const {importId} = req.params;
+    const job = await importHistoryRepo.getById(importId);
+
+    if (!job) {
+      return res.status(404).json({success: false, error: 'Import not found'});
+    }
+
+    await importHistoryRepo.delete(importId);
+    return res.json({success: true});
+  } catch (error) {
+    console.error('Delete import history error:', error);
+    return res.status(500).json({success: false, error: error.message});
+  }
+}
+
+/**
  * Get successful imports (stores that have been imported to)
  */
 export async function getSuccessfulImports(req, res) {

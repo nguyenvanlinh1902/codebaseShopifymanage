@@ -14,7 +14,8 @@ export {
   getImportHistory,
   getImportDetails,
   getImportStatus,
-  getSuccessfulImports
+  getSuccessfulImports,
+  deleteImportHistory
 } from './product-import/import-history-routes.js';
 
 
@@ -167,35 +168,45 @@ export async function downloadTemplate(req, res) {
 export async function retryImport(req, res) {
   try {
     const {importId} = req.params;
+    // mode=async (default): publish to PubSub, return immediately — safe for large jobs.
+    // mode=sync: run inline (only for small jobs/local debug — will timeout after 540s).
+    const mode = req.query.mode || req.body?.mode || 'async';
     const job = await importHistoryRepo.getById(importId);
     if (!job) return res.status(404).json({success: false, error: 'Import not found'});
 
     // Reset status
     await importHistoryRepo.updateProgress(importId, {
       status: 'pending', processedProducts: 0, successCount: 0, failedCount: 0,
-      statusMessage: 'Retrying...'
+      statusMessage: 'Retrying...', error: null
     });
+
+    const messagePayload = {
+      importJobs: [{importId, storeId: job.storeId, storeName: job.storeName}],
+      batchId: job.batchId || null,
+      fileNames: job.fileName?.split(', ') || [],
+      userId: job.userId,
+      totalProducts: job.totalProducts,
+      overwriteExisting: job.overwriteExisting !== false
+    };
+
+    if (mode === 'async') {
+      await getOrCreateTopic(PRODUCT_IMPORT_TOPIC);
+      await publishMessage(PRODUCT_IMPORT_TOPIC, messagePayload);
+      await importHistoryRepo.updateProgress(importId, {status: 'processing'});
+      return res.json({
+        success: true,
+        data: {mode: 'async', status: 'processing', message: 'Retry queued. Watch history for updates.'}
+      });
+    }
 
     const {processProductImport} = await import('./product-import/process-import-job.js');
-
-    // Reconstruct PubSub-like message
-    await processProductImport({
-      message: {
-        json: {
-          importJobs: [{importId, storeId: job.storeId, storeName: job.storeName}],
-          batchId: job.batchId || null,
-          fileNames: job.fileName?.split(', ') || [],
-          userId: job.userId,
-          totalProducts: job.totalProducts,
-          overwriteExisting: job.overwriteExisting !== false
-        }
-      }
-    });
+    await processProductImport({message: {json: messagePayload}});
 
     const updated = await importHistoryRepo.getById(importId);
     return res.json({
       success: true,
       data: {
+        mode: 'sync',
         status: updated.status,
         successCount: updated.successCount,
         failedCount: updated.failedCount,

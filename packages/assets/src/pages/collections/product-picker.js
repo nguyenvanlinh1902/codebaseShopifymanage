@@ -6,7 +6,7 @@ import {
   TextField,
   Text,
   Button,
-  Spinner,
+  SkeletonBodyText,
   Checkbox,
   Thumbnail,
   Modal,
@@ -194,11 +194,7 @@ export default function ProductPicker({selectedProducts, onChange, storeId, sort
               autoFocus
             />
 
-            {searching && (
-              <InlineStack align="center">
-                <Spinner size="small" />
-              </InlineStack>
-            )}
+            {searching && <SkeletonBodyText lines={4} />}
 
             {!searching && searchResults.length > 0 && (
               <BlockStack gap="100">

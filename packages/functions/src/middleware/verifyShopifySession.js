@@ -42,12 +42,19 @@ async function exchangeForOfflineToken(shopDomain, sessionToken) {
 }
 
 /**
- * Fetch shop info from Shopify Admin API using access token.
+ * Fetch shop info from Shopify Admin GraphQL API using access token.
  */
 async function fetchShopInfo(shopDomain, accessToken) {
-  const url = `https://${shopDomain}.myshopify.com/admin/api/${shopifyConfig.apiVersion}/shop.json`;
+  const url = `https://${shopDomain}.myshopify.com/admin/api/${shopifyConfig.apiVersion}/graphql.json`;
+  const query = `query { shop {
+    id name email myshopifyDomain currencyCode ianaTimezone
+    plan { displayName } shopOwnerName contactEmail
+    billingAddress { country phone }
+  } }`;
   const response = await fetch(url, {
-    headers: {'X-Shopify-Access-Token': accessToken, 'Content-Type': 'application/json'}
+    method: 'POST',
+    headers: {'X-Shopify-Access-Token': accessToken, 'Content-Type': 'application/json'},
+    body: JSON.stringify({query})
   });
 
   if (!response.ok) {
@@ -56,7 +63,17 @@ async function fetchShopInfo(shopDomain, accessToken) {
   }
 
   const data = await response.json();
-  return data.shop || {};
+  const s = data?.data?.shop || {};
+  return {
+    name: s.name,
+    email: s.email || s.contactEmail,
+    currency: s.currencyCode,
+    timezone: s.ianaTimezone,
+    plan_display_name: s.plan?.displayName,
+    shop_owner: s.shopOwnerName,
+    phone: s.billingAddress?.phone,
+    country_name: s.billingAddress?.country
+  };
 }
 
 /**

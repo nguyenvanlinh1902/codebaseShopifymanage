@@ -1,5 +1,16 @@
 import React, {useState, useEffect, useCallback} from 'react';
-import {Page, Layout, BlockStack, Spinner, Modal, Text, Banner} from '@shopify/polaris';
+import {
+  Page,
+  Layout,
+  BlockStack,
+  Card,
+  SkeletonPage,
+  SkeletonBodyText,
+  SkeletonDisplayText,
+  Modal,
+  Text,
+  Banner
+} from '@shopify/polaris';
 import {useNavigate, useParams, useSearchParams} from 'react-router-dom';
 import {api} from '../helpers/api';
 import {usePermittedStores} from '../hooks/usePermittedStores';
@@ -149,9 +160,42 @@ export default function CollectionDetail() {
 
   if (loading) {
     return (
-      <Page title="Loading..." backAction={{content: 'Collections', url: '/collections'}}>
-        <Spinner />
-      </Page>
+      <SkeletonPage primaryAction backAction title="">
+        <Layout>
+          <Layout.Section>
+            <BlockStack gap="400">
+              <Card>
+                <BlockStack gap="400">
+                  <SkeletonDisplayText size="small" />
+                  <SkeletonBodyText lines={3} />
+                </BlockStack>
+              </Card>
+              <Card>
+                <BlockStack gap="400">
+                  <SkeletonDisplayText size="small" />
+                  <SkeletonBodyText lines={5} />
+                </BlockStack>
+              </Card>
+            </BlockStack>
+          </Layout.Section>
+          <Layout.Section variant="oneThird">
+            <BlockStack gap="400">
+              <Card>
+                <BlockStack gap="400">
+                  <SkeletonDisplayText size="small" />
+                  <SkeletonBodyText lines={2} />
+                </BlockStack>
+              </Card>
+              <Card>
+                <BlockStack gap="400">
+                  <SkeletonDisplayText size="small" />
+                  <SkeletonBodyText lines={3} />
+                </BlockStack>
+              </Card>
+            </BlockStack>
+          </Layout.Section>
+        </Layout>
+      </SkeletonPage>
     );
   }
 

@@ -1,5 +1,5 @@
 import React, {useState, useEffect, useCallback} from 'react';
-import {Modal, TextField, ResourceList, ResourceItem, Text, BlockStack, Spinner, InlineStack} from '@shopify/polaris';
+import {Modal, TextField, ResourceList, ResourceItem, Text, BlockStack, SkeletonBodyText, InlineStack} from '@shopify/polaris';
 import {api} from '../../helpers/api';
 
 /**
@@ -77,7 +77,7 @@ export default function BulkCollectionModal({open, mode, storeId, productCount, 
             autoComplete="off"
           />
           {fetching ? (
-            <InlineStack align="center"><Spinner size="small" /></InlineStack>
+            <SkeletonBodyText lines={5} />
           ) : (
             <ResourceList
               resourceName={{singular: 'collection', plural: 'collections'}}

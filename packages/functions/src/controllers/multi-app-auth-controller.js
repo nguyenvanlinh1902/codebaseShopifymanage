@@ -13,41 +13,102 @@ function normalizeShopDomain(shop) {
 }
 
 /**
- * Register orders/create webhook via Shopify REST API
+ * GraphQL helper for Shopify Admin API
+ */
+async function shopifyGraphQL(shopDomain, accessToken, query, variables) {
+  const url = `https://${shopDomain}.myshopify.com/admin/api/${shopifyConfig.apiVersion}/graphql.json`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {'X-Shopify-Access-Token': accessToken, 'Content-Type': 'application/json'},
+    body: JSON.stringify({query, variables})
+  });
+  const text = await res.text();
+  let json = {};
+  try { json = JSON.parse(text); } catch { json = {raw: text}; }
+  return {ok: res.ok, status: res.status, data: json};
+}
+
+// Webhook topic conversion: GraphQL enum ↔ REST-style
+// Shopify topics have exactly ONE resource/action split (first underscore)
+const gqlTopicToRest = t => String(t || '').toLowerCase().replace('_', '/');
+const restTopicToGql = t => String(t || '').toUpperCase().replace('/', '_');
+
+async function listWebhooksGraphQL(shopDomain, accessToken) {
+  const query = `query {
+    webhookSubscriptions(first: 100) {
+      edges { node {
+        id topic
+        endpoint { ... on WebhookHttpEndpoint { callbackUrl } }
+      } }
+    }
+  }`;
+  const {ok, data} = await shopifyGraphQL(shopDomain, accessToken, query);
+  if (!ok) return {ok: false, error: data?.errors?.[0]?.message || `HTTP error`, webhooks: []};
+  const edges = data?.data?.webhookSubscriptions?.edges || [];
+  return {
+    ok: true,
+    webhooks: edges.map(e => ({
+      id: e.node.id,
+      topic: gqlTopicToRest(e.node.topic),
+      address: e.node.endpoint?.callbackUrl || ''
+    }))
+  };
+}
+
+async function deleteWebhookGraphQL(shopDomain, accessToken, id) {
+  const mutation = `mutation webhookSubscriptionDelete($id: ID!) {
+    webhookSubscriptionDelete(id: $id) {
+      deletedWebhookSubscriptionId
+      userErrors { field message }
+    }
+  }`;
+  return shopifyGraphQL(shopDomain, accessToken, mutation, {id});
+}
+
+async function fetchAccessScopesGraphQL(shopDomain, accessToken) {
+  const query = `query { currentAppInstallation { accessScopes { handle } } }`;
+  const {ok, data} = await shopifyGraphQL(shopDomain, accessToken, query);
+  if (!ok) return {ok: false, scopes: [], error: data?.errors?.[0]?.message || 'HTTP error'};
+  const scopes = (data?.data?.currentAppInstallation?.accessScopes || []).map(s => s.handle);
+  return {ok: true, scopes};
+}
+
+/**
+ * Register orders/create webhook via Shopify GraphQL webhookSubscriptionCreate mutation
  */
 async function registerOrderWebhook(shopDomain, accessToken) {
-  const webhookUrl = `${shopifyConfig.appUrl}/api/orders/webhook`;
-  const apiUrl = `https://${shopDomain}.myshopify.com/admin/api/${shopifyConfig.apiVersion}/webhooks.json`;
+  const callbackUrl = `${shopifyConfig.appUrl}/api/orders/webhook`;
+  const mutation = `mutation webhookSubscriptionCreate($topic: WebhookSubscriptionTopic!, $webhookSubscription: WebhookSubscriptionInput!) {
+    webhookSubscriptionCreate(topic: $topic, webhookSubscription: $webhookSubscription) {
+      webhookSubscription { id }
+      userErrors { field message }
+    }
+  }`;
 
   try {
-    const res = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'X-Shopify-Access-Token': accessToken,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        webhook: {topic: 'orders/create', address: webhookUrl, format: 'json'}
-      })
+    const {ok, data} = await shopifyGraphQL(shopDomain, accessToken, mutation, {
+      topic: 'ORDERS_CREATE',
+      webhookSubscription: {callbackUrl, format: 'JSON'}
     });
 
-    if (res.ok) {
-      const data = await res.json();
-      console.log(`Webhook orders/create registered for ${shopDomain}: id=${data.webhook?.id}`);
-      return {success: true, id: data.webhook?.id};
-    } else if (res.status === 422) {
-      console.log(`Webhook orders/create already exists for ${shopDomain}`);
-      return {success: true, existing: true};
-    } else {
-      const errText = await res.text();
-      const isProtectedData = errText.includes('protected customer data');
-      if (isProtectedData) {
-        console.warn(`[${shopDomain}] App needs Protected Customer Data access for orders/create webhook`);
-      } else {
-        console.error(`Failed to register webhook for ${shopDomain}:`, errText);
-      }
-      return {success: false, error: isProtectedData ? 'Need Protected Customer Data access' : errText};
+    const payload = data?.data?.webhookSubscriptionCreate;
+    const errors = payload?.userErrors || [];
+    if (ok && payload?.webhookSubscription?.id) {
+      console.log(`Webhook ORDERS_CREATE registered for ${shopDomain}: id=${payload.webhookSubscription.id}`);
+      return {success: true, id: payload.webhookSubscription.id};
     }
+    const errMsg = errors.map(e => e.message).join('; ') || JSON.stringify(data);
+    if (/already.*exists|taken/i.test(errMsg)) {
+      console.log(`Webhook ORDERS_CREATE already exists for ${shopDomain}`);
+      return {success: true, existing: true};
+    }
+    const isProtectedData = /protected customer data/i.test(errMsg);
+    if (isProtectedData) {
+      console.warn(`[${shopDomain}] App needs Protected Customer Data access for ORDERS_CREATE webhook`);
+    } else {
+      console.error(`Failed to register webhook for ${shopDomain}:`, errMsg);
+    }
+    return {success: false, error: isProtectedData ? 'Need Protected Customer Data access' : errMsg};
   } catch (err) {
     console.error(`Webhook registration error for ${shopDomain}:`, err.message);
     return {success: false, error: err.message};
@@ -58,15 +119,25 @@ async function registerOrderWebhook(shopDomain, accessToken) {
  * Fetch shop info and save/update store in Firestore
  */
 async function saveStore(shopDomain, accessToken, {clientId, clientSecret, scopes, installedVia}) {
-  const shopInfoUrl = `https://${shopDomain}.myshopify.com/admin/api/${shopifyConfig.apiVersion}/shop.json`;
-  const shopInfoResponse = await fetch(shopInfoUrl, {
-    headers: {'X-Shopify-Access-Token': accessToken, 'Content-Type': 'application/json'}
-  });
-
+  const shopQuery = `query { shop {
+    name email currencyCode ianaTimezone
+    plan { displayName } shopOwnerName contactEmail
+    billingAddress { country phone }
+  } }`;
+  const {ok, data} = await shopifyGraphQL(shopDomain, accessToken, shopQuery);
   let shopInfo = {};
-  if (shopInfoResponse.ok) {
-    const shopInfoData = await shopInfoResponse.json();
-    shopInfo = shopInfoData.shop || {};
+  if (ok) {
+    const s = data?.data?.shop || {};
+    shopInfo = {
+      name: s.name,
+      email: s.email || s.contactEmail,
+      currency: s.currencyCode,
+      timezone: s.ianaTimezone,
+      plan_display_name: s.plan?.displayName,
+      shop_owner: s.shopOwnerName,
+      phone: s.billingAddress?.phone,
+      country_name: s.billingAddress?.country
+    };
   }
 
   const existingStore = await storeRepo.getByShopDomain(shopDomain);
@@ -287,21 +358,16 @@ export async function checkWebhooks(req, res) {
       return res.status(404).json({success: false, error: 'Store not found or no access token'});
     }
 
-    const headers = {'X-Shopify-Access-Token': store.accessToken};
-    const shopBase = `https://${shopDomain}.myshopify.com`;
-
-    // Fetch webhooks and scopes in parallel
-    // access_scopes uses /admin/oauth/ path (not versioned API)
-    const [webhooksRes, scopesRes] = await Promise.all([
-      fetch(`${shopBase}/admin/api/${shopifyConfig.apiVersion}/webhooks.json`, {headers}),
-      fetch(`${shopBase}/admin/oauth/access_scopes.json`, {headers})
+    const [webhooksResult, scopesResult] = await Promise.all([
+      listWebhooksGraphQL(shopDomain, store.accessToken),
+      fetchAccessScopesGraphQL(shopDomain, store.accessToken)
     ]);
 
-    if (!webhooksRes.ok) {
-      return res.status(webhooksRes.status).json({success: false, error: await webhooksRes.text()});
+    if (!webhooksResult.ok) {
+      return res.status(500).json({success: false, error: webhooksResult.error});
     }
 
-    const {webhooks} = await webhooksRes.json();
+    const webhooks = webhooksResult.webhooks;
     const missing = [];
     const wrongAddress = [];
     for (const req of REQUIRED_WEBHOOKS) {
@@ -317,17 +383,15 @@ export async function checkWebhooks(req, res) {
     let scopes = [];
     let missingScopes = [];
     let scopesError = null;
-    if (scopesRes.ok) {
-      const scopesData = await scopesRes.json();
-      scopes = scopesData.access_scopes?.map(s => s.handle) || [];
-      // Compare against required scopes from config
+    if (scopesResult.ok) {
+      scopes = scopesResult.scopes;
       const requiredScopes = shopifyConfig.scopes
         .split(',')
         .map(s => s.trim())
         .filter(Boolean);
       missingScopes = requiredScopes.filter(s => !scopes.includes(s));
     } else {
-      scopesError = `access_scopes ${scopesRes.status}: ${await scopesRes.text()}`;
+      scopesError = scopesResult.error;
       console.warn(`[${shopDomain}] Scopes fetch failed:`, scopesError);
     }
 
@@ -365,12 +429,12 @@ export async function fixWebhooks(req, res) {
       return res.status(404).json({success: false, error: 'Store not found or no access token'});
     }
 
-    // Get current webhooks
-    const baseApiUrl = `https://${shopDomain}.myshopify.com/admin/api/${shopifyConfig.apiVersion}`;
-    const listRes = await fetch(`${baseApiUrl}/webhooks.json`, {
-      headers: {'X-Shopify-Access-Token': store.accessToken}
-    });
-    const {webhooks} = await listRes.json();
+    // Get current webhooks via GraphQL
+    const webhooksResult = await listWebhooksGraphQL(shopDomain, store.accessToken);
+    if (!webhooksResult.ok) {
+      return res.status(500).json({success: false, error: webhooksResult.error});
+    }
+    const webhooks = webhooksResult.webhooks;
 
     const missing = [];
     const wrongAddress = [];
@@ -392,10 +456,7 @@ export async function fixWebhooks(req, res) {
 
     // Delete webhooks with wrong address, then re-register
     for (const wa of wrongAddress) {
-      await fetch(`${baseApiUrl}/webhooks/${wa.id}.json`, {
-        method: 'DELETE',
-        headers: {'X-Shopify-Access-Token': store.accessToken}
-      });
+      await deleteWebhookGraphQL(shopDomain, store.accessToken, wa.id);
       const result = await registerOrderWebhook(shopDomain, store.accessToken);
       if (result?.success) {
         fixed.push(`${wa.topic} (updated address)`);
@@ -434,17 +495,12 @@ export async function checkAllWebhooks(req, res) {
       if (!store.accessToken || !store.shopDomain) continue;
 
       try {
-        const apiUrl = `https://${store.shopDomain}.myshopify.com/admin/api/${shopifyConfig.apiVersion}/webhooks.json`;
-        const response = await fetch(apiUrl, {
-          headers: {'X-Shopify-Access-Token': store.accessToken}
-        });
-
-        if (!response.ok) {
-          results.push({shop: store.shopDomain, error: `HTTP ${response.status}`, missing: REQUIRED_WEBHOOKS.map(r => r.topic)});
+        const webhooksResult = await listWebhooksGraphQL(store.shopDomain, store.accessToken);
+        if (!webhooksResult.ok) {
+          results.push({shop: store.shopDomain, error: webhooksResult.error, missing: REQUIRED_WEBHOOKS.map(r => r.topic)});
           continue;
         }
-
-        const {webhooks} = await response.json();
+        const webhooks = webhooksResult.webhooks;
         const missing = [];
         const wrongAddress = [];
         for (const rw of REQUIRED_WEBHOOKS) {
@@ -496,17 +552,12 @@ export async function fixAllWebhooks(req, res) {
       if (!store.accessToken || !store.shopDomain) continue;
 
       try {
-        const baseApiUrl = `https://${store.shopDomain}.myshopify.com/admin/api/${shopifyConfig.apiVersion}`;
-        const listRes = await fetch(`${baseApiUrl}/webhooks.json`, {
-          headers: {'X-Shopify-Access-Token': store.accessToken}
-        });
-
-        if (!listRes.ok) {
-          results.push({shop: store.shopDomain, error: `HTTP ${listRes.status}`, fixed: []});
+        const webhooksResult = await listWebhooksGraphQL(store.shopDomain, store.accessToken);
+        if (!webhooksResult.ok) {
+          results.push({shop: store.shopDomain, error: webhooksResult.error, fixed: []});
           continue;
         }
-
-        const {webhooks} = await listRes.json();
+        const webhooks = webhooksResult.webhooks;
         const missing = [];
         const wrongAddress = [];
         for (const rw of REQUIRED_WEBHOOKS) {
@@ -528,10 +579,7 @@ export async function fixAllWebhooks(req, res) {
 
         // Delete webhooks with wrong address, then re-register
         for (const wa of wrongAddress) {
-          await fetch(`${baseApiUrl}/webhooks/${wa.id}.json`, {
-            method: 'DELETE',
-            headers: {'X-Shopify-Access-Token': store.accessToken}
-          });
+          await deleteWebhookGraphQL(store.shopDomain, store.accessToken, wa.id);
           const result = await registerOrderWebhook(store.shopDomain, store.accessToken);
           if (result?.success) {
             fixed.push(`${wa.topic} (updated)`);
@@ -571,7 +619,7 @@ export async function fixAllWebhooks(req, res) {
 
 /**
  * GET /api/authMultip/check-token?shop=xxx
- * Verify if the stored accessToken is valid by calling Shopify shop.json
+ * Verify if the stored accessToken is valid via Shopify Admin GraphQL shop query
  */
 export async function checkToken(req, res) {
   try {
@@ -588,29 +636,29 @@ export async function checkToken(req, res) {
       return res.json({success: true, valid: false, reason: 'No access token stored', tokenPrefix: null});
     }
 
-    // Test the token by calling Shopify shop.json
-    const shopBase = `https://${shopDomain}.myshopify.com`;
-    const response = await fetch(`${shopBase}/admin/api/${shopifyConfig.apiVersion}/shop.json`, {
-      headers: {'X-Shopify-Access-Token': store.accessToken}
-    });
+    // Test the token via Shopify Admin GraphQL
+    const {ok, status, data} = await shopifyGraphQL(
+      shopDomain,
+      store.accessToken,
+      `query { shop { name } }`
+    );
 
     const tokenPrefix = store.accessToken.substring(0, 8) + '...';
 
-    if (response.ok) {
-      const data = await response.json();
+    if (ok && data?.data?.shop) {
       return res.json({
         success: true,
         valid: true,
-        shopName: data.shop?.name,
+        shopName: data.data.shop.name,
         tokenPrefix,
         installedVia: store.installedVia || 'unknown'
       });
     } else {
-      const errText = await response.text();
+      const errMsg = data?.errors?.[0]?.message || data?.raw || `HTTP ${status}`;
       return res.json({
         success: true,
         valid: false,
-        reason: `Shopify API error ${response.status}: ${errText.substring(0, 100)}`,
+        reason: `Shopify API error: ${String(errMsg).substring(0, 100)}`,
         tokenPrefix,
         installedVia: store.installedVia || 'unknown'
       });
@@ -636,20 +684,15 @@ export async function getStoreScopes(req, res) {
       return res.status(404).json({success: false, error: 'Store not found or no access token'});
     }
 
-    const apiUrl = `https://${shopDomain}.myshopify.com/admin/oauth/access_scopes.json`;
-    const response = await fetch(apiUrl, {
-      headers: {'X-Shopify-Access-Token': store.accessToken}
-    });
-
-    if (!response.ok) {
-      return res.status(response.status).json({success: false, error: await response.text()});
+    const {ok, scopes, error} = await fetchAccessScopesGraphQL(shopDomain, store.accessToken);
+    if (!ok) {
+      return res.status(500).json({success: false, error});
     }
 
-    const data = await response.json();
     return res.json({
       success: true,
       shop: shopDomain,
-      scopes: data.access_scopes?.map(s => s.handle) || [],
+      scopes,
       storedScopes: store.scopes ? store.scopes.split(',').map(s => s.trim()) : []
     });
   } catch (error) {
@@ -678,24 +721,31 @@ export async function registerWebhook(req, res) {
       return res.status(404).json({success: false, error: 'Store not found or no access token'});
     }
 
-    const apiUrl = `https://${shopDomain}.myshopify.com/admin/api/${shopifyConfig.apiVersion}/webhooks.json`;
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'X-Shopify-Access-Token': store.accessToken,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({webhook: {topic, address: webhookUrl, format: 'json'}})
+    const mutation = `mutation webhookSubscriptionCreate($topic: WebhookSubscriptionTopic!, $webhookSubscription: WebhookSubscriptionInput!) {
+      webhookSubscriptionCreate(topic: $topic, webhookSubscription: $webhookSubscription) {
+        webhookSubscription { id topic endpoint { ... on WebhookHttpEndpoint { callbackUrl } } }
+        userErrors { field message }
+      }
+    }`;
+    const {ok, data} = await shopifyGraphQL(shopDomain, store.accessToken, mutation, {
+      topic: restTopicToGql(topic),
+      webhookSubscription: {callbackUrl: webhookUrl, format: 'JSON'}
     });
 
-    const data = await response.json();
-    if (response.ok) {
-      return res.json({success: true, webhook: data.webhook});
-    } else if (response.status === 422) {
-      return res.json({success: false, error: 'Webhook already exists for this topic/address', errors: data.errors});
-    } else {
-      return res.status(response.status).json({success: false, error: JSON.stringify(data.errors || data)});
+    const payload = data?.data?.webhookSubscriptionCreate;
+    const userErrors = payload?.userErrors || [];
+    if (ok && payload?.webhookSubscription?.id) {
+      const sub = payload.webhookSubscription;
+      return res.json({
+        success: true,
+        webhook: {id: sub.id, topic: gqlTopicToRest(sub.topic), address: sub.endpoint?.callbackUrl}
+      });
     }
+    const errMsg = userErrors.map(e => e.message).join('; ') || JSON.stringify(data?.errors || data);
+    if (/already.*exists|taken/i.test(errMsg)) {
+      return res.json({success: false, error: 'Webhook already exists for this topic/address', errors: userErrors});
+    }
+    return res.status(500).json({success: false, error: errMsg});
   } catch (error) {
     console.error('Register webhook error:', error);
     return res.status(500).json({success: false, error: error.message});

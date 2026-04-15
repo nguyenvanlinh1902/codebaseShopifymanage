@@ -139,10 +139,11 @@ export async function pollBulkOperation(shopify, operationId, {maxWait = 1800000
     const op = result?.node;
     if (!op) throw new Error(`Bulk operation ${operationId} not found`);
 
-    if (onProgress) onProgress({status: op.status, objectCount: op.objectCount || 0});
+    const numericObjectCount = Number(op.objectCount) || 0;
+    if (onProgress) onProgress({status: op.status, objectCount: numericObjectCount});
 
     if (TERMINAL.has(op.status)) {
-      return {status: op.status, objectCount: op.objectCount, url: op.url, errorCode: op.errorCode};
+      return {status: op.status, objectCount: numericObjectCount, url: op.url, errorCode: op.errorCode};
     }
 
     await new Promise(r => setTimeout(r, interval));
@@ -180,6 +181,21 @@ export async function downloadBulkResults(resultUrl) {
   for (const line of lines) {
     try {
       const item = JSON.parse(line);
+
+      // Top-level errors (e.g. throttle): {"errors":[{message, extensions:{code}}]}
+      if (Array.isArray(item?.errors) && item.errors.length > 0) {
+        for (const e of item.errors) {
+          failedCount++;
+          errors.push({
+            title: 'Top-level error',
+            message: e.message || '',
+            details: [{code: e.extensions?.code || '', field: '', message: e.message || ''}]
+          });
+        }
+        console.error(`[bulk-import] Top-level errors: ${JSON.stringify(item.errors).slice(0, 300)}`);
+        continue;
+      }
+
       const data = item?.data?.productSet || item?.productSet;
       if (!data) continue;
 

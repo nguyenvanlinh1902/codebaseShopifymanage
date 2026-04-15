@@ -137,10 +137,10 @@ export async function bulkCreateVariantsGraphQL(shopify, productId, restVariants
   const oNames = [optionNames[0] || 'Title', optionNames[1], optionNames[2]];
 
   const mutation = `
-    mutation productVariantsBulkCreate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
-      productVariantsBulkCreate(productId: $productId, variants: $variants) {
+    mutation productVariantsBulkCreate($productId: ID!, $variants: [ProductVariantsBulkInput!]!, $strategy: ProductVariantsBulkCreateStrategy) {
+      productVariantsBulkCreate(productId: $productId, variants: $variants, strategy: $strategy) {
         productVariants { id title sku selectedOptions { name value } }
-        userErrors { field message }
+        userErrors { field message code }
       }
     }`;
 
@@ -171,7 +171,11 @@ export async function bulkCreateVariantsGraphQL(shopify, productId, restVariants
     });
 
     try {
-      const result = await shopify.graphql(mutation, {productId: gid, variants: gqlVariants});
+      const result = await shopify.graphql(mutation, {
+        productId: gid,
+        variants: gqlVariants,
+        strategy: 'REMOVE_STANDALONE_VARIANT'
+      });
       validateGraphqlResult(result, `productVariantsBulkCreate (batch ${i / GQL_BATCH + 1})`);
       const payload = result.productVariantsBulkCreate;
       if (payload.productVariants) {

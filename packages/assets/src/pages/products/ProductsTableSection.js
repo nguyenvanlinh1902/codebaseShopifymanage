@@ -26,7 +26,7 @@ function formatInventory(product) {
 
 export default function ProductsTableSection({
   products, loading, pageInfo, onNextPage, onPrevPage, hasPrev,
-  onBulkAction
+  onBulkAction, onRowClick
 }) {
   const {smDown} = useBreakpoints();
   const {
@@ -75,6 +75,7 @@ export default function ProductsTableSection({
         key={product.id}
         position={index}
         selected={selectedResources.includes(product.id)}
+        onClick={onRowClick ? () => onRowClick(product) : undefined}
       >
         <IndexTable.Cell>
           <InlineStack gap="300" blockAlign="center" wrap={false}>
@@ -96,6 +97,24 @@ export default function ProductsTableSection({
         </IndexTable.Cell>
         <IndexTable.Cell>{product.productType || '—'}</IndexTable.Cell>
         <IndexTable.Cell>{product.vendor || '—'}</IndexTable.Cell>
+        <IndexTable.Cell>
+          {(() => {
+            const pubs = product.resourcePublications?.nodes || [];
+            const total = product.resourcePublicationsCount?.count ?? pubs.length;
+            if (total === 0) return <Text tone="subdued">—</Text>;
+            const names = pubs.map(n => n.publication?.name).filter(Boolean);
+            const shown = names.slice(0, 2);
+            const extra = total - shown.length;
+            return (
+              <InlineStack gap="100" wrap>
+                {shown.map(name => (
+                  <Badge key={name} tone="info">{name}</Badge>
+                ))}
+                {extra > 0 && <Badge>{`+${extra}`}</Badge>}
+              </InlineStack>
+            );
+          })()}
+        </IndexTable.Cell>
       </IndexTable.Row>
     );
   });
@@ -116,7 +135,8 @@ export default function ProductsTableSection({
           {title: 'Status'},
           {title: 'Inventory'},
           {title: 'Category'},
-          {title: 'Vendor'}
+          {title: 'Vendor'},
+          {title: 'Sales channels'}
         ]}
       >
         {rowMarkup}

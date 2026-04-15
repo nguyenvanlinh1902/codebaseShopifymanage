@@ -8,7 +8,8 @@ import {
   BlockStack,
   Banner,
   Badge,
-  Spinner,
+  SkeletonBodyText,
+  SkeletonDisplayText,
   Modal
 } from '@shopify/polaris';
 import {api} from '../helpers/api';
@@ -101,11 +102,9 @@ export default function MyEmailAccount() {
     return (
       <Page title="My Email Account">
         <Card>
-          <BlockStack gap="400" inlineAlign="center">
-            <Spinner size="small" />
-            <Text as="p" tone="subdued">
-              Loading...
-            </Text>
+          <BlockStack gap="400">
+            <SkeletonDisplayText size="small" />
+            <SkeletonBodyText lines={3} />
           </BlockStack>
         </Card>
       </Page>

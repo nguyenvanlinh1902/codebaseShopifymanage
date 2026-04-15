@@ -41,6 +41,7 @@ import PolicyManagement from './pages/PolicyManagement';
 import CustomFieldsManagement from './pages/CustomFieldsManagement';
 import Collections from './pages/Collections';
 import CollectionDetail from './pages/CollectionDetail';
+import ProductDetail from './pages/ProductDetail';
 import Stores from './pages/Stores';
 import Users from './pages/Users';
 import DevWebhooks from './pages/DevWebhooks';
@@ -228,6 +229,22 @@ function StandaloneFrame() {
             element={
               <FeatureGuard feature="products">
                 <Products />
+              </FeatureGuard>
+            }
+          />
+          <Route
+            path="/products/new"
+            element={
+              <FeatureGuard feature="products">
+                <ProductDetail />
+              </FeatureGuard>
+            }
+          />
+          <Route
+            path="/products/:id"
+            element={
+              <FeatureGuard feature="products">
+                <ProductDetail />
               </FeatureGuard>
             }
           />

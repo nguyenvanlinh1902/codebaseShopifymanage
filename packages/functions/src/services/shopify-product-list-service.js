@@ -21,6 +21,10 @@ export async function listShopifyProducts(
             nodes { id sku price inventoryQuantity }
           }
           variantsCount { count }
+          resourcePublicationsCount { count }
+          resourcePublications(first: 10, onlyPublished: true) {
+            nodes { publication { id name } }
+          }
         }
       }
     }

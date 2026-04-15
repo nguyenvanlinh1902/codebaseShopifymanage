@@ -1,5 +1,5 @@
 /**
- * Shopify Product Controller — fetch products directly from Shopify GraphQL API.
+ * Shopify Product Controller — list, bulk-action, collections, and single-product CRUD.
  * RBAC: admin sees all stores, non-admin sees assigned stores only.
  */
 
@@ -9,6 +9,11 @@ import {ShopifyService} from '../services/shopifyService.js';
 import {extractStoreIds} from '../utils/store-access.js';
 import {listShopifyProducts} from '../services/shopify-product-list-service.js';
 import {executeBulkAction} from '../services/shopify-product-bulk-service.js';
+import {createProduct as createProductInShopify} from '../services/shopify-product-write-service.js';
+import {
+  getFullProduct, getProductCollections, getProductPublications,
+  updateProduct as updateProductInShopify, deleteProduct as deleteProductInShopify
+} from '../services/shopify-product-detail-service.js';
 
 const storeRepo = new StoreRepository();
 const adminUserRepo = new AdminUserRepository();
@@ -19,19 +24,24 @@ async function getPermittedStoreIds(req) {
   return extractStoreIds(userRecord?.assignedStores);
 }
 
-async function getShopify(storeId) {
+export async function getShopify(storeId) {
   const store = await storeRepo.getById(storeId);
   if (!store) throw new Error(`Store ${storeId} not found`);
   const svc = new ShopifyService({shopDomain: store.shopDomain, accessToken: store.accessToken});
   return svc.shopify;
 }
 
-async function validateStoreAccess(req, storeId) {
+export async function validateStoreAccess(req, storeId) {
   if (!storeId) throw new Error('storeId is required');
   const permitted = await getPermittedStoreIds(req);
   if (permitted !== null && !permitted.includes(storeId)) {
     throw Object.assign(new Error('Access denied to this store'), {status: 403});
   }
+}
+
+export function handleError(res, label, error) {
+  console.error(`[shopify-products] ${label} error:`, error.message);
+  res.status(error.status || 500).json({success: false, error: error.message});
 }
 
 /** GET /api/shopify-products/list */
@@ -49,9 +59,7 @@ export async function list(req, res) {
     });
     res.json({success: true, data});
   } catch (error) {
-    const status = error.status || 500;
-    console.error('[shopify-products] list error:', error.message);
-    res.status(status).json({success: false, error: error.message});
+    handleError(res, 'list', error);
   }
 }
 
@@ -67,9 +75,7 @@ export async function bulkAction(req, res) {
     const data = await executeBulkAction(shopify, {productIds, action, tags, collectionId});
     res.json({success: true, data});
   } catch (error) {
-    const status = error.status || 500;
-    console.error('[shopify-products] bulkAction error:', error.message);
-    res.status(status).json({success: false, error: error.message});
+    handleError(res, 'bulkAction', error);
   }
 }
 
@@ -79,15 +85,13 @@ export async function listCollections(req, res) {
     const {storeId, query} = req.query;
     await validateStoreAccess(req, storeId);
     const shopify = await getShopify(storeId);
-    // Build query — filter custom collections only (smart collections can't be modified)
     const queryParts = ['collection_type:custom'];
     if (query) queryParts.push(`title:*${query}*`);
     const result = await shopify.graphql(
       `query listCollections($first: Int!, $query: String) {
         collections(first: $first, query: $query, sortKey: TITLE) {
           nodes {
-            id
-            title
+            id title
             productsCount { count }
             ruleSet { rules { column relation condition } }
           }
@@ -96,15 +100,72 @@ export async function listCollections(req, res) {
       {first: 50, query: queryParts.join(' ')}
     );
     const collections = (result?.collections?.nodes || []).map(c => ({
-      id: c.id,
-      title: c.title,
+      id: c.id, title: c.title,
       productsCount: c.productsCount?.count ?? 0,
       smart: !!(c.ruleSet?.rules?.length)
     }));
     res.json({success: true, data: collections});
   } catch (error) {
-    const status = error.status || 500;
-    console.error('[shopify-products] listCollections error:', error.message);
-    res.status(status).json({success: false, error: error.message});
+    handleError(res, 'listCollections', error);
+  }
+}
+
+/** GET /api/shopify-products/:id */
+export async function getProduct(req, res) {
+  try {
+    const {storeId} = req.query;
+    const {id} = req.params;
+    await validateStoreAccess(req, storeId);
+    const shopify = await getShopify(storeId);
+    const [product, collections, publications] = await Promise.all([
+      getFullProduct(shopify, id),
+      getProductCollections(shopify, id),
+      getProductPublications(shopify, id)
+    ]);
+    if (!product) return res.status(404).json({success: false, error: 'Product not found'});
+    res.json({success: true, data: {...product, collections, publications}});
+  } catch (error) {
+    handleError(res, 'getProduct', error);
+  }
+}
+
+/** POST /api/shopify-products/ */
+export async function createProduct(req, res) {
+  try {
+    const {storeId, ...productData} = req.body;
+    await validateStoreAccess(req, storeId);
+    const shopify = await getShopify(storeId);
+    const data = await createProductInShopify(shopify, productData);
+    res.status(201).json({success: true, data});
+  } catch (error) {
+    handleError(res, 'createProduct', error);
+  }
+}
+
+/** PUT /api/shopify-products/:id */
+export async function updateProduct(req, res) {
+  try {
+    const {storeId, ...formData} = req.body;
+    const {id} = req.params;
+    await validateStoreAccess(req, storeId);
+    const shopify = await getShopify(storeId);
+    const data = await updateProductInShopify(shopify, id, formData);
+    res.json({success: true, data});
+  } catch (error) {
+    handleError(res, 'updateProduct', error);
+  }
+}
+
+/** DELETE /api/shopify-products/:id */
+export async function deleteProduct(req, res) {
+  try {
+    const {storeId} = req.query;
+    const {id} = req.params;
+    await validateStoreAccess(req, storeId);
+    const shopify = await getShopify(storeId);
+    const data = await deleteProductInShopify(shopify, id);
+    res.json({success: true, data});
+  } catch (error) {
+    handleError(res, 'deleteProduct', error);
   }
 }

@@ -1,7 +1,7 @@
 import React, {useState, useEffect, useCallback} from 'react';
 import {
   Page, Layout, Card, BlockStack, InlineStack, Text,
-  Button, Badge, Toast, Spinner, EmptyState, Box,
+  Button, Badge, Toast, SkeletonBodyText, EmptyState, Box,
   InlineGrid, Modal, Icon
 } from '@shopify/polaris';
 import {EditIcon, DeleteIcon, DragHandleIcon} from '@shopify/polaris-icons';
@@ -80,8 +80,8 @@ export default function CustomFieldsManagement() {
           <Layout.Section>
             {loading ? (
               <Card>
-                <BlockStack align="center" inlineAlign="center" gap="400">
-                  <Spinner size="large" />
+                <BlockStack gap="400">
+                  <SkeletonBodyText lines={8} />
                 </BlockStack>
               </Card>
             ) : fields.length === 0 ? (

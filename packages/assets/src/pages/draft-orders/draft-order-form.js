@@ -2,7 +2,7 @@ import React, {useState, useEffect, useRef, useCallback} from 'react';
 import {
   Page, Layout, Card, Select, TextField, Button, Text, Badge, Toast,
   Banner, InlineStack, BlockStack, Thumbnail, SkeletonBodyText,
-  Spinner, Divider, Box, Scrollable, Icon, Modal, Checkbox
+  Divider, Box, Scrollable, Icon, Modal, Checkbox
 } from '@shopify/polaris';
 import {
   SearchIcon, DeleteIcon, ExternalIcon, ImageIcon, EditIcon, PlusIcon,
@@ -778,7 +778,7 @@ export default function DraftOrderForm({storeId, storeOptions, onStoreChange, on
               onClearButtonClick={() => { setProductQuery(''); fetchProducts(''); }} />
           </Box>
           {searchingProducts && (
-            <Box padding="400"><InlineStack align="center"><Spinner size="small" /></InlineStack></Box>
+            <Box padding="400"><SkeletonBodyText lines={4} /></Box>
           )}
           <div style={{display: 'flex', padding: '8px 16px', borderBottom: '1px solid var(--p-color-border)', background: 'var(--p-color-bg-surface-secondary)'}}>
             <div style={{width: 36}} />
@@ -919,7 +919,7 @@ export default function DraftOrderForm({storeId, storeOptions, onStoreChange, on
                 onClearButtonClick={() => { setCustomerQuery(''); fetchCustomers(''); }} />
             </Box>
             {searchingCustomers && (
-              <Box padding="300"><InlineStack align="center"><Spinner size="small" /></InlineStack></Box>
+              <Box padding="300"><SkeletonBodyText lines={3} /></Box>
             )}
             <Scrollable style={{maxHeight: 400}}>
               <div onClick={() => setShowNewCustomer(true)}

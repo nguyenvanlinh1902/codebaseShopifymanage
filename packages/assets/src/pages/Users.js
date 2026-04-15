@@ -9,7 +9,7 @@ import {
   InlineStack,
   Text,
   Banner,
-  Spinner,
+  SkeletonBodyText,
   EmptyState,
   Tooltip
 } from '@shopify/polaris';
@@ -185,8 +185,8 @@ export default function Users() {
 
         <Card padding="0">
           {loading ? (
-            <div style={{padding: '40px', textAlign: 'center'}}>
-              <Spinner size="large" />
+            <div style={{padding: '16px'}}>
+              <SkeletonBodyText lines={10} />
             </div>
           ) : users.length === 0 && !search ? (
             <EmptyState

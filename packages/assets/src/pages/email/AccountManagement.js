@@ -11,7 +11,7 @@ import {
   Banner,
   EmptyState,
   Modal,
-  Spinner
+  SkeletonBodyText
 } from '@shopify/polaris';
 import {api} from '../../helpers/api';
 
@@ -133,11 +133,8 @@ export default function AccountManagement({onAccountChange}) {
   if (loading) {
     return (
       <Card>
-        <BlockStack gap="400" inlineAlign="center">
-          <Spinner size="small" />
-          <Text as="p" tone="subdued">
-            Loading accounts...
-          </Text>
+        <BlockStack gap="400">
+          <SkeletonBodyText lines={5} />
         </BlockStack>
       </Card>
     );

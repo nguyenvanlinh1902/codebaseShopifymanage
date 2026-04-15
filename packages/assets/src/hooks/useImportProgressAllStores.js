@@ -17,24 +17,14 @@ export default function useImportProgressAllStores({userId, storeId}) {
   useEffect(() => {
     if (!userId) return;
 
-    let q;
-    if (storeId) {
-      // Filter by specific store
-      q = query(
-        collection(db, 'product_imports'),
-        where('storeId', '==', storeId),
-        orderBy('createdAt', 'desc'),
-        limit(20)
-      );
-    } else {
-      // All stores for this user
-      q = query(
-        collection(db, 'product_imports'),
-        where('userId', '==', userId),
-        orderBy('createdAt', 'desc'),
-        limit(20)
-      );
-    }
+    const q = storeId
+      ? query(
+          collection(db, 'product_imports'),
+          where('storeId', '==', storeId),
+          orderBy('createdAt', 'desc'),
+          limit(200)
+        )
+      : query(collection(db, 'product_imports'), orderBy('createdAt', 'desc'), limit(200));
 
     const unsubscribe = onSnapshot(
       q,

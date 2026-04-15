@@ -33,9 +33,24 @@ function buildProductSetInput(productData) {
   }
 
   if (optionNames.length > 0) {
+    // Skip variants missing any required option value — they'd otherwise produce
+    // mismatched optionValues count or pollute storefront with placeholder values.
+    const validVariants = csvVariants.filter(v => {
+      for (let i = 0; i < optionNames.length; i++) {
+        if (!v[`option${i + 1}Value`]) return false;
+      }
+      return true;
+    });
+    if (validVariants.length < csvVariants.length) {
+      console.warn(
+        `[bulk-import] Product "${productData.title}": skipped ${csvVariants.length - validVariants.length}/${csvVariants.length} variant(s) missing option value(s)`
+      );
+    }
+    csvVariants = validVariants.length > 0 ? validVariants : csvVariants.slice(0, 1); // keep at least one row to surface error
+
     const valueSets = optionNames.map(() => new Set());
     for (const v of csvVariants) {
-      if (v.option1Value && optionNames[0]) valueSets[0].add(v.option1Value);
+      if (v.option1Value) valueSets[0].add(v.option1Value);
       if (v.option2Value && optionNames[1]) valueSets[1].add(v.option2Value);
       if (v.option3Value && optionNames[2]) valueSets[2].add(v.option3Value);
     }
@@ -43,7 +58,20 @@ function buildProductSetInput(productData) {
       name,
       values: [...valueSets[i]].map(v => ({name: v}))
     }));
+  } else {
+    // Shopify requires productOptions whenever variants are provided (even upsert).
+    // Without options, use a single "Title" option to satisfy the API.
+    input.productOptions = [{name: 'Title', values: [{name: 'Default Title'}]}];
   }
+
+  // Dedupe variants by option-value combination — keep-last strategy:
+  // if multiple rows share the same option combo, the later row overrides the earlier.
+  const variantByKey = new Map();
+  for (const v of csvVariants) {
+    const key = [v.option1Value || '', v.option2Value || '', v.option3Value || ''].join('|');
+    variantByKey.set(key, v);
+  }
+  csvVariants = [...variantByKey.values()];
 
   const allImageUrls = new Set();
   const imagesToUpload = [];
@@ -73,11 +101,18 @@ function buildProductSetInput(productData) {
   }
 
   input.variants = csvVariants.map(v => {
-    const optVals = [];
-    if (v.option1Value && optionNames[0]) optVals.push({optionName: optionNames[0], name: v.option1Value});
-    if (v.option2Value && optionNames[1]) optVals.push({optionName: optionNames[1], name: v.option2Value});
-    if (v.option3Value && optionNames[2]) optVals.push({optionName: optionNames[2], name: v.option3Value});
-    if (optVals.length === 0) optVals.push({optionName: 'Title', name: 'Default Title'});
+    let optVals;
+    if (optionNames.length > 0) {
+      // Product has real options — variant must have exactly one value per option.
+      // (Variants missing any value were already filtered out above.)
+      optVals = optionNames.map((name, i) => ({
+        optionName: name,
+        name: v[`option${i + 1}Value`]
+      }));
+    } else {
+      // No real options — use synthetic Title option to match productOptions fallback.
+      optVals = [{optionName: 'Title', name: 'Default Title'}];
+    }
 
     const variant = {
       optionValues: optVals,
@@ -104,6 +139,33 @@ function buildProductSetInput(productData) {
  * The identifier enables upsert — update existing product if handle matches.
  */
 export function buildProductJsonl(products) {
+  const handleCounts = new Map();
+  let noHandleCount = 0;
+  for (const p of products) {
+    if (!p.handle) {
+      noHandleCount++;
+      continue;
+    }
+    handleCounts.set(p.handle, (handleCounts.get(p.handle) || 0) + 1);
+  }
+
+  const duplicates = [...handleCounts.entries()].filter(([, count]) => count > 1);
+  if (duplicates.length > 0) {
+    const totalDuplicateRows = duplicates.reduce((sum, [, count]) => sum + count, 0);
+    const uniqueDuplicateHandles = duplicates.length;
+    const extraRows = totalDuplicateRows - uniqueDuplicateHandles; // rows that will be upserted into existing ones
+    console.warn(
+      `[bulk-import] Duplicate handles detected: ${uniqueDuplicateHandles} handle(s) appear in ${totalDuplicateRows} rows → ${extraRows} row(s) will UPSERT into existing product (merge, not create). ` +
+      `Sample: ${duplicates.slice(0, 5).map(([h, c]) => `"${h}" x${c}`).join(', ')}${duplicates.length > 5 ? '…' : ''}`
+    );
+  }
+  if (noHandleCount > 0) {
+    console.log(`[bulk-import] ${noHandleCount} product(s) have no handle (will create new, no upsert)`);
+  }
+  console.log(
+    `[bulk-import] JSONL summary: ${products.length} rows → ${handleCounts.size} unique handles + ${noHandleCount} no-handle = ${handleCounts.size + noHandleCount} expected products in Shopify`
+  );
+
   return products.map(p => {
     const input = buildProductSetInput(p);
     const line = {input};

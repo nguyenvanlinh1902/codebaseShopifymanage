@@ -49,8 +49,33 @@ export async function processProductImport(messageData) {
 
   // Update totalProducts now that we've parsed (controller skips parsing for speed)
   const totalVariants = products.reduce((sum, p) => sum + (p.variants?.length || 1), 0);
+
+  // Detect duplicate handles (same handle = upsert into same product, not create new)
+  const handleCounts = new Map();
+  let noHandleCount = 0;
+  for (const p of products) {
+    if (!p.handle) { noHandleCount++; continue; }
+    handleCounts.set(p.handle, (handleCounts.get(p.handle) || 0) + 1);
+  }
+  const duplicateHandles = [...handleCounts.entries()].filter(([, c]) => c > 1);
+  const duplicateRows = duplicateHandles.reduce((s, [, c]) => s + c, 0) - duplicateHandles.length;
+  const expectedUniqueProducts = handleCounts.size + noHandleCount;
+  const duplicateSamples = duplicateHandles.slice(0, 10).map(([h, c]) => ({handle: h, count: c}));
+
+  console.log(
+    `[import] ${products.length} rows → ${handleCounts.size} unique handles + ${noHandleCount} no-handle = ${expectedUniqueProducts} expected products. ${duplicateRows} duplicate row(s) will UPSERT.`
+  );
+
   await Promise.all(jobs.map(job =>
-    importHistoryRepo.updateProgress(job.importId, {totalProducts: products.length, totalVariants})
+    importHistoryRepo.updateProgress(job.importId, {
+      totalProducts: products.length,
+      totalVariants,
+      expectedUniqueProducts,
+      duplicateHandleCount: duplicateHandles.length,
+      duplicateRowCount: duplicateRows,
+      noHandleCount,
+      duplicateSamples
+    })
   ));
 
   // Process each store sequentially (Bulk Ops only allows 1 set of ops per store at a time)
@@ -97,10 +122,10 @@ async function publishProducts(shopify, productIds, publicationIds, importId) {
     const operation = await runBulkMutation(shopify, uploadPath, PUBLISH_MUTATION);
     console.log(`[import:${importId}] Publish bulk op started: ${operation.id}`);
 
-    const result = await pollBulkOperation(shopify, operation.id, {maxWait: 600000});
+    const result = await pollBulkOperation(shopify, operation.id, {maxWait: 1800000});
     console.log(`[import:${importId}] Publishing ${result.status}: ${productIds.length} products`);
   } catch (err) {
-    console.warn(`[import:${importId}] Publishing failed (non-blocking): ${err.message}`);
+    console.error(`[import:${importId}] Publishing FAILED (likely missing write_publications scope): ${err.message}`, err.response?.errors || err.stack?.split('\n').slice(0, 3).join(' | '));
   }
 }
 
@@ -109,12 +134,18 @@ async function fetchPublicationIds(shopify) {
   try {
     const result = await shopify.graphql(`{
       publications(first: 50) {
-        nodes { id }
+        nodes { id name }
       }
     }`);
-    return (result.publications?.nodes || []).map(n => n.id);
+    const nodes = result.publications?.nodes || [];
+    if (nodes.length === 0) {
+      console.warn('[import] fetchPublicationIds: returned 0 publications — store has no sales channels OR missing read_publications scope. Raw result:', JSON.stringify(result).slice(0, 300));
+    } else {
+      console.log(`[import] fetchPublicationIds: ${nodes.length} channels — ${nodes.map(n => n.name).join(', ')}`);
+    }
+    return nodes.map(n => n.id);
   } catch (err) {
-    console.warn('[import] Failed to fetch publications:', err.message);
+    console.error('[import] fetchPublicationIds FAILED (likely missing read_publications scope):', err.message, err.response?.errors);
     return [];
   }
 }
@@ -154,14 +185,25 @@ async function processStoreImport(job, products) {
   });
 
   try {
+    // Track per-chunk objectCount so we can aggregate across parallel chunks
+    const chunkCounts = new Map();
+    const chunkStatuses = new Map();
+
     const result = await runConcurrentBulkImport(shopifyService.shopify, products, {
       importId,
       maxConcurrent: 5,
       onChunkProgress: ({chunkIndex, status, objectCount, totalInChunk}) => {
+        chunkCounts.set(chunkIndex, Number(objectCount) || 0);
+        chunkStatuses.set(chunkIndex, status);
+        const aggregated = [...chunkCounts.values()].reduce((a, b) => a + b, 0);
+        const summary = [...chunkStatuses.entries()]
+          .sort((a, b) => a[0] - b[0])
+          .map(([i, s]) => `c${i + 1}:${s}`)
+          .join(' ');
         importHistoryRepo.updateProgress(importId, {
           status: 'processing',
-          processedProducts: objectCount,
-          statusMessage: `Chunk ${chunkIndex + 1}: ${status} (${objectCount}/${totalInChunk})`
+          processedProducts: aggregated,
+          statusMessage: `${aggregated}/${total} processed [${summary}]`
         }).catch(() => {});
       }
     });

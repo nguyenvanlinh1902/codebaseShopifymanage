@@ -1,7 +1,7 @@
-import React, {useState, useCallback} from 'react';
+import React, {useState, useCallback, useEffect, useMemo} from 'react';
 import {
   Card, BlockStack, InlineStack, Text, Button, Badge,
-  Spinner, Banner, Divider, Select, Box
+  Spinner, Banner, Divider, Select, Box, Checkbox
 } from '@shopify/polaris';
 import {usePermittedStores} from '../../hooks/usePermittedStores';
 import {api} from '../../helpers/api';
@@ -15,6 +15,26 @@ export default function DeploySection({fields}) {
   const [collectionsLoading, setCollectionsLoading] = useState(false);
   const [togglingId, setTogglingId] = useState(null);
   const [error, setError] = useState('');
+  const [selectedFieldIds, setSelectedFieldIds] = useState([]);
+
+  const allFieldIds = useMemo(() => (fields || []).map(f => f.id), [fields]);
+
+  useEffect(() => {
+    setSelectedFieldIds(prev => {
+      const filtered = prev.filter(id => allFieldIds.includes(id));
+      return filtered.length === prev.length && prev.length > 0 ? prev : allFieldIds;
+    });
+  }, [allFieldIds]);
+
+  const toggleField = (fieldId) => {
+    setSelectedFieldIds(prev =>
+      prev.includes(fieldId) ? prev.filter(id => id !== fieldId) : [...prev, fieldId]
+    );
+  };
+
+  const toggleAllFields = () => {
+    setSelectedFieldIds(prev => prev.length === allFieldIds.length ? [] : allFieldIds);
+  };
 
   // Load collections when store selected
   const loadCollections = useCallback(async (storeId) => {
@@ -48,7 +68,7 @@ export default function DeploySection({fields}) {
     try {
       const res = await api('/api/custom-fields/deploy', {
         method: 'POST',
-        body: JSON.stringify({storeIds: [selectedStoreId]})
+        body: JSON.stringify({storeIds: [selectedStoreId], fieldIds: selectedFieldIds})
       });
       const data = await res.json();
       if (data.success) {
@@ -64,26 +84,38 @@ export default function DeploySection({fields}) {
     }
   };
 
-  const handleToggle = async (collectionId, currentEnabled) => {
+  const updateCollectionFields = async (collectionId, nextFieldKeys) => {
+    console.log('[DeploySection] updateCollectionFields →', {collectionId, nextFieldKeys, storeId: selectedStoreId});
     setTogglingId(collectionId);
     try {
       const res = await api(`/api/custom-fields/collections/${selectedStoreId}/toggle`, {
         method: 'POST',
-        body: JSON.stringify({collectionId, enabled: !currentEnabled})
+        body: JSON.stringify({collectionId, fieldKeys: nextFieldKeys})
       });
       const data = await res.json();
+      console.log('[DeploySection] toggle response', res.status, data);
       if (data.success) {
         setCollections(prev => prev.map(c =>
-          c.id === collectionId ? {...c, customFieldsEnabled: !currentEnabled} : c
+          c.id === collectionId ? {...c, fieldKeys: data.data.fieldKeys} : c
         ));
       } else {
-        setError(data.error);
+        setError(data.error || `Failed (${res.status})`);
       }
     } catch (err) {
+      console.error('[DeploySection] toggle error', err);
       setError(err.message);
     } finally {
       setTogglingId(null);
     }
+  };
+
+  const toggleCollectionField = (collection, fieldKey) => {
+    const current = collection.fieldKeys || [];
+    const next = current.includes(fieldKey)
+      ? current.filter(k => k !== fieldKey)
+      : [...current, fieldKey];
+    console.log('[DeploySection] toggleCollectionField', {collection: collection.id, fieldKey, current, next});
+    updateCollectionFields(collection.id, next);
   };
 
 
@@ -93,7 +125,7 @@ export default function DeploySection({fields}) {
   }))];
 
   const hasFields = fields?.length > 0;
-  const enabledCount = collections.filter(c => c.customFieldsEnabled).length;
+  const enabledCount = collections.filter(c => (c.fieldKeys || []).length > 0).length;
 
   return (
     <Card>
@@ -112,10 +144,33 @@ export default function DeploySection({fields}) {
                 <div style={{flex: 1}}>
                   <Select label="Store" options={storeOptions} value={selectedStoreId} onChange={handleStoreChange} />
                 </div>
-                <Button variant="primary" onClick={handleDeploy} loading={deploying} disabled={!selectedStoreId || !hasFields}>
+                <Button variant="primary" onClick={handleDeploy} loading={deploying} disabled={!selectedStoreId || !hasFields || selectedFieldIds.length === 0}>
                   Setup Store
                 </Button>
               </InlineStack>
+
+              {hasFields && (
+                <Box borderWidth="025" borderColor="border" borderRadius="200" padding="300">
+                  <BlockStack gap="200">
+                    <InlineStack align="space-between" blockAlign="center">
+                      <Text as="h3" variant="headingSm">Fields to setup</Text>
+                      <Button variant="plain" onClick={toggleAllFields}>
+                        {selectedFieldIds.length === allFieldIds.length ? 'Clear all' : 'Select all'}
+                      </Button>
+                    </InlineStack>
+                    <BlockStack gap="100">
+                      {fields.map(f => (
+                        <Checkbox
+                          key={f.id}
+                          label={`${f.label}${f.required ? ' *' : ''}`}
+                          checked={selectedFieldIds.includes(f.id)}
+                          onChange={() => toggleField(f.id)}
+                        />
+                      ))}
+                    </BlockStack>
+                  </BlockStack>
+                </Box>
+              )}
 
               {deployResult && (
                 <Banner tone={deployResult.status === 'success' ? 'success' : 'critical'} onDismiss={() => setDeployResult(null)}>
@@ -143,25 +198,43 @@ export default function DeploySection({fields}) {
                   ) : (
                     <Box borderWidth="025" borderColor="border" borderRadius="200" overflow="hidden">
                       <div style={{maxHeight: '400px', overflowY: 'auto'}}>
-                        {collections.map((col) => (
-                          <Box key={col.id} padding="300" borderBlockStartWidth="025" borderColor="border">
-                            <InlineStack align="space-between" blockAlign="center" wrap={false}>
-                              <BlockStack gap="0">
-                                <Text variant="bodySm" fontWeight="semibold">{col.title}</Text>
-                                <Text variant="bodySm" tone="subdued">{col.productsCount} products</Text>
-                              </BlockStack>
-                              <Button
-                                size="slim"
-                                variant={col.customFieldsEnabled ? 'primary' : 'secondary'}
-                                tone={col.customFieldsEnabled ? 'success' : undefined}
-                                loading={togglingId === col.id}
-                                onClick={() => handleToggle(col.id, col.customFieldsEnabled)}
-                              >
-                                {col.customFieldsEnabled ? 'Enabled' : 'Enable'}
-                              </Button>
-                            </InlineStack>
-                          </Box>
-                        ))}
+                        {collections.map((col) => {
+                          const count = (col.fieldKeys || []).length;
+                          const isBusy = togglingId === col.id;
+                          return (
+                            <Box key={col.id} padding="300" borderBlockStartWidth="025" borderColor="border">
+                              <InlineStack align="space-between" blockAlign="center" wrap={false} gap="300">
+                                <BlockStack gap="050">
+                                  <Text variant="bodySm" fontWeight="semibold">{col.title}</Text>
+                                  <Text variant="bodySm" tone="subdued">{col.productsCount} products</Text>
+                                </BlockStack>
+                                <InlineStack gap="300" blockAlign="center" wrap>
+                                  {fields.map(f => (
+                                    <Checkbox
+                                      key={f.id}
+                                      label={f.label}
+                                      checked={(col.fieldKeys || []).includes(f.key)}
+                                      disabled={isBusy}
+                                      onChange={() => toggleCollectionField(col, f.key)}
+                                    />
+                                  ))}
+                                  {count > 0 && (
+                                    <Button
+                                      size="slim"
+                                      variant="plain"
+                                      tone="critical"
+                                      disabled={isBusy}
+                                      onClick={() => updateCollectionFields(col.id, [])}
+                                    >
+                                      Clear
+                                    </Button>
+                                  )}
+                                  {isBusy && <Spinner size="small" />}
+                                </InlineStack>
+                              </InlineStack>
+                            </Box>
+                          );
+                        })}
                       </div>
                     </Box>
                   )}

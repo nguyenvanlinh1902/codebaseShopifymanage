@@ -10,7 +10,11 @@
       "WebFetch(domain:parcelsapp.com)",
       "WebFetch(domain:www.ship24.com)",
       "Bash(rm \"docs/theme-TM.zip\")",
-      "Bash(zip -r ~/Desktop/theme-TM.zip .)"
+      "Bash(zip -r ~/Desktop/theme-TM.zip .)",
+      "Bash(rm -f \"/Users/linhnv/Desktop/theme-TM.zip\")",
+      "Bash(zip -rq \"/Users/linhnv/Desktop/theme-TM.zip\" \"theme TM\" -x \"*.DS_Store\")",
+      "Bash(open -R \"/Users/linhnv/Desktop/theme-TM.zip\")",
+      "Bash(zip -rq \"/Users/linhnv/Desktop/theme-TM.zip\" . -x \"*.DS_Store\" \"__MACOSX*\")"
     ],
     "additionalDirectories": [
       "/Users/linhnv/Project/toolShopify/plans/reports"

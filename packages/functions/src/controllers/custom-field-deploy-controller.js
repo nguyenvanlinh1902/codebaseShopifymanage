@@ -20,12 +20,18 @@ async function getStoreAndService(storeId) {
  */
 export async function deployToStores(req, res) {
   try {
-    const {storeIds} = req.body;
+    const {storeIds, fieldIds} = req.body;
     if (!storeIds?.length) {
       return res.status(400).json({success: false, error: 'storeIds array is required'});
     }
 
-    const fields = await customFieldRepo.getAll();
+    const allFields = await customFieldRepo.getAll();
+    const fields = Array.isArray(fieldIds) && fieldIds.length > 0
+      ? allFields.filter(f => fieldIds.includes(f.id))
+      : allFields;
+    if (!fields.length) {
+      return res.status(400).json({success: false, error: 'No fields selected for deployment'});
+    }
     const fieldsConfig = fields.map(f => ({key: f.key, label: f.label, inputType: f.inputType, required: f.required}));
 
     const results = [];
@@ -110,22 +116,25 @@ export async function listStoreCollections(req, res) {
 
 /**
  * POST /api/custom-fields/collections/:storeId/toggle
- * Add/remove collection ID from shop metafield toolshopify_cf.collections.
- * Body: { collectionId: string, enabled: boolean }
+ * Set which custom-field keys apply to a collection. Empty array disables.
+ * Body: { collectionId: string, fieldKeys: string[] }
  */
 export async function toggleCollectionCustomFields(req, res) {
   try {
     const {storeId} = req.params;
-    const {collectionId, enabled} = req.body;
+    const {collectionId, fieldKeys} = req.body;
     if (!collectionId) {
       return res.status(400).json({success: false, error: 'collectionId is required'});
     }
+    if (!Array.isArray(fieldKeys)) {
+      return res.status(400).json({success: false, error: 'fieldKeys array is required'});
+    }
 
     const {service} = await getStoreAndService(storeId);
-    const updatedList = await service.toggleCollection(collectionId, enabled);
-    res.json({success: true, data: {collectionId, enabled, totalEnabled: updatedList.length}});
+    const updated = await service.setCollectionFields(collectionId, fieldKeys);
+    res.json({success: true, data: {collectionId, fieldKeys: updated[collectionId] || []}});
   } catch (error) {
-    console.error('Error toggling collection:', error);
+    console.error('Error setting collection fields:', error);
     res.status(500).json({success: false, error: error.message});
   }
 }

@@ -85,19 +85,21 @@
             (async function(){
               var r=document.getElementById('custom-fields-root');if(!r)return;
               var pid='{{ product.id }}',fid='{{ product_form_id }}',tk='{{ cf_token }}';
-              var cfg={{ cf_config | default: '[]' }},cols={{ cf_collections | default: '[]' }};
-              if(!cfg.length||!cols.length)return;
+              var cfg={% if cf_config != blank %}{{ cf_config }}{% else %}[]{% endif %},cols={% if cf_collections != blank %}{{ cf_collections }}{% else %}{}{% endif %};
+              if(!cfg.length||!cols||!Object.keys(cols).length)return;
               var shop=window.Shopify?.shop||location.hostname;
               try{
-                var res=await fetch('https://'+shop+'/api/2025-01/graphql.json',{
+                var res=await fetch('https://'+shop+'/api/2026-04/graphql.json',{
                   method:'POST',
                   headers:{'Content-Type':'application/json','X-Shopify-Storefront-Access-Token':tk},
                   body:JSON.stringify({query:'{ product(id: "gid://shopify/Product/'+pid+'") { collections(first:20) { nodes { id } } } }'})
                 });
                 var d=await res.json(),pc=d?.data?.product?.collections?.nodes||[];
-                if(!pc.some(function(c){return cols.includes(c.id)}))return;
+                var activeKeys={};
+                pc.forEach(function(c){var ks=cols[c.id];if(ks&&ks.length)ks.forEach(function(k){activeKeys[k]=true})});
+                if(!Object.keys(activeKeys).length)return;
                 var h='';
-                cfg.forEach(function(f){
+                cfg.filter(function(f){return activeKeys[f.key]}).forEach(function(f){
                   var req=f.required?' required':'',star=f.required?'<span class="cf-required">*</span>':'';
                   var nm='properties['+f.label+']',id='cf-'+f.key;
                   if(f.inputType==='textarea'){

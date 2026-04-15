@@ -63,11 +63,13 @@ async function getShopCfData(shopify) {
   }}`;
   const result = await shopify.graphql(query);
   const shop = result.shop;
-  return {
-    shopId: shop.id,
-    config: shop.config?.value ? JSON.parse(shop.config.value) : [],
-    enabledCollections: shop.collections?.value ? JSON.parse(shop.collections.value) : []
-  };
+  const config = shop.config?.value ? JSON.parse(shop.config.value) : [];
+  const raw = shop.collections?.value ? JSON.parse(shop.collections.value) : {};
+  // Back-compat: old format was an array of IDs (meant "all fields enabled").
+  const collectionsMap = Array.isArray(raw)
+    ? raw.reduce((acc, id) => ({...acc, [id]: config.map(f => f.key)}), {})
+    : (raw || {});
+  return {shopId: shop.id, config, collectionsMap};
 }
 
 /**
@@ -90,18 +92,17 @@ export async function saveFieldConfig(shopify, fieldsConfig) {
 }
 
 /**
- * Toggle a collection ID in shop metafield toolshopify_cf.collections.
- * Returns updated list.
+ * Set the field-key list for a collection in shop metafield toolshopify_cf.collections.
+ * Pass empty array to disable (removes the collection entry).
+ * Returns the updated map.
  */
-export async function toggleCollection(shopify, collectionId, enabled) {
-  const {shopId, enabledCollections} = await getShopCfData(shopify);
-  console.log('[toggleCollection] shopId:', shopId, 'collectionId:', collectionId, 'enabled:', enabled, 'current:', enabledCollections);
-  let updated;
-  if (enabled) {
-    updated = enabledCollections.includes(collectionId) ? enabledCollections : [...enabledCollections, collectionId];
-  } else {
-    updated = enabledCollections.filter(id => id !== collectionId);
-  }
+export async function setCollectionFields(shopify, collectionId, fieldKeys) {
+  const {shopId, collectionsMap} = await getShopCfData(shopify);
+  const keys = Array.isArray(fieldKeys) ? fieldKeys.filter(Boolean) : [];
+  const updated = {...collectionsMap};
+  if (keys.length === 0) delete updated[collectionId];
+  else updated[collectionId] = keys;
+  console.log('[setCollectionFields] shopId:', shopId, 'collectionId:', collectionId, 'keys:', keys);
 
   const mutation = `mutation($metafields: [MetafieldsSetInput!]!) {
     metafieldsSet(metafields: $metafields) { metafields { id } userErrors { field message } }
@@ -110,18 +111,17 @@ export async function toggleCollection(shopify, collectionId, enabled) {
     namespace: CF_NAMESPACE, key: 'collections', ownerId: shopId,
     value: JSON.stringify(updated), type: 'json'
   }]});
-  console.log('[toggleCollection] result:', JSON.stringify(result), 'updated list:', updated);
   const {userErrors} = result.metafieldsSet;
   if (userErrors?.length > 0) throw new Error(userErrors.map(e => e.message).join(', '));
   return updated;
 }
 
 /**
- * Get enabled collection IDs from shop metafield.
+ * Get the collection → fieldKeys map from shop metafield.
  */
-export async function getEnabledCollections(shopify) {
-  const {enabledCollections} = await getShopCfData(shopify);
-  return enabledCollections;
+export async function getCollectionsMap(shopify) {
+  const {collectionsMap} = await getShopCfData(shopify);
+  return collectionsMap;
 }
 
 // ── Collections List ────────────────────────────────────────────────────
@@ -131,14 +131,14 @@ export async function getEnabledCollections(shopify) {
  */
 export async function listCollections(shopify, {first = 50, after = null} = {}) {
   try {
-    const [collectionsResult, enabledIds] = await Promise.all([
+    const [collectionsResult, collectionsMap] = await Promise.all([
       shopify.graphql(`query($first: Int!, $after: String) {
         collections(first: $first, after: $after) {
           pageInfo { hasNextPage endCursor }
           nodes { id title handle image { url } productsCount { count } }
         }
       }`, {first, after}),
-      getEnabledCollections(shopify)
+      getCollectionsMap(shopify)
     ]);
 
     const {nodes, pageInfo} = collectionsResult.collections;
@@ -149,7 +149,7 @@ export async function listCollections(shopify, {first = 50, after = null} = {}) 
         handle: c.handle,
         image: c.image?.url || null,
         productsCount: c.productsCount?.count || 0,
-        customFieldsEnabled: enabledIds.includes(c.id)
+        fieldKeys: collectionsMap[c.id] || []
       })),
       pageInfo
     };

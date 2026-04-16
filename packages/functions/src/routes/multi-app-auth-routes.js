@@ -14,6 +14,9 @@ router.get('/webhooks/all', multiAppAuthController.checkAllWebhooks);
 router.post('/webhooks/fix-all', multiAppAuthController.fixAllWebhooks);
 router.post('/webhooks/register', multiAppAuthController.registerWebhook);
 
+// Recheck scopes/token for all stores (marks dead stores)
+router.post('/check-scopes/all', multiAppAuthController.recheckAllScopes);
+
 // Store OAuth scopes
 router.get('/scopes', multiAppAuthController.getStoreScopes);
 

@@ -8,10 +8,17 @@ import {
   useSetIndexFiltersMode
 } from '@shopify/polaris';
 
+const TABS = [
+  {id: 'active', content: 'Active'},
+  {id: 'dead', content: 'Dead'}
+];
+
 /**
- * Filter bar with search and niche filtering
+ * Filter bar with tabs (Active/Dead), search and niche filtering
  */
 export default function StoresFilterBar({
+  selectedTab,
+  onTabChange,
   searchValue,
   onSearchChange,
   onSearchClear,
@@ -95,8 +102,9 @@ export default function StoresFilterBar({
           setMode('DEFAULT');
         }
       }}
-      tabs={[]}
-      selected={0}
+      tabs={TABS}
+      selected={selectedTab}
+      onSelect={onTabChange}
       canCreateNewView={false}
     />
   );

@@ -19,7 +19,7 @@ const adminUserRepo = new AdminUserRepository();
  */
 export async function getStores(req, res) {
   try {
-    const {page, limit, search, niche, groupId} = req.query;
+    const {page, limit, search, niche, groupId, status} = req.query;
     const userId = req.userId;
     const isAdmin = req.userRole === 'admin';
 
@@ -37,7 +37,8 @@ export async function getStores(req, res) {
       const result = await storeRepo.getAllPaginated({
         page: pageNum,
         limit: limitNum,
-        groupId: groupId || null
+        groupId: groupId || null,
+        status: status || null
       });
       stores = result.stores;
       total = result.total;

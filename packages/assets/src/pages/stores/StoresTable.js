@@ -1,14 +1,11 @@
 import React from 'react';
 import {
-  ResourceList,
-  ResourceItem,
+  IndexTable,
   Text,
   Badge,
   InlineStack,
-  BlockStack,
   Button,
   SkeletonBodyText,
-  SkeletonDisplayText,
   EmptyState
 } from '@shopify/polaris';
 import {EditIcon, DeleteIcon} from '@shopify/polaris-icons';
@@ -19,10 +16,29 @@ function formatBalance(balance) {
   return new Intl.NumberFormat('en-US', {style: 'currency', currency}).format(balance.amount);
 }
 
+const HEADINGS = [
+  {title: 'Store'},
+  {title: 'Domain'},
+  {title: 'Niche'},
+  {title: 'Client ID'},
+  {title: 'Balance'},
+  {title: 'Status'},
+  {title: 'Actions', alignment: 'end'}
+];
+
 /**
- * Stores list with name, domain, niche, status, balance and edit action
+ * Stores table using IndexTable for cleaner display
  */
-export default function StoresTable({stores, loading, activeSearch, nicheFilter, balances = {}, balancesLoading, onEditClick, onDeleteClick}) {
+export default function StoresTable({
+  stores,
+  loading,
+  activeSearch,
+  nicheFilter,
+  balances = {},
+  balancesLoading,
+  onEditClick,
+  onDeleteClick
+}) {
   if (loading) {
     return (
       <div style={{padding: '16px'}}>
@@ -49,62 +65,81 @@ export default function StoresTable({stores, loading, activeSearch, nicheFilter,
     );
   }
 
-  return (
-    <ResourceList
-      resourceName={{singular: 'store', plural: 'stores'}}
-      items={stores}
-      renderItem={store => (
-        <ResourceItem id={store.id} accessibilityLabel={store.name}>
-          <InlineStack align="space-between" blockAlign="center" wrap={false}>
-            <BlockStack gap="100">
-              <Text variant="bodyMd" fontWeight="bold">
-                {store.name}
-              </Text>
-              <Text variant="bodySm" tone="subdued">
-                {store.shopDomain}
-              </Text>
-              {store.niche && (
-                <Text variant="bodySm" tone="subdued">
-                  Niche: {store.niche}
-                </Text>
-              )}
+  const rowMarkup = stores.map((store, index) => {
+    const balanceFormatted = formatBalance(balances[store.id]);
 
-              {store.partnerClientId && (
-                <Text variant="bodySm" tone="subdued">
-                  Client ID: {store.partnerClientId.slice(0, 8)}...
-                  {store.installedVia ? ` (${store.installedVia})` : ''}
-                </Text>
-              )}
-            </BlockStack>
-            <InlineStack gap="300" blockAlign="center">
-              {/* Shopify Payments balance */}
-              {balancesLoading ? (
-                <div style={{width: 64}}>
-                  <SkeletonDisplayText size="small" />
-                </div>
-              ) : balances[store.id] ? (
-                <Badge tone="success">{formatBalance(balances[store.id])}</Badge>
-              ) : null}
-              <Badge tone={store.status === 'active' ? 'success' : 'warning'}>
-                {store.status}
-              </Badge>
-              <Button
-                icon={EditIcon}
-                variant="plain"
-                onClick={() => onEditClick(store)}
-                accessibilityLabel={`Edit niche for ${store.name}`}
-              />
-              <Button
-                icon={DeleteIcon}
-                variant="plain"
-                tone="critical"
-                onClick={() => onDeleteClick(store)}
-                accessibilityLabel={`Delete ${store.name}`}
-              />
-            </InlineStack>
+    return (
+      <IndexTable.Row id={store.id} key={store.id} position={index}>
+        <IndexTable.Cell>
+          <Text variant="bodyMd" fontWeight="bold">
+            {store.name}
+          </Text>
+        </IndexTable.Cell>
+        <IndexTable.Cell>
+          <Text variant="bodySm" tone="subdued">
+            {store.shopDomain}
+          </Text>
+        </IndexTable.Cell>
+        <IndexTable.Cell>
+          {store.niche ? (
+            <Text variant="bodySm" tone="subdued">{store.niche}</Text>
+          ) : (
+            <Text variant="bodySm" tone="subdued">—</Text>
+          )}
+        </IndexTable.Cell>
+        <IndexTable.Cell>
+          {store.partnerClientId ? (
+            <Text variant="bodySm" tone="subdued">
+              {store.partnerClientId.slice(0, 8)}...
+              {store.installedVia ? ` (${store.installedVia})` : ''}
+            </Text>
+          ) : (
+            <Text variant="bodySm" tone="subdued">—</Text>
+          )}
+        </IndexTable.Cell>
+        <IndexTable.Cell>
+          {balancesLoading ? (
+            <Text variant="bodySm" tone="subdued">...</Text>
+          ) : balanceFormatted ? (
+            <Badge tone="success">{balanceFormatted}</Badge>
+          ) : (
+            <Text variant="bodySm" tone="subdued">—</Text>
+          )}
+        </IndexTable.Cell>
+        <IndexTable.Cell>
+          <Badge tone={store.status === 'active' ? 'success' : store.status === 'dead' ? 'critical' : 'warning'}>
+            {store.status}
+          </Badge>
+        </IndexTable.Cell>
+        <IndexTable.Cell>
+          <InlineStack gap="200" align="end">
+            <Button
+              icon={EditIcon}
+              variant="plain"
+              onClick={() => onEditClick(store)}
+              accessibilityLabel={`Edit ${store.name}`}
+            />
+            <Button
+              icon={DeleteIcon}
+              variant="plain"
+              tone="critical"
+              onClick={() => onDeleteClick(store)}
+              accessibilityLabel={`Delete ${store.name}`}
+            />
           </InlineStack>
-        </ResourceItem>
-      )}
-    />
+        </IndexTable.Cell>
+      </IndexTable.Row>
+    );
+  });
+
+  return (
+    <IndexTable
+      resourceName={{singular: 'store', plural: 'stores'}}
+      itemCount={stores.length}
+      headings={HEADINGS}
+      selectable={false}
+    >
+      {rowMarkup}
+    </IndexTable>
   );
 }

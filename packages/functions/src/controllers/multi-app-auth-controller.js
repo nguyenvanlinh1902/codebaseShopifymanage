@@ -670,6 +670,68 @@ export async function checkToken(req, res) {
 }
 
 /**
+ * POST /api/authMultip/check-scopes/all
+ * Check token validity & scopes for ALL stores.
+ * Stores whose token is invalid get marked status='dead'.
+ */
+export async function recheckAllScopes(req, res) {
+  try {
+    const allStores = await storeRepo.getAll();
+    const results = [];
+
+    for (const store of allStores) {
+      if (!store.accessToken || !store.shopDomain) {
+        // No token → mark dead
+        if (store.id && store.status !== 'dead') {
+          await storeRepo.update(store.id, {status: 'dead'});
+        }
+        results.push({shop: store.shopDomain || store.id, alive: false, reason: 'No access token'});
+        continue;
+      }
+
+      try {
+        // Quick token check via shop query
+        const {ok, data} = await shopifyGraphQL(
+          store.shopDomain,
+          store.accessToken,
+          `query { shop { name } }`
+        );
+
+        if (ok && data?.data?.shop) {
+          // Token valid — ensure status is active
+          if (store.status === 'dead') {
+            await storeRepo.update(store.id, {status: 'active'});
+          }
+          results.push({shop: store.shopDomain, alive: true, name: data.data.shop.name});
+        } else {
+          // Token invalid → mark dead
+          const errMsg = data?.errors?.[0]?.message || `HTTP error`;
+          await storeRepo.update(store.id, {status: 'dead'});
+          results.push({shop: store.shopDomain, alive: false, reason: errMsg});
+        }
+      } catch (err) {
+        await storeRepo.update(store.id, {status: 'dead'});
+        results.push({shop: store.shopDomain, alive: false, reason: err.message});
+      }
+    }
+
+    const alive = results.filter(r => r.alive).length;
+    const dead = results.filter(r => !r.alive).length;
+
+    return res.json({
+      success: true,
+      total: results.length,
+      alive,
+      dead,
+      stores: results
+    });
+  } catch (error) {
+    console.error('Recheck all scopes error:', error);
+    return res.status(500).json({success: false, error: error.message});
+  }
+}
+
+/**
  * GET /api/authMultip/scopes?shop=xxx
  * Get granted OAuth scopes for a store from Shopify
  */

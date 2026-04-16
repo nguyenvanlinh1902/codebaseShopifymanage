@@ -239,10 +239,11 @@ export class StoreRepository {
   /**
    * Get all stores with pagination (no userId filter)
    */
-  async getAllPaginated({page = 1, limit = 10, groupId} = {}) {
-    const baseQuery = groupId
+  async getAllPaginated({page = 1, limit = 10, groupId, status} = {}) {
+    let baseQuery = groupId
       ? this.collection.where('groupId', '==', groupId)
       : this.collection;
+    if (status) baseQuery = baseQuery.where('status', '==', status);
 
     const countSnapshot = await baseQuery.count().get();
     const total = countSnapshot.data().count;

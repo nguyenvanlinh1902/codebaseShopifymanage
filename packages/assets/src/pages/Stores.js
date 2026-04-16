@@ -19,6 +19,7 @@ import StoresPagination from './stores/StoresPagination';
 import StoreGroupManager from './stores/store-group-manager';
 
 const PAGE_LIMIT = 10;
+const TAB_STATUS = ['active', 'dead'];
 
 /**
  * Stores Management Page
@@ -30,6 +31,9 @@ export default function Stores() {
   const [stores, setStores] = useState([]);
   const [loading, setLoading] = useState(true);
   const [groupManagerOpen, setGroupManagerOpen] = useState(false);
+
+  // Tab state: 0 = Active, 1 = Dead
+  const [selectedTab, setSelectedTab] = useState(0);
 
   const [pagination, setPagination] = useState({page: 1, total: 0, totalPages: 0});
   const [searchValue, setSearchValue] = useState('');
@@ -64,7 +68,14 @@ export default function Stores() {
   const [webhookLoading, setWebhookLoading] = useState(false);
   const [webhookFixing, setWebhookFixing] = useState(false);
 
-  const fetchStores = async (page = 1, search = '', niches = []) => {
+  // Recheck scopes state
+  const [recheckLoading, setRecheckLoading] = useState(false);
+  const [recheckModalActive, setRecheckModalActive] = useState(false);
+  const [recheckResults, setRecheckResults] = useState(null);
+
+  const currentStatus = TAB_STATUS[selectedTab];
+
+  const fetchStores = async (page = 1, search = '', niches = [], status = currentStatus) => {
     try {
       setLoading(true);
       const params = new URLSearchParams({
@@ -73,6 +84,7 @@ export default function Stores() {
       });
       if (search) params.set('search', search);
       if (niches.length > 0) params.set('niche', niches.join(','));
+      if (status) params.set('status', status);
       // Non-admin: restrict to assigned stores only
       if (!isAdmin && user?.assignedStores?.length > 0) {
         params.set('storeIds', user.assignedStores.join(','));
@@ -129,11 +141,16 @@ export default function Stores() {
   }, []);
 
   useEffect(() => {
-    const key = `${activeSearch}|${JSON.stringify(nicheFilter)}`;
+    const key = `${selectedTab}|${activeSearch}|${JSON.stringify(nicheFilter)}`;
     if (lastStoresFetchKeyRef.current === key) return;
     lastStoresFetchKeyRef.current = key;
-    fetchStores(1, activeSearch, nicheFilter);
-  }, [activeSearch, nicheFilter]);
+    fetchStores(1, activeSearch, nicheFilter, TAB_STATUS[selectedTab]);
+  }, [activeSearch, nicheFilter, selectedTab]);
+
+  const handleTabChange = useCallback(index => {
+    setSelectedTab(index);
+    setPagination({page: 1, total: 0, totalPages: 0});
+  }, []);
 
   const handleSearchChange = useCallback(value => {
     setSearchValue(value);
@@ -166,9 +183,9 @@ export default function Stores() {
 
   const handlePageChange = useCallback(
     newPage => {
-      fetchStores(newPage, activeSearch, nicheFilter);
+      fetchStores(newPage, activeSearch, nicheFilter, currentStatus);
     },
-    [activeSearch, nicheFilter]
+    [activeSearch, nicheFilter, currentStatus]
   );
 
   const handleEditClick = useCallback(store => {
@@ -196,7 +213,7 @@ export default function Stores() {
       });
       const result = await response.json();
       if (result.success) {
-        await fetchStores(pagination.page, activeSearch, nicheFilter);
+        await fetchStores(pagination.page, activeSearch, nicheFilter, currentStatus);
         fetchNiches();
         handleEditModalClose();
       } else {
@@ -222,7 +239,7 @@ export default function Stores() {
       const response = await api(`/api/stores/${deleteStore.id}`, {method: 'DELETE'});
       const result = await response.json();
       if (result.success) {
-        await fetchStores(pagination.page, activeSearch, nicheFilter);
+        await fetchStores(pagination.page, activeSearch, nicheFilter, currentStatus);
         setDeleteModalActive(false);
         setDeleteStore(null);
       } else {
@@ -263,6 +280,24 @@ export default function Stores() {
     }
   };
 
+  const handleRecheckScopes = async () => {
+    try {
+      setRecheckLoading(true);
+      setRecheckModalActive(true);
+      setRecheckResults(null);
+      const response = await api('/api/authMultip/check-scopes/all', {method: 'POST'});
+      const result = await response.json();
+      setRecheckResults(result);
+      // Refresh stores list after recheck (status may have changed)
+      lastStoresFetchKeyRef.current = null;
+      await fetchStores(1, activeSearch, nicheFilter, currentStatus);
+    } catch (err) {
+      setError('Failed to recheck scopes');
+    } finally {
+      setRecheckLoading(false);
+    }
+  };
+
   const {page = 1, total = 0, totalPages = 0} = pagination || {};
 
   return (
@@ -271,7 +306,8 @@ export default function Stores() {
       subtitle="Stores are added automatically when merchants install the app"
       secondaryActions={[
         ...(isAdmin ? [{content: 'Manage Groups', onAction: () => setGroupManagerOpen(true)}] : []),
-        {content: 'Check Webhooks', onAction: handleCheckWebhooks, loading: webhookLoading}
+        {content: 'Check Webhooks', onAction: handleCheckWebhooks, loading: webhookLoading},
+        {content: 'Recheck Scopes', onAction: handleRecheckScopes, loading: recheckLoading}
       ]}
     >
       <Layout>
@@ -286,6 +322,8 @@ export default function Stores() {
         <Layout.Section>
           <Card padding="0">
             <StoresFilterBar
+              selectedTab={selectedTab}
+              onTabChange={handleTabChange}
               searchValue={searchValue}
               onSearchChange={handleSearchChange}
               onSearchClear={handleSearchClear}
@@ -383,6 +421,7 @@ export default function Stores() {
         <StoreGroupManager open={groupManagerOpen} onClose={() => setGroupManagerOpen(false)} />
       )}
 
+      {/* Webhook check modal */}
       <Modal
         open={webhookModalActive}
         onClose={() => {
@@ -473,6 +512,55 @@ export default function Stores() {
                     )}
                   </BlockStack>
                 </Card>
+              ))}
+            </BlockStack>
+          )}
+        </Modal.Section>
+      </Modal>
+
+      {/* Recheck scopes modal */}
+      <Modal
+        open={recheckModalActive}
+        onClose={() => {
+          setRecheckModalActive(false);
+          setRecheckResults(null);
+        }}
+        title="Recheck Scopes — Token Validity"
+        secondaryActions={[
+          {
+            content: 'Close',
+            onAction: () => {
+              setRecheckModalActive(false);
+              setRecheckResults(null);
+            }
+          }
+        ]}
+        large
+      >
+        <Modal.Section>
+          {recheckLoading && <Text as="p">Checking token validity for all stores...</Text>}
+          {recheckResults && (
+            <BlockStack gap="400">
+              <InlineStack gap="400">
+                <Badge tone="success">Alive: {recheckResults.alive || 0}</Badge>
+                <Badge tone={recheckResults.dead > 0 ? 'critical' : 'success'}>
+                  Dead: {recheckResults.dead || 0}
+                </Badge>
+                <Text as="span" tone="subdued">
+                  Total: {recheckResults.total || 0}
+                </Text>
+              </InlineStack>
+              {recheckResults.stores?.map(s => (
+                <InlineStack key={s.shop} gap="300" blockAlign="center">
+                  <Text variant="bodyMd" fontWeight="bold" as="span">
+                    {s.shop}
+                  </Text>
+                  {s.alive ? (
+                    <Badge tone="success">Alive</Badge>
+                  ) : (
+                    <Badge tone="critical">{s.reason || 'Dead'}</Badge>
+                  )}
+                </InlineStack>
               ))}
             </BlockStack>
           )}

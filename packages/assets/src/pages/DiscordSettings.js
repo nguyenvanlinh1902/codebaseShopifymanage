@@ -2,6 +2,7 @@ import React, {useEffect, useState} from 'react';
 import {Page, Tabs, BlockStack, SkeletonBodyText, Card} from '@shopify/polaris';
 import DiscordConfigForm from './discord/DiscordConfigForm';
 import EmailRulesContent from './discord/EmailRulesContent';
+import ScheduledDigestContent from './discord/ScheduledDigestContent';
 import {useDiscordConfig} from '../hooks/useDiscordConfig';
 
 /**
@@ -35,7 +36,8 @@ export default function DiscordSettings() {
       id: 'rules',
       content: `Filter Rules${rules.length ? ` (${rules.length})` : ''}`,
       panelID: 'rules-panel'
-    }
+    },
+    {id: 'digest', content: 'Scheduled Digest', panelID: 'digest-panel'}
   ];
 
   if (initialLoading) {
@@ -80,6 +82,7 @@ export default function DiscordSettings() {
               onToggle={toggleRule}
             />
           )}
+          {selectedTab === 2 && <ScheduledDigestContent />}
         </div>
       </Tabs>
     </Page>

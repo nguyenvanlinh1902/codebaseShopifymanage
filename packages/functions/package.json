@@ -9,7 +9,10 @@
     "production": "node esbuild.config.js --production",
     "development": "node esbuild.config.js",
     "watch": "node esbuild.config.js --watch",
-    "eslint-fix": "./node_modules/.bin/eslint --fix ."
+    "eslint-fix": "./node_modules/.bin/eslint --fix .",
+    "test": "node --test src/__tests__/unit",
+    "test:unit": "node --test src/__tests__/unit",
+    "test:integration": "firebase emulators:exec --only firestore 'node --test src/__tests__/integration'"
   },
   "dependencies": {
     "@discordjs/rest": "^2.6.0",

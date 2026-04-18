@@ -27,6 +27,16 @@ export class DiscordService {
   }
 
   /**
+   * Return a new instance pointing to a different channel (same bot token).
+   */
+  withChannel(channelId) {
+    const copy = Object.create(DiscordService.prototype);
+    copy._rest = this._rest;
+    copy._channelId = channelId;
+    return copy;
+  }
+
+  /**
    * Send an embed to the configured channel
    */
   async sendEmbed(embed) {

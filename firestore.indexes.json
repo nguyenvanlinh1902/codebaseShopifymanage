@@ -1,6 +1,34 @@
 {
   "indexes": [
     {
+      "collectionGroup": "discord_schedules",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "enabled",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "nextRunAt",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "discord_sent_emails",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "storeId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "sentAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "subscriptions",
       "queryScope": "COLLECTION",
       "fields": [
@@ -869,6 +897,31 @@
           "fieldPath": "createdAt",
           "order": "ASCENDING"
         }
+      ]
+    },
+    {
+      "collectionGroup": "bot_api_keys",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "userId", "order": "ASCENDING"},
+        {"fieldPath": "revokedAt", "order": "ASCENDING"},
+        {"fieldPath": "createdAt", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "bot_api_keys",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "revokedAt", "order": "ASCENDING"},
+        {"fieldPath": "createdAt", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "bot_api_audit_log",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "keyPrefix", "order": "ASCENDING"},
+        {"fieldPath": "timestamp", "order": "DESCENDING"}
       ]
     }
   ],

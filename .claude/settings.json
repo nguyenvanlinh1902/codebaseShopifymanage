@@ -17,7 +17,9 @@
       "Bash(zip -rq \"/Users/linhnv/Desktop/theme-TM.zip\" . -x \"*.DS_Store\" \"__MACOSX*\")"
     ],
     "additionalDirectories": [
-      "/Users/linhnv/Project/toolShopify/plans/reports"
+      "/Users/linhnv/Project/toolShopify/plans/reports",
+      "/Users/linhnv/Project/ag-survey/packages/functions/src/routes",
+      "/Users/linhnv/Project/ag-survey/packages/assets/src/pages/Integrations"
     ]
   },
   "hooks": {

@@ -2,9 +2,10 @@ import {useState, useCallback} from 'react';
 import {api} from '../helpers/api';
 
 /**
- * Hook for email operations — Outlook/Hotmail via Microsoft Graph API
+ * Hook for email operations — supports both Outlook (Microsoft Graph) and Gmail providers.
+ * Endpoints are routed per `provider` ('outlook' | 'gmail').
  */
-export function useGmailEmails(selectedEmail) {
+export function useGmailEmails(selectedEmail, provider = 'outlook') {
   const [emails, setEmails] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -14,6 +15,10 @@ export function useGmailEmails(selectedEmail) {
   const [labels, setLabels] = useState([]);
   const [currentQuery, setCurrentQuery] = useState('');
   const [currentLabel, setCurrentLabel] = useState('');
+
+  const base = provider === 'gmail' ? '/api/gmail' : '/api/outlook';
+  const labelParam = provider === 'gmail' ? 'label' : 'folder';
+  const labelsPath = provider === 'gmail' ? 'labels' : 'folders';
 
   const fetchEmails = useCallback(
     async (query = '', label = '', token = null) => {
@@ -27,10 +32,10 @@ export function useGmailEmails(selectedEmail) {
         setError(null);
         const params = new URLSearchParams({email: selectedEmail, maxResults: '50'});
         if (query) params.set('q', query);
-        if (label) params.set('folder', label);
+        if (label) params.set(labelParam, label);
         if (token) params.set('pageToken', token);
 
-        const res = await api(`/api/outlook/emails?${params}`);
+        const res = await api(`${base}/emails?${params}`);
         const result = await res.json();
         if (!result.success) throw new Error(result.error);
 
@@ -50,7 +55,7 @@ export function useGmailEmails(selectedEmail) {
         setLoading(false);
       }
     },
-    [selectedEmail]
+    [selectedEmail, base, labelParam]
   );
 
   const fetchMore = useCallback(() => {
@@ -65,7 +70,7 @@ export function useGmailEmails(selectedEmail) {
       try {
         setLoading(true);
         const params = new URLSearchParams({email: selectedEmail});
-        const res = await api(`/api/outlook/emails/${messageId}?${params}`);
+        const res = await api(`${base}/emails/${messageId}?${params}`);
         const result = await res.json();
         if (!result.success) throw new Error(result.error);
         setSelectedMessage(result.data);
@@ -75,20 +80,20 @@ export function useGmailEmails(selectedEmail) {
         setLoading(false);
       }
     },
-    [selectedEmail]
+    [selectedEmail, base]
   );
 
   const fetchLabels = useCallback(async () => {
     if (!selectedEmail) return;
     try {
       const params = new URLSearchParams({email: selectedEmail});
-      const res = await api(`/api/outlook/folders?${params}`);
+      const res = await api(`${base}/${labelsPath}?${params}`);
       const result = await res.json();
       if (result.success) setLabels(result.data);
     } catch (err) {
-      console.error('Failed to fetch folders:', err);
+      console.error('Failed to fetch labels/folders:', err);
     }
-  }, [selectedEmail]);
+  }, [selectedEmail, base, labelsPath]);
 
   return {
     emails,

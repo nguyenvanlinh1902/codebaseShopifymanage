@@ -4,7 +4,8 @@ import {Page, Layout, Card, Banner, Text, Spinner, BlockStack} from '@shopify/po
 import {
   handleGoogleCallback,
   handleGoogleCallbackTemp,
-  handleOutlookCallback
+  handleOutlookCallback,
+  handleGmailCallback
 } from './oauth-callback/oauth-handlers';
 
 /**
@@ -54,8 +55,10 @@ export default function OAuthCallback() {
       }
     } else if (code && mode === 'temp') {
       handleGoogleCallbackTemp(code, handlers);
-    } else if (code && (mode === 'outlook' || mode === 'gmail')) {
+    } else if (code && mode === 'outlook') {
       handleOutlookCallback(code, stateUserId, stateStoreId, handlers, stateRaw);
+    } else if (code && mode === 'gmail') {
+      handleGmailCallback(code, stateUserId, stateStoreId, handlers, stateRaw);
     } else if (code) {
       handleGoogleCallback(code, stateUserId, stateStoreId, handlers);
     } else {

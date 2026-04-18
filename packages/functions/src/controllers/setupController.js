@@ -305,7 +305,7 @@ async function checkPolicyStatus(shopifyService) {
   return {done: filled >= 3, detail: `${filled}/${total} filled`};
 }
 
-const POLICY_TYPES_CHECK = ['REFUND_POLICY', 'PRIVACY_POLICY', 'TERMS_OF_SERVICE', 'SHIPPING_POLICY', 'CONTACT_INFORMATION'];
+const POLICY_TYPES_CHECK = ['REFUND_POLICY', 'PRIVACY_POLICY', 'TERMS_OF_SERVICE', 'SHIPPING_POLICY', 'CONTACT_INFORMATION', 'LEGAL_NOTICE'];
 
 async function checkShippingStatus(shopifyService) {
   try {

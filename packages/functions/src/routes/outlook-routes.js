@@ -15,6 +15,7 @@ import {
   getOutlookAccounts,
   disconnectOutlookAccount
 } from '../controllers/outlook/outlook-auth-handler.js';
+import {updateLinkedStores} from '../controllers/gmail/gmail-auth-handler.js';
 
 const router = new Router();
 
@@ -23,6 +24,7 @@ router.get('/auth-url', getOutlookAuthUrl);
 router.get('/auth/callback', handleOutlookCallback);
 router.get('/accounts', getOutlookAccounts);
 router.post('/disconnect', disconnectOutlookAccount);
+router.put('/linked-stores', updateLinkedStores);
 
 // Email operations
 router.get('/emails', listOutlookEmails);

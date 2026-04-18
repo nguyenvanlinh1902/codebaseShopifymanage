@@ -44,6 +44,7 @@ import CollectionDetail from './pages/CollectionDetail';
 import ProductDetail from './pages/ProductDetail';
 import Stores from './pages/Stores';
 import Users from './pages/Users';
+import BotApiKeys from './pages/BotApiKeys';
 import DevWebhooks from './pages/DevWebhooks';
 import DevTestImport from './pages/DevTestImport';
 import Guide from './pages/Guide';
@@ -420,6 +421,7 @@ function StandaloneFrame() {
             }
           />
           <Route path="/users" element={isAdmin ? <Users /> : <NotFound />} />
+          <Route path="/bot-api-keys" element={isAdmin ? <BotApiKeys /> : <NotFound />} />
           <Route path="/dev/webhooks" element={isAdmin ? <DevWebhooks /> : <NotFound />} />
           <Route path="/dev/test-import" element={isAdmin ? <DevTestImport /> : <NotFound />} />
           <Route path="/dev/guide" element={isAdmin ? <Guide /> : <NotFound />} />

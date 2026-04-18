@@ -93,6 +93,20 @@ export class GoogleAuthRepository {
   }
 
   /**
+   * Get auth record by storeId + googleEmail (admin — no userId filter)
+   */
+  async getByStoreAndEmail(storeId, googleEmail) {
+    const snapshot = await this.collection
+      .where('storeId', '==', storeId)
+      .where('googleEmail', '==', googleEmail)
+      .limit(1)
+      .get();
+    if (snapshot.empty) return null;
+    const doc = snapshot.docs[0];
+    return {id: doc.id, ...doc.data()};
+  }
+
+  /**
    * SECURITY: Get auth record by storeId + userId + googleEmail
    * @param {string} storeId - Store ID (required for data isolation)
    * @param {string} userId - User ID
@@ -284,6 +298,22 @@ export class GoogleAuthRepository {
     if (existing) {
       await this.collection.doc(existing.id).delete();
     }
+  }
+
+  /**
+   * Update linkedStoreIds for an email account (by storeId + googleEmail).
+   * @param {string} storeId - Store ID
+   * @param {string} googleEmail - Email address
+   * @param {string[]} linkedStoreIds - Array of store IDs to link
+   */
+  async updateLinkedStores(storeId, googleEmail, linkedStoreIds) {
+    const existing = await this.getByStoreAndEmail(storeId, googleEmail);
+    if (!existing) throw new Error(`Account not found: ${googleEmail}`);
+    await this.collection.doc(existing.id).update({
+      linkedStoreIds: linkedStoreIds || [],
+      updatedAt: new Date().toISOString()
+    });
+    return {id: existing.id, linkedStoreIds};
   }
 
   /**

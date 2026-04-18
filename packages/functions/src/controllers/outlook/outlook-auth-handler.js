@@ -256,7 +256,8 @@ export async function getOutlookAccounts(req, res) {
         userId: isAdmin ? a.userId : undefined,
         connectedAt: a.createdAt,
         lastRefreshed: a.updatedAt,
-        authStatus: a.authStatus || 'active'
+        authStatus: a.authStatus || 'active',
+        linkedStoreIds: a.linkedStoreIds || []
       }))
     });
   } catch (error) {

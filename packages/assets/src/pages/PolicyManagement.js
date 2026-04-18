@@ -18,7 +18,8 @@ const POLICY_TYPES = [
   {type: 'PRIVACY_POLICY', label: 'Privacy policy'},
   {type: 'TERMS_OF_SERVICE', label: 'Terms of service'},
   {type: 'SHIPPING_POLICY', label: 'Shipping policy'},
-  {type: 'CONTACT_INFORMATION', label: 'Contact information'}
+  {type: 'CONTACT_INFORMATION', label: 'Contact information'},
+  {type: 'LEGAL_NOTICE', label: 'Legal notice'}
 ];
 
 const EMPTY_CONTENT = Object.fromEntries(POLICY_TYPES.map(p => [p.type, '']));

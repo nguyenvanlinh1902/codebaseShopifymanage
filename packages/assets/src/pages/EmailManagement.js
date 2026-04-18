@@ -1,122 +1,26 @@
-import React, {useState, useEffect, useCallback, useMemo} from 'react';
-import {Page, Layout, Card, Banner, BlockStack, SkeletonBodyText} from '@shopify/polaris';
-import AccountSelector from './email/AccountSelector';
-import EmailFiltersBar from './email/EmailFiltersBar';
-import EmailListContent from './email/EmailListContent';
-import EmailDetailPanel from './email/EmailDetailPanel';
-import {useGmailEmails} from '../hooks/useGmailEmails';
+import React, {useState} from 'react';
+import {Page, Tabs, BlockStack} from '@shopify/polaris';
+import EmailBrowser from './email/EmailBrowser';
 
 /**
- * Email Management page — browse Outlook/Hotmail emails for connected accounts
+ * Email Management page — separate tabs for Outlook and Gmail
  */
 export default function EmailManagement() {
-  const [selectedEmail, setSelectedEmail] = useState('');
-  const {
-    emails,
-    loading,
-    error,
-    hasMore,
-    selectedMessage,
-    setSelectedMessage,
-    labels,
-    fetchEmails,
-    fetchMore,
-    fetchMessage,
-    fetchLabels
-  } = useGmailEmails(selectedEmail);
+  const [selectedTab, setSelectedTab] = useState(0);
 
-  const handleAccountSelect = useCallback(email => {
-    setSelectedEmail(email);
-  }, []);
+  const tabs = [
+    {id: 'outlook', content: 'Outlook / Hotmail', panelID: 'outlook-panel'},
+    {id: 'gmail', content: 'Gmail', panelID: 'gmail-panel'}
+  ];
 
-  useEffect(() => {
-    if (selectedEmail) {
-      fetchEmails();
-      fetchLabels();
-    }
-  }, [selectedEmail, fetchEmails, fetchLabels]);
-
-  const [inboxTypeFilter, setInboxTypeFilter] = useState('all');
-
-  const handleFilter = useCallback(
-    ({query, label, inboxType}) => {
-      if (inboxType !== undefined) setInboxTypeFilter(inboxType);
-      fetchEmails(query, label);
-    },
-    [fetchEmails]
-  );
-
-  const filteredEmails = useMemo(() => {
-    if (inboxTypeFilter === 'all') return emails;
-    return emails.filter(e => e.inboxType === inboxTypeFilter);
-  }, [emails, inboxTypeFilter]);
-
-  const handleSelectMessage = useCallback(
-    messageId => {
-      fetchMessage(messageId);
-    },
-    [fetchMessage]
-  );
-
-  const showInitialState = !selectedEmail && !loading;
-  const showListSkeleton = loading && emails.length === 0;
+  const provider = tabs[selectedTab].id;
 
   return (
     <Page title="Email Management" fullWidth>
-      <Layout>
-        <Layout.Section variant="oneThird">
-          <BlockStack gap="400">
-            <Card>
-              <AccountSelector selectedEmail={selectedEmail} onSelect={handleAccountSelect} />
-            </Card>
-
-            {selectedEmail && (
-              <Card>
-                <EmailFiltersBar labels={labels} onFilter={handleFilter} />
-              </Card>
-            )}
-
-            {showInitialState && (
-              <Card>
-                <Banner tone="info">
-                  Select an email account to browse emails, or go to Accounts to connect one.
-                </Banner>
-              </Card>
-            )}
-
-            {showListSkeleton && (
-              <Card>
-                <BlockStack gap="300">
-                  <SkeletonBodyText lines={3} />
-                  <SkeletonBodyText lines={3} />
-                  <SkeletonBodyText lines={3} />
-                </BlockStack>
-              </Card>
-            )}
-
-            {!showListSkeleton && selectedEmail && (
-              <EmailListContent
-                emails={filteredEmails}
-                loading={loading}
-                hasMore={hasMore}
-                onFetchMore={fetchMore}
-                onSelectMessage={handleSelectMessage}
-                selectedId={selectedMessage?.id}
-              />
-            )}
-
-            {error && <Banner tone="critical">{error}</Banner>}
-          </BlockStack>
-        </Layout.Section>
-
-        <Layout.Section>
-          <EmailDetailPanel
-            message={selectedMessage}
-            loading={loading && !selectedMessage}
-            onClose={() => setSelectedMessage(null)}
-          />
-        </Layout.Section>
-      </Layout>
+      <BlockStack gap="400">
+        <Tabs tabs={tabs} selected={selectedTab} onSelect={setSelectedTab} />
+        <EmailBrowser key={provider} provider={provider} />
+      </BlockStack>
     </Page>
   );
 }

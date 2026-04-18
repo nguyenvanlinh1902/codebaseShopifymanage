@@ -8,6 +8,7 @@ import {SHIPPING_TEMPLATE} from './policy-templates/shipping-policy-template';
 import {TERMS_TEMPLATE} from './policy-templates/terms-of-service-template';
 import {PRIVACY_TEMPLATE} from './policy-templates/privacy-policy-template';
 import {CONTACT_TEMPLATE} from './policy-templates/contact-information-template';
+import {LEGAL_NOTICE_TEMPLATE} from './policy-templates/legal-notice-template';
 
 /** Hardcoded defaults — used when DB has no custom template */
 export const DEFAULT_TEMPLATES = {
@@ -15,7 +16,8 @@ export const DEFAULT_TEMPLATES = {
   SHIPPING_POLICY: SHIPPING_TEMPLATE,
   TERMS_OF_SERVICE: TERMS_TEMPLATE,
   PRIVACY_POLICY: PRIVACY_TEMPLATE,
-  CONTACT_INFORMATION: CONTACT_TEMPLATE
+  CONTACT_INFORMATION: CONTACT_TEMPLATE,
+  LEGAL_NOTICE: LEGAL_NOTICE_TEMPLATE
 };
 
 /**

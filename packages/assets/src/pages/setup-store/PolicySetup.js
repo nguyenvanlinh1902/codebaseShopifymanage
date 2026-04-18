@@ -11,7 +11,8 @@ const POLICY_TYPES = [
   {type: 'PRIVACY_POLICY', label: 'Privacy Policy'},
   {type: 'TERMS_OF_SERVICE', label: 'Terms of Service'},
   {type: 'SHIPPING_POLICY', label: 'Shipping Policy'},
-  {type: 'CONTACT_INFORMATION', label: 'Contact Information'}
+  {type: 'CONTACT_INFORMATION', label: 'Contact Information'},
+  {type: 'LEGAL_NOTICE', label: 'Legal Notice'}
 ];
 
 const EMPTY_CONTENT = Object.fromEntries(POLICY_TYPES.map(p => [p.type, '']));
@@ -148,7 +149,7 @@ export default function PolicySetup({open, onClose, stores, onSuccess}) {
                 <BlockStack gap="200">
                   <Text variant="headingSm">Generate from Template</Text>
                   <Text variant="bodySm" tone="subdued">
-                    Enter support email to auto-fill all 4 policies using store name "{getSelectedStoreName()}".
+                    Enter support email to auto-fill all policies using store name "{getSelectedStoreName()}".
                   </Text>
                   <InlineStack gap="300" blockAlign="end">
                     <div style={{flex: 1}}>

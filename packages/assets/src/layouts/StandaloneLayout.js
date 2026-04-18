@@ -14,6 +14,7 @@ import {
   SettingsIcon,
   ExitIcon,
   PersonIcon,
+  KeyIcon,
   CodeIcon,
   CashDollarIcon,
   TargetIcon,
@@ -154,7 +155,8 @@ export default function StandaloneLayout({children}) {
     ? [
         {label: 'Webhook Checker', icon: CodeIcon, url: '/dev/webhooks'},
         {label: 'Test Import', icon: ProductIcon, url: '/dev/test-import'},
-        {label: 'Setup Guide', icon: SettingsIcon, url: '/dev/guide'}
+        {label: 'Setup Guide', icon: SettingsIcon, url: '/dev/guide'},
+        {label: 'Bot API Keys', icon: KeyIcon, url: '/bot-api-keys'}
       ]
     : [];
 

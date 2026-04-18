@@ -4,22 +4,24 @@ import {Select} from '@shopify/polaris';
 import {api} from '../../helpers/api';
 
 /**
- * Dropdown selector for connected Outlook/Hotmail accounts
+ * Dropdown selector scoped to a single provider ('outlook' | 'gmail').
  */
-export default function AccountSelector({selectedEmail, onSelect}) {
+export default function AccountSelector({provider = 'outlook', selectedEmail, onSelect}) {
   const [accounts, setAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  const base = provider === 'gmail' ? '/api/gmail' : '/api/outlook';
 
   const fetchAccounts = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await api('/api/outlook/accounts');
+      const res = await api(`${base}/accounts`);
       const result = await res.json();
       if (result.success) {
         const all = result.data || [];
         setAccounts(all);
         if (!selectedEmail && all.length > 0) {
-          onSelect(all[0].email, 'outlook');
+          onSelect(all[0].email, provider);
         }
       }
     } catch (err) {
@@ -27,7 +29,7 @@ export default function AccountSelector({selectedEmail, onSelect}) {
     } finally {
       setLoading(false);
     }
-  }, [selectedEmail, onSelect]);
+  }, [base, provider, selectedEmail, onSelect]);
 
   useEffect(() => {
     fetchAccounts();
@@ -39,12 +41,12 @@ export default function AccountSelector({selectedEmail, onSelect}) {
   ];
 
   const handleChange = value => {
-    onSelect(value, 'outlook');
+    onSelect(value, provider);
   };
 
   return (
     <Select
-      label="Email Account"
+      label={`${provider === 'gmail' ? 'Gmail' : 'Outlook'} Account`}
       options={options}
       value={selectedEmail || ''}
       onChange={handleChange}
@@ -57,6 +59,7 @@ export default function AccountSelector({selectedEmail, onSelect}) {
 }
 
 AccountSelector.propTypes = {
+  provider: PropTypes.oneOf(['outlook', 'gmail']),
   selectedEmail: PropTypes.string,
   onSelect: PropTypes.func.isRequired
 };

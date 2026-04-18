@@ -24,6 +24,8 @@ import embedRoutes from './routes/embedRoutes.js';
 import gdprRoutes from './routes/gdprRoutes.js';
 import multiAppAuthRoutes from './routes/multi-app-auth-routes.js';
 import userRoutes from './routes/user-routes.js';
+import botApiKeyRoutes from './routes/bot-api-key-routes.js';
+import botDelegationRoutes from './routes/bot-delegation-routes.js';
 import * as devOrderInspectorController from './controllers/dev-order-inspector-controller.js';
 import trackingStatusRoutes from './routes/tracking-status-routes.js';
 import draftOrderRoutes from './routes/draft-order-routes.js';
@@ -34,8 +36,13 @@ import shippingTemplateRoutes from './routes/shipping-template-routes.js';
 import outlookRoutes from './routes/outlook-routes.js';
 import {exchangeOutlookCode as outlookAuthExchange, handleOutlookCallback} from './controllers/outlook/outlook-auth-handler.js';
 import {handleOutlookWebhook} from './handlers/outlook-push-handler.js';
+import gmailRoutes from './routes/gmail-routes.js';
+import {exchangeGmailCode as gmailAuthExchange} from './controllers/gmail/gmail-auth-handler.js';
+import {processPushNotification as processGmailPushNotification} from './handlers/gmail-push-handler.js';
+import {processWatchRenewal as processGmailWatchRenewal} from './handlers/gmail-watch-renewal-handler.js';
 import discordRoutes from './routes/discord-routes.js';
 import emailRuleRoutes from './routes/email-rule-routes.js';
+import {processDiscordDigest} from './handlers/discord-digest-cron-handler.js';
 import * as trackingStatusController from './controllers/tracking-status-controller.js';
 // Middleware
 import {authentication} from './middleware/authentication.js';
@@ -106,6 +113,9 @@ app.get('/api/outlook/auth/callback', handleOutlookCallback);
 // Outlook webhook (public — called by Microsoft Graph change notifications)
 app.post('/api/outlook/webhook', handleOutlookWebhook);
 
+// Gmail OAuth exchange (public — called from popup callback before JWT is available)
+app.post('/api/gmail/auth/exchange', gmailAuthExchange);
+
 // ============ EMBEDDED APP ROUTES (session token auth) ============
 app.use('/api/embed', embedRoutes);
 // ============ AUTH MIDDLEWARE (JWT verification for all app routes) ============
@@ -123,6 +133,7 @@ app.use('/api/tracking', trackingRoutes);
 app.use('/api/tracking-status', trackingStatusRoutes);
 app.use('/api/shipping', shippingTemplateRoutes);
 app.use('/api/outlook', outlookRoutes);
+app.use('/api/gmail', gmailRoutes);
 app.use('/api/discord', discordRoutes);
 app.use('/api/email-rules', emailRuleRoutes);
 app.use('/api/themes', themeRoutes);
@@ -134,6 +145,8 @@ app.use('/api/custom-fields', customFieldRoutes);
 app.use('/api/collections', collectionRoutes);
 app.use('/api/shopify-products', shopifyProductRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/bot-api-keys', botApiKeyRoutes);
+app.use('/api/bot', botDelegationRoutes);
 app.get('/api/dev/orders', devOrderInspectorController.getOrderData);
 
 // ============ ERROR HANDLING ============
@@ -229,6 +242,41 @@ export const outlookWatchRenewalCron = onSchedule(
   },
   async () => {
     await processOutlookWatchRenewal();
+  }
+);
+
+/** PubSub: Gmail Push Notifications */
+export const gmailPushHandler = onMessagePublished(
+  {topic: 'gmail-notifications', memory: '256MiB', timeoutSeconds: 540, retry: false},
+  async event => {
+    await processGmailPushNotification(event.data);
+  }
+);
+
+/** Cron: Gmail Watch Renewal (daily at 2 AM UTC — Gmail Watch expires after 7 days) */
+export const gmailWatchRenewalCron = onSchedule(
+  {
+    schedule: '0 2 * * *',
+    memory: '256MiB',
+    timeoutSeconds: 540,
+    retryConfig: {retryCount: 3, maxRetrySeconds: 600}
+  },
+  async () => {
+    await processGmailWatchRenewal();
+  }
+);
+
+/** Cron: Discord Scheduled Email Digest (every minute — handler filters due schedules) */
+export const discordDigestCron = onSchedule(
+  {
+    schedule: 'every 1 minutes',
+    timeZone: 'Asia/Ho_Chi_Minh',
+    memory: '1GiB',
+    timeoutSeconds: 540,
+    retryConfig: {retryCount: 2, maxRetrySeconds: 600}
+  },
+  async () => {
+    await processDiscordDigest();
   }
 );
 

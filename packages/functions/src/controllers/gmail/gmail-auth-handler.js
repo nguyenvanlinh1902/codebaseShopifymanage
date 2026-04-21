@@ -108,31 +108,40 @@ export async function exchangeGmailCode(req, res) {
 }
 
 /**
- * GET /api/gmail/accounts — list Gmail-connected accounts
+ * GET /api/gmail/accounts — list Gmail-connected accounts.
+ * Scope rules:
+ *  - Admin: all accounts. Optional ?groupId= filters by store.groupId.
+ *  - Staff/Manager: only accounts whose storeId (or any linkedStoreIds) is in
+ *    the caller's assignedStores.
  */
 export async function getGmailAccounts(req, res) {
   try {
     const authRepo = new GoogleAuthRepository();
-    const isAdmin = req.userRole === 'admin';
-    const storeId = req.query.storeId || 'default';
+    const {filterAccountsByAccess, enrichAccountsWithStoreLabels} =
+      await import('../../helpers/email-access-guard.js');
 
-    let allAccounts;
-    if (isAdmin) {
-      allAccounts = await authRepo.getAllByStore(storeId);
-    } else {
-      allAccounts = await authRepo.getAllByStoreAndUser(storeId, req.userId);
-    }
-    // Filter to only gmail-type accounts (or accounts with gmail scope)
-    const gmailAccounts = allAccounts.filter(a =>
+    const all = await authRepo.getAll();
+    const gmailOnly = all.filter(a =>
       a.authType === 'gmail' || a.scope?.includes('gmail.readonly')
     );
 
+    const scoped = await filterAccountsByAccess(req, gmailOnly);
+    const enriched = await enrichAccountsWithStoreLabels(scoped);
+
+    const groupFilter = req.query.groupId;
+    const final = groupFilter
+      ? enriched.filter(a => a.groupId === groupFilter)
+      : enriched;
+
     return res.json({
       success: true,
-      data: gmailAccounts.map(a => ({
+      data: final.map(a => ({
         email: a.googleEmail,
         authType: a.authType || 'shared',
-        userId: isAdmin ? a.userId : undefined,
+        storeId: a.storeId,
+        storeName: a.storeName,
+        groupId: a.groupId,
+        userId: req.userRole === 'admin' ? a.userId : undefined,
         connectedAt: a.createdAt,
         lastRefreshed: a.updatedAt,
         authStatus: a.authStatus || 'active',

@@ -923,6 +923,46 @@
         {"fieldPath": "keyPrefix", "order": "ASCENDING"},
         {"fieldPath": "timestamp", "order": "DESCENDING"}
       ]
+    },
+    {
+      "collectionGroup": "discord_group_schedules",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "enabled", "order": "ASCENDING"},
+        {"fieldPath": "nextRunAt", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "google_auth",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "linkedGroupIds", "arrayConfig": "CONTAINS"},
+        {"fieldPath": "googleEmail", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "google_auth",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "storeId", "order": "ASCENDING"},
+        {"fieldPath": "googleEmail", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "google_auth",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "googleEmail", "order": "ASCENDING"},
+        {"fieldPath": "authType", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "discord_sent_emails",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "groupId", "order": "ASCENDING"},
+        {"fieldPath": "sentAt", "order": "DESCENDING"}
+      ]
     }
   ],
   "fieldOverrides": []

@@ -41,6 +41,7 @@ import {exchangeGmailCode as gmailAuthExchange} from './controllers/gmail/gmail-
 import {processPushNotification as processGmailPushNotification} from './handlers/gmail-push-handler.js';
 import {processWatchRenewal as processGmailWatchRenewal} from './handlers/gmail-watch-renewal-handler.js';
 import discordRoutes from './routes/discord-routes.js';
+import discordGroupRoutes from './routes/discord-group-routes.js';
 import emailRuleRoutes from './routes/email-rule-routes.js';
 import {processDiscordDigest} from './handlers/discord-digest-cron-handler.js';
 import * as trackingStatusController from './controllers/tracking-status-controller.js';
@@ -135,6 +136,7 @@ app.use('/api/shipping', shippingTemplateRoutes);
 app.use('/api/outlook', outlookRoutes);
 app.use('/api/gmail', gmailRoutes);
 app.use('/api/discord', discordRoutes);
+app.use('/api/discord/groups', discordGroupRoutes);
 app.use('/api/email-rules', emailRuleRoutes);
 app.use('/api/themes', themeRoutes);
 app.use('/api/analytics', analyticsRoutes);

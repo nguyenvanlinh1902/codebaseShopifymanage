@@ -319,6 +319,18 @@ export default function Stores() {
           </Layout.Section>
         )}
 
+        {isAdmin && stores.some(s => !s.groupId) && (
+          <Layout.Section>
+            <Banner
+              tone="warning"
+              action={{content: 'Manage Groups', onAction: () => setGroupManagerOpen(true)}}
+            >
+              {stores.filter(s => !s.groupId).length} store(s) on this page aren't
+              in a group — they won't receive Discord forwarding until you assign them.
+            </Banner>
+          </Layout.Section>
+        )}
+
         <Layout.Section>
           <Card padding="0">
             <StoresFilterBar

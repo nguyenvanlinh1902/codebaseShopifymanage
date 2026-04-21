@@ -56,11 +56,20 @@ export async function api(url, options = {}) {
 
   const response = await fetch(url, mergedOptions);
 
-  // Auto-clear auth on 401 for standalone mode
+  // Auto-clear auth on 401 for standalone mode. Preserve the auth-failure
+  // reason as a query param so the login page can surface a helpful message.
   if (!isEmbeddedApp && response.status === 401) {
+    let reason = 'expired';
+    try {
+      const body = await response.clone().json();
+      if (body?.code === 'SESSION_INVALIDATED') reason = 'permissions-changed';
+      else if (body?.code === 'USER_INACTIVE') reason = 'inactive';
+    } catch (_err) {
+      // body not JSON — keep default reason
+    }
     const {clearAuth} = await import('../context/AuthContext');
     clearAuth();
-    window.location.href = '/';
+    window.location.href = `/?auth=${reason}`;
     return response;
   }
 

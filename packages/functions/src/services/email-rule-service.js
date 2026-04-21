@@ -1,4 +1,5 @@
 import {EmailRuleRepository} from '../repositories/email-rule-repository.js';
+import {StoreRepository} from '../repositories/storeRepository.js';
 
 const MAX_REGEX_LENGTH = 200;
 
@@ -18,6 +19,25 @@ export class EmailRuleService {
     const repo = new EmailRuleRepository();
     const rules = await repo.getAllByStoreId(storeId);
     return new EmailRuleService(rules);
+  }
+
+  /**
+   * Factory: load unioned rules for all stores in a group.
+   * Sorted by priority ASC so first-match semantics still hold. Store ordering
+   * in the group breaks priority ties (stable enough for YAGNI).
+   */
+  static async createForGroup(groupId) {
+    const storeRepo = new StoreRepository();
+    const ruleRepo = new EmailRuleRepository();
+    const stores = await storeRepo.getByGroupId(groupId);
+    if (stores.length === 0) return new EmailRuleService([]);
+
+    const ruleArrays = await Promise.all(
+      stores.map(s => ruleRepo.getAllByStoreId(s.id))
+    );
+    const merged = ruleArrays.flat();
+    merged.sort((a, b) => (a.priority ?? 1000) - (b.priority ?? 1000));
+    return new EmailRuleService(merged);
   }
 
   /**

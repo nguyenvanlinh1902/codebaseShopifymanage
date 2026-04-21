@@ -25,13 +25,31 @@ export async function runShopifyQL(shopDomain, accessToken, query) {
 
   if (!res.ok) {
     const errText = await res.text();
+    // 403 "Unavailable Shop" = uninstalled / token revoked. Log once at warn
+    // level and let callers treat as empty data.
+    if (res.status === 403 && errText.includes('Unavailable Shop')) {
+      console.warn(`[ShopifyQL] Unavailable shop ${shopDomain} — skipping`);
+      const err = new Error('Unavailable Shop');
+      err.code = 'UNAVAILABLE_SHOP';
+      err.status = 403;
+      throw err;
+    }
     console.error(`[ShopifyQL] API error ${res.status} for ${shopDomain}:`, errText);
     throw new Error(`Shopify API error: ${res.status}`);
   }
 
   const json = await res.json();
   if (json?.errors) {
-    console.error(`[ShopifyQL] GraphQL errors for ${shopDomain}:`, JSON.stringify(json.errors));
+    // Surface access-denied scope issues distinctly so the admin notices the
+    // missing read_reports / Protected Customer Data Level 2 grant.
+    const accessDenied = json.errors.some(e => e?.extensions?.code === 'ACCESS_DENIED');
+    if (accessDenied) {
+      console.warn(
+        `[ShopifyQL] ${shopDomain} missing read_reports or PCD Level 2 scope — reinstall app`
+      );
+    } else {
+      console.error(`[ShopifyQL] GraphQL errors for ${shopDomain}:`, JSON.stringify(json.errors));
+    }
   }
   return json?.data?.shopifyqlQuery;
 }

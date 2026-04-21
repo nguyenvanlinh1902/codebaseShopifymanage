@@ -317,6 +317,78 @@ export class GoogleAuthRepository {
   }
 
   /**
+   * Find the first auth record for an email address (any storeId).
+   */
+  async getFirstByEmail(googleEmail) {
+    const snap = await this.collection
+      .where('googleEmail', '==', googleEmail)
+      .limit(1)
+      .get();
+    if (snap.empty) return null;
+    return {id: snap.docs[0].id, ...snap.docs[0].data()};
+  }
+
+  /**
+   * Add a groupId to the linkedGroupIds array of every doc for `googleEmail`.
+   * Idempotent. Returns count updated.
+   */
+  async addLinkedGroup(googleEmail, groupId) {
+    const snap = await this.collection.where('googleEmail', '==', googleEmail).get();
+    if (snap.empty) return 0;
+    const batch = this.db.batch();
+    let touched = 0;
+    for (const doc of snap.docs) {
+      const list = Array.isArray(doc.data().linkedGroupIds) ? doc.data().linkedGroupIds : [];
+      if (list.includes(groupId)) continue;
+      batch.update(doc.ref, {
+        linkedGroupIds: [...list, groupId],
+        updatedAt: new Date().toISOString()
+      });
+      touched++;
+    }
+    if (touched > 0) await batch.commit();
+    return touched;
+  }
+
+  /**
+   * Remove a groupId from linkedGroupIds on every doc for `googleEmail`.
+   * Idempotent. Returns count updated.
+   */
+  async removeLinkedGroup(googleEmail, groupId) {
+    const snap = await this.collection.where('googleEmail', '==', googleEmail).get();
+    if (snap.empty) return 0;
+    const batch = this.db.batch();
+    let touched = 0;
+    for (const doc of snap.docs) {
+      const list = Array.isArray(doc.data().linkedGroupIds) ? doc.data().linkedGroupIds : [];
+      if (!list.includes(groupId)) continue;
+      batch.update(doc.ref, {
+        linkedGroupIds: list.filter(g => g !== groupId),
+        updatedAt: new Date().toISOString()
+      });
+      touched++;
+    }
+    if (touched > 0) await batch.commit();
+    return touched;
+  }
+
+  /**
+   * Find all auth records whose linkedGroupIds include `groupId`.
+   * Returns deduped-by-googleEmail list (first record wins for display).
+   */
+  async getByLinkedGroup(groupId) {
+    const snap = await this.collection
+      .where('linkedGroupIds', 'array-contains', groupId)
+      .get();
+    const byEmail = new Map();
+    for (const d of snap.docs) {
+      const data = {id: d.id, ...d.data()};
+      if (!byEmail.has(data.googleEmail)) byEmail.set(data.googleEmail, data);
+    }
+    return Array.from(byEmail.values());
+  }
+
+  /**
    * Get ALL auth records (no filter)
    */
   async getAll() {

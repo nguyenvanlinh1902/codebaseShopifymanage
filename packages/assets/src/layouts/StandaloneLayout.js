@@ -84,7 +84,15 @@ export default function StandaloneLayout({children}) {
 
   const allNavItems = [
     {label: 'Dashboard', icon: HomeIcon, url: '/', exactMatch: true},
-    {label: 'Stores', icon: StoreIcon, url: '/stores'},
+    {
+      label: 'Stores',
+      icon: StoreIcon,
+      url: '/stores',
+      subNavigationItems: [
+        {label: 'All Stores', url: '/stores'},
+        {label: 'Store Groups', url: '/store-groups'}
+      ]
+    },
     {label: 'Google Sheets (Beta)', icon: NoteIcon, url: '/sheets'},
     {
       label: 'Products',
@@ -144,7 +152,7 @@ export default function StandaloneLayout({children}) {
             subNavigationItems: [
               {label: 'Accounts', url: '/email-accounts'},
               {label: 'Emails', url: '/emails'},
-              {label: 'Discord Settings', url: '/discord-settings'}
+              {label: 'Discord Settings (legacy)', url: '/discord-settings'}
             ]
           }
         ]

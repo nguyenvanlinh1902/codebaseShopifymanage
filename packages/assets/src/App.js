@@ -55,6 +55,7 @@ import CustomerOrderDetails from './pages/customer-order-details';
 import ShippingManagement from './pages/ShippingManagement';
 import EmailManagement from './loadables/EmailManagement';
 import DiscordSettings from './loadables/DiscordSettings';
+import DiscordGroups from './loadables/DiscordGroups';
 import EmailAccounts from './pages/EmailAccounts';
 import MyEmailAccount from './pages/MyEmailAccount';
 import NotFound from './pages/NotFound';
@@ -396,6 +397,9 @@ function StandaloneFrame() {
           <Route path="/emails" element={isAdmin ? <EmailManagement /> : <NotFound />} />
           <Route path="/email-accounts" element={isAdmin ? <EmailAccounts /> : <NotFound />} />
           <Route path="/discord-settings" element={isAdmin ? <DiscordSettings /> : <NotFound />} />
+          <Route path="/discord-groups" element={isAdmin ? <DiscordGroups /> : <NotFound />} />
+          <Route path="/store-groups" element={isAdmin ? <DiscordGroups /> : <NotFound />} />
+          <Route path="/groups/:groupId/discord" element={isAdmin ? <DiscordGroups /> : <NotFound />} />
           <Route
             path="/setup"
             element={

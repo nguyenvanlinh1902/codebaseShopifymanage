@@ -59,6 +59,18 @@ export class AdminUserRepository {
     return snapshot.docs.map(doc => ({id: doc.id, ...doc.data()}));
   }
 
+  /**
+   * Bump permissionsChangedAt so any currently-active JWT issued before this
+   * instant will be rejected by the auth middleware on its next request.
+   * Call whenever role, assignedStores, allowedFeatures, or status change.
+   */
+  async touchPermissions(userId) {
+    await this.collection.doc(userId).update({
+      permissionsChangedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    });
+  }
+
   async deactivate(userId) {
     await this.collection.doc(userId).update({
       status: 'inactive',

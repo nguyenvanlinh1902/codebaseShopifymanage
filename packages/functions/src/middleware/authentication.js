@@ -1,11 +1,16 @@
 import jwt from 'jsonwebtoken';
 import {KeyTokenRepository} from '../repositories/keyTokenRepository.js';
+import {AdminUserRepository} from '../repositories/adminUserRepository.js';
 import authConfig from '../config/auth.js';
 import {authenticateWithApiKey, BotAuthError, botApiKeyRepo} from './bot-api-key-auth.js';
 import {checkRateLimit} from './bot-api-key-rate-limiter.js';
 import {logUsedSampled} from '../services/bot-api-audit-service.js';
 
 const keyTokenRepo = new KeyTokenRepository();
+const adminUserRepo = new AdminUserRepository();
+
+// Tolerate up to 2s of clock skew between the JWT issuer and this instance.
+const CLOCK_SKEW_SEC = 2;
 
 const HEADERS = {
   CLIENT_ID: 'x-client-id',
@@ -86,9 +91,32 @@ async function authenticateJwt(req, res, next) {
       return res.status(401).json({success: false, error: 'Invalid token'});
     }
 
+    // Invalidate JWTs issued before the user's permissions last changed.
+    // Also deny if account was deactivated.
+    const userDoc = await adminUserRepo.getById(decoded.userId);
+    if (!userDoc || userDoc.status === 'inactive') {
+      return res.status(401).json({
+        success: false,
+        error: 'Account is no longer active',
+        code: 'USER_INACTIVE'
+      });
+    }
+    if (userDoc.permissionsChangedAt) {
+      const permTs = Math.floor(Date.parse(userDoc.permissionsChangedAt) / 1000);
+      if (!Number.isNaN(permTs) && decoded.iat + CLOCK_SKEW_SEC < permTs) {
+        return res.status(401).json({
+          success: false,
+          error: 'Permissions changed, please log in again',
+          code: 'SESSION_INVALIDATED'
+        });
+      }
+    }
+
     req.userId = decoded.userId;
     req.username = decoded.username;
-    req.userRole = decoded.role || 'staff';
+    // Prefer freshly-fetched role so a demoted admin cannot keep admin powers
+    // until token expiry. Still honor SESSION_INVALIDATED for assignedStores.
+    req.userRole = userDoc.role || decoded.role || 'staff';
     req.keyToken = keyToken;
     req.authMethod = 'jwt';
 

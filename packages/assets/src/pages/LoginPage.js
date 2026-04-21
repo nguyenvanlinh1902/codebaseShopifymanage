@@ -14,15 +14,30 @@ import {
 import {LockIcon} from '@shopify/polaris-icons';
 import {useAuth} from '../context/AuthContext';
 
+const AUTH_REASON_MESSAGES = {
+  'permissions-changed': 'Your permissions were changed by an administrator. Please log in again.',
+  inactive: 'Your account was deactivated. Contact an administrator for access.',
+  expired: 'Your session expired. Please log in again.'
+};
+
 export default function LoginPage() {
   const {login} = useAuth();
   const navigate = useNavigate();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(false);
   const usernameRef = useRef(null);
   const passwordRef = useRef(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const reason = params.get('auth');
+    if (reason && AUTH_REASON_MESSAGES[reason]) {
+      setNotice(AUTH_REASON_MESSAGES[reason]);
+    }
+  }, []);
 
   // Keyboard shortcuts: Ctrl+L=focus username, Ctrl+P=focus password, Ctrl+Enter=submit, Escape=clear
   useEffect(() => {
@@ -107,6 +122,11 @@ export default function LoginPage() {
                 </Text>
               </InlineStack>
 
+              {notice && !error && (
+                <Banner tone="warning" onDismiss={() => setNotice('')}>
+                  {notice}
+                </Banner>
+              )}
               {error && (
                 <Banner tone="critical" onDismiss={() => setError('')}>
                   {error}

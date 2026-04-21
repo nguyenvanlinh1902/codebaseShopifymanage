@@ -116,7 +116,17 @@ export async function updateUser(req, res) {
     if (status && ['active', 'inactive'].includes(status)) updates.status = status;
     if (password) updates.password = await bcrypt.hash(password, 10);
 
+    // Fields that affect authorization must invalidate outstanding JWTs.
+    const permissionAffecting =
+      (role !== undefined && role !== user.role) ||
+      assignedStores !== undefined ||
+      allowedFeatures !== undefined ||
+      (status !== undefined && status !== user.status);
+
     await adminUserRepo.update(id, updates);
+    if (permissionAffecting) {
+      await adminUserRepo.touchPermissions(id);
+    }
     return res.json({success: true, message: 'User updated'});
   } catch (error) {
     console.error('updateUser error:', error);
@@ -189,6 +199,7 @@ export async function deactivateUser(req, res) {
     }
 
     await adminUserRepo.deactivate(id);
+    await adminUserRepo.touchPermissions(id);
     return res.json({success: true, message: 'User deactivated'});
   } catch (error) {
     console.error('deactivateUser error:', error);

@@ -231,29 +231,35 @@ export async function exchangeOutlookCode(req, res) {
 }
 
 /**
- * GET /api/outlook/accounts — list Outlook-connected accounts
- * Admin sees all accounts, regular users see only their own
+ * GET /api/outlook/accounts — list Outlook-connected accounts.
+ * Scope rules mirror the Gmail handler (see getGmailAccounts).
  */
 export async function getOutlookAccounts(req, res) {
   try {
     const authRepo = new GoogleAuthRepository();
-    const isAdmin = req.userRole === 'admin';
-    const storeId = req.query.storeId || 'default';
+    const {filterAccountsByAccess, enrichAccountsWithStoreLabels} =
+      await import('../../helpers/email-access-guard.js');
 
-    let allAccounts;
-    if (isAdmin) {
-      allAccounts = await authRepo.getAllByStore(storeId);
-    } else {
-      allAccounts = await authRepo.getAllByStoreAndUser(storeId, req.userId);
-    }
-    const outlookAccounts = allAccounts.filter(a => a.authType === 'outlook');
+    const all = await authRepo.getAll();
+    const outlookOnly = all.filter(a => a.authType === 'outlook');
+
+    const scoped = await filterAccountsByAccess(req, outlookOnly);
+    const enriched = await enrichAccountsWithStoreLabels(scoped);
+
+    const groupFilter = req.query.groupId;
+    const final = groupFilter
+      ? enriched.filter(a => a.groupId === groupFilter)
+      : enriched;
 
     return res.json({
       success: true,
-      data: outlookAccounts.map(a => ({
+      data: final.map(a => ({
         email: a.googleEmail,
         authType: 'outlook',
-        userId: isAdmin ? a.userId : undefined,
+        storeId: a.storeId,
+        storeName: a.storeName,
+        groupId: a.groupId,
+        userId: req.userRole === 'admin' ? a.userId : undefined,
         connectedAt: a.createdAt,
         lastRefreshed: a.updatedAt,
         authStatus: a.authStatus || 'active',

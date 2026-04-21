@@ -5,6 +5,8 @@ import {api} from '../../helpers/api';
 
 /**
  * Dropdown selector scoped to a single provider ('outlook' | 'gmail').
+ * Lists all accounts the current user may access (derived server-side from
+ * assignedStores, so no storeId param is passed).
  */
 export default function AccountSelector({provider = 'outlook', selectedEmail, onSelect}) {
   const [accounts, setAccounts] = useState([]);
@@ -37,7 +39,10 @@ export default function AccountSelector({provider = 'outlook', selectedEmail, on
 
   const options = [
     {label: 'Select an email account...', value: ''},
-    ...accounts.map(a => ({label: a.email, value: a.email}))
+    ...accounts.map(a => {
+      const storeLabel = a.storeName ? ` — ${a.storeName}` : '';
+      return {label: `${a.email}${storeLabel}`, value: a.email};
+    })
   ];
 
   const handleChange = value => {
@@ -52,7 +57,9 @@ export default function AccountSelector({provider = 'outlook', selectedEmail, on
       onChange={handleChange}
       disabled={loading}
       helpText={
-        accounts.length === 0 && !loading ? 'No accounts connected. Go to Accounts tab.' : ''
+        accounts.length === 0 && !loading
+          ? 'No accounts accessible with your current permissions.'
+          : ''
       }
     />
   );

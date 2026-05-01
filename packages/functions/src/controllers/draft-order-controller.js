@@ -1,59 +1,7 @@
 /**
  * Draft Order Controller — create draft orders via Shopify GraphQL Admin API.
  */
-import {StoreRepository} from '../repositories/storeRepository.js';
-import {AdminUserRepository} from '../repositories/adminUserRepository.js';
-import shopifyConfig from '../config/shopify.js';
-import {hasStoreAccess} from '../utils/store-access.js';
-
-const storeRepo = new StoreRepository();
-const adminUserRepo = new AdminUserRepository();
-
-// Helper: make GraphQL request to a store
-async function shopifyGraphQL(store, query, variables = {}) {
-  const response = await fetch(
-    `https://${store.shopDomain}.myshopify.com/admin/api/${shopifyConfig.apiVersion}/graphql.json`,
-    {
-      method: 'POST',
-      headers: {
-        'X-Shopify-Access-Token': store.accessToken,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({query, variables})
-    }
-  );
-
-  if (!response.ok) {
-    const errText = await response.text();
-    console.error(`[DraftOrder] API error ${response.status} (${store.shopDomain}):`, errText);
-    throw new Error(`Shopify API error ${response.status}`);
-  }
-
-  const json = await response.json();
-  if (json?.errors) {
-    console.error(`[DraftOrder] GraphQL errors:`, JSON.stringify(json.errors));
-    throw new Error(json.errors[0]?.message || 'GraphQL error');
-  }
-
-  return json.data;
-}
-
-// Helper: validate store access for current user
-async function validateStoreAccess(req, storeId) {
-  const store = await storeRepo.getById(storeId);
-  if (!store || !store.accessToken) {
-    return {error: 'Store not found or no access token', status: 404};
-  }
-
-  if (req.userRole !== 'admin') {
-    const userRecord = await adminUserRepo.getById(req.userId);
-    if (!hasStoreAccess(userRecord?.assignedStores, storeId)) {
-      return {error: 'Access denied to this store', status: 403};
-    }
-  }
-
-  return {store};
-}
+import {shopifyGraphQL, validateStoreAccess} from '../helpers/shopify-admin-graphql.js';
 
 const SEARCH_PRODUCTS_QUERY = `
 query SearchProducts($query: String!, $first: Int!) {
@@ -290,7 +238,7 @@ export async function listDraftOrders(req, res) {
     if (access.error) return res.status(access.status).json({success: false, error: access.error});
 
     const data = await shopifyGraphQL(access.store, LIST_DRAFT_ORDERS_QUERY, {
-      first: 20,
+      first: 10,
       after: cursor || null,
       query: query || null
     });

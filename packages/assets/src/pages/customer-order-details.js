@@ -41,10 +41,32 @@ export default function CustomerOrderDetails() {
   const [noteDraft, setNoteDraft] = useState('');
   const [savingNote, setSavingNote] = useState(false);
   const [toast, setToast] = useState('');
+  const [duplicating, setDuplicating] = useState(false);
+  const [duplicateUrl, setDuplicateUrl] = useState('');
 
   const openNoteModal = () => {
     setNoteDraft(detail?.note || '');
     setNoteModalOpen(true);
+  };
+
+  const handleDuplicate = async () => {
+    setDuplicating(true);
+    setDuplicateUrl('');
+    try {
+      const res = await api('/api/analytics/order-duplicate', {
+        method: 'POST',
+        body: JSON.stringify({storeId, orderId})
+      });
+      const result = await res.json();
+      if (!result.success) throw new Error(result.error || 'Failed to duplicate order');
+      const {draftOrderName, adminUrl} = result.data || {};
+      setDuplicateUrl(adminUrl || '');
+      setToast(`Duplicated as ${draftOrderName || 'new draft'}`);
+    } catch (e) {
+      setToast(e.message || 'Failed to duplicate order');
+    } finally {
+      setDuplicating(false);
+    }
   };
 
   const saveNote = async () => {
@@ -130,6 +152,13 @@ export default function CustomerOrderDetails() {
         url: detail.adminUrl,
         external: true
       }}
+      secondaryActions={[
+        {
+          content: 'Duplicate Order',
+          onAction: handleDuplicate,
+          loading: duplicating
+        }
+      ]}
     >
       <Layout>
         {/* LEFT — items + payment */}
@@ -410,7 +439,13 @@ export default function CustomerOrderDetails() {
         </Modal.Section>
       </Modal>
 
-      {toast && <Toast content={toast} onDismiss={() => setToast('')} />}
+      {toast && (
+        <Toast
+          content={toast}
+          action={duplicateUrl ? {content: 'Open draft', onAction: () => window.open(duplicateUrl, '_blank')} : undefined}
+          onDismiss={() => { setToast(''); setDuplicateUrl(''); }}
+        />
+      )}
     </Page>
   );
 }

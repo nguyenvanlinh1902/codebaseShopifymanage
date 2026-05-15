@@ -49,6 +49,46 @@ export default function PolicyManagement() {
   // Edit modal
   const [editType, setEditType] = useState(null);
 
+  const [togglingAuto, setTogglingAuto] = useState(false);
+
+  // Shopify API supports DISABLE only (autoManaged ON → OFF via privacyFeaturesDisable).
+  // Enabling autoManaged back must be done in Shopify Admin (no enable mutation exists).
+  const handleToggleAutoManaged = async () => {
+    const storeId = selectedStoreIds[0];
+    const store = stores?.find(s => s.id === storeId);
+    const domain = store?.shopDomain;
+    if (!storeId || !domain) {
+      setErrorMsg('Select a store first');
+      return;
+    }
+
+    // OFF → must redirect to Shopify Admin (no API to enable)
+    if (!autoManaged.PRIVACY_POLICY) {
+      window.open(`https://admin.shopify.com/store/${domain}/settings/legal`, '_blank', 'noopener,noreferrer');
+      return;
+    }
+
+    // ON → call API to disable
+    try {
+      setTogglingAuto(true);
+      const res = await api('/api/setup/disable-auto-policy', {
+        method: 'POST',
+        body: JSON.stringify({storeIds: [storeId]})
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || 'Failed');
+      const result = data.data?.[0];
+      if (result?.error) throw new Error(result.error);
+      setAutoManaged(prev => ({...prev, PRIVACY_POLICY: false}));
+      setSuccessMsg('Auto-managed privacy policy disabled');
+      await loadPolicies();
+    } catch (err) {
+      setErrorMsg(`Disable failed: ${err.message}`);
+    } finally {
+      setTogglingAuto(false);
+    }
+  };
+
   // Apply modal — per-store name + email
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
   const [storeInputs, setStoreInputs] = useState({}); // { [storeId]: { name, email } }
@@ -56,10 +96,30 @@ export default function PolicyManagement() {
   // Custom template editor modal
   const [templateEditorOpen, setTemplateEditorOpen] = useState(false);
 
-  const storeChoices = (stores || []).map(s => ({
+  // Store list search + pagination (10 per page)
+  const STORES_PER_PAGE = 10;
+  const [storeSearch, setStoreSearch] = useState('');
+  const [storePage, setStorePage] = useState(1);
+
+  const filteredStores = (stores || []).filter(s => {
+    if (!storeSearch.trim()) return true;
+    const q = storeSearch.toLowerCase();
+    return (s.name || '').toLowerCase().includes(q) ||
+      (s.shopDomain || '').toLowerCase().includes(q);
+  });
+  const totalPages = Math.max(1, Math.ceil(filteredStores.length / STORES_PER_PAGE));
+  const currentPage = Math.min(storePage, totalPages);
+  const pagedStores = filteredStores.slice(
+    (currentPage - 1) * STORES_PER_PAGE,
+    currentPage * STORES_PER_PAGE
+  );
+  const storeChoices = pagedStores.map(s => ({
     label: `${s.name || s.shopDomain} (${s.shopDomain}.myshopify.com)`,
     value: s.id
   }));
+
+  // Reset to page 1 whenever search query changes
+  useEffect(() => { setStorePage(1); }, [storeSearch]);
 
   const editPolicy = editType ? POLICY_TYPES.find(p => p.type === editType) : null;
 
@@ -201,15 +261,55 @@ export default function PolicyManagement() {
               {storesLoading ? (
                 <Spinner size="small" />
               ) : (
-                <ChoiceList
-                  title="Stores"
-                  titleHidden
-                  allowMultiple
-                  choices={storeChoices}
-                  selected={selectedStoreIds}
-                  onChange={setSelectedStoreIds}
-                  disabled={applying}
-                />
+                <BlockStack gap="300">
+                  <TextField
+                    label="Search stores"
+                    labelHidden
+                    placeholder="Search by name or domain"
+                    value={storeSearch}
+                    onChange={setStoreSearch}
+                    autoComplete="off"
+                    clearButton
+                    onClearButtonClick={() => setStoreSearch('')}
+                    disabled={applying}
+                  />
+                  {filteredStores.length === 0 ? (
+                    <Text tone="subdued">No stores match your search.</Text>
+                  ) : (
+                    <ChoiceList
+                      title="Stores"
+                      titleHidden
+                      allowMultiple
+                      choices={storeChoices}
+                      selected={selectedStoreIds}
+                      onChange={setSelectedStoreIds}
+                      disabled={applying}
+                    />
+                  )}
+                  {totalPages > 1 && (
+                    <InlineStack align="space-between" blockAlign="center">
+                      <Text variant="bodySm" tone="subdued">
+                        Page {currentPage} of {totalPages} · {filteredStores.length} stores
+                      </Text>
+                      <InlineStack gap="100">
+                        <Button
+                          size="slim"
+                          disabled={currentPage <= 1}
+                          onClick={() => setStorePage(p => Math.max(1, p - 1))}
+                        >
+                          Previous
+                        </Button>
+                        <Button
+                          size="slim"
+                          disabled={currentPage >= totalPages}
+                          onClick={() => setStorePage(p => Math.min(totalPages, p + 1))}
+                        >
+                          Next
+                        </Button>
+                      </InlineStack>
+                    </InlineStack>
+                  )}
+                </BlockStack>
               )}
             </BlockStack>
           </Card>
@@ -344,14 +444,27 @@ export default function PolicyManagement() {
               <BlockStack gap="050">
                 <Text variant="bodySm" fontWeight="semibold">Use automated policy</Text>
                 <Text variant="bodySm" tone="subdued">
-                  Keep policy content in sync with store settings and latest Shopify templates
+                  {autoManaged.PRIVACY_POLICY
+                    ? 'Click to disable. Shopify-generated content will be replaced when you save custom text.'
+                    : 'To re-enable, open Shopify Admin → Settings → Policies (Shopify API does not support enabling).'}
                 </Text>
               </BlockStack>
-              <div style={{
-                width: 40, height: 22, borderRadius: 11, padding: 2,
-                backgroundColor: autoManaged.PRIVACY_POLICY ? '#303030' : '#b5b5b5',
-                flexShrink: 0, marginLeft: 12
-              }}>
+              <div
+                role="button"
+                tabIndex={0}
+                aria-disabled={togglingAuto}
+                title={autoManaged.PRIVACY_POLICY ? 'Disable auto-managed policy' : 'Open Shopify Admin to enable'}
+                onClick={togglingAuto ? undefined : handleToggleAutoManaged}
+                onKeyDown={e => { if ((e.key === ' ' || e.key === 'Enter') && !togglingAuto) { e.preventDefault(); handleToggleAutoManaged(); } }}
+                style={{
+                  width: 40, height: 22, borderRadius: 11, padding: 2,
+                  backgroundColor: autoManaged.PRIVACY_POLICY ? '#303030' : '#b5b5b5',
+                  flexShrink: 0, marginLeft: 12,
+                  cursor: togglingAuto ? 'wait' : 'pointer',
+                  opacity: togglingAuto ? 0.6 : 1,
+                  transition: 'background-color 0.15s'
+                }}
+              >
                 <div style={{
                   width: 18, height: 18, borderRadius: 9, backgroundColor: '#fff',
                   transform: autoManaged.PRIVACY_POLICY ? 'translateX(18px)' : 'translateX(0)',

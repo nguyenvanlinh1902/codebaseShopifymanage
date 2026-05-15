@@ -5,7 +5,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="shopify-api-key" content="{{SHOPIFY_API_KEY}}" />
   <title>Sync Order Sheets</title>
-  <script src="https://cdn.shopify.com/shopifycloud/app-bridge.js"></script>
+  <script>
+    // Only load App Bridge CDN when running inside Shopify Admin (shop/host param required)
+    (function () {
+      var p = new URLSearchParams(location.search);
+      if (p.get('shop') || p.get('host')) {
+        var s = document.createElement('script');
+        s.src = 'https://cdn.shopify.com/shopifycloud/app-bridge.js';
+        document.head.appendChild(s);
+      }
+    })();
+  </script>
   <style>
     body {
       background: #f4f6f8;

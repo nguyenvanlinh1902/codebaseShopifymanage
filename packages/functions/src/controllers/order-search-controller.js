@@ -2,6 +2,7 @@ import {StoreRepository} from '../repositories/storeRepository.js';
 import {AdminUserRepository} from '../repositories/adminUserRepository.js';
 import shopifyConfig from '../config/shopify.js';
 import {extractStoreIds, hasStoreAccess} from '../utils/store-access.js';
+import {DRAFT_ORDER_CREATE_MUTATION} from '../services/draft-order-clone-service.js';
 
 const storeRepo = new StoreRepository();
 const adminUserRepo = new AdminUserRepository();
@@ -102,7 +103,8 @@ function sanitizeKeyword(q) {
  * Throws on network / HTTP / GraphQL errors so callers can handle them.
  */
 async function fetchOrdersFromStore(store, shopifyQuery, {cursor = null, limit = 25, timeoutMs = 5000} = {}) {
-  const variables = {query: shopifyQuery, first: limit, after: cursor || null};
+  // Empty query → list recent orders (Shopify treats empty `query` arg as "no filter")
+  const variables = {query: shopifyQuery || '', first: limit, after: cursor || null};
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -180,13 +182,6 @@ export async function searchOrders(req, res) {
     if (!storeId) {
       return res.status(400).json({success: false, error: 'storeId is required'});
     }
-    if (!query || !query.trim()) {
-      return res.json({
-        success: true,
-        data: {orders: [], pageInfo: {hasNextPage: false, endCursor: null}}
-      });
-    }
-
     const store = await storeRepo.getById(storeId);
     if (!store || !store.accessToken) {
       return res.status(404).json({success: false, error: 'Store not found or no access token'});
@@ -199,11 +194,13 @@ export async function searchOrders(req, res) {
       }
     }
 
-    const sanitizedQuery = sanitizeKeyword(query);
+    const trimmedQuery = String(query || '').trim();
+    const sanitizedQuery = trimmedQuery ? sanitizeKeyword(trimmedQuery) : '';
 
+    // No query → return the 10 most recent orders; with query → up to 25 results.
     const result = await fetchOrdersFromStore(store, sanitizedQuery, {
       cursor: cursor || null,
-      limit: 25,
+      limit: trimmedQuery ? 25 : 10,
       timeoutMs: 10000
     });
 
@@ -417,6 +414,189 @@ export async function updateOrderNote(req, res) {
     });
   } catch (error) {
     console.error('Update order note error:', error);
+    return res.status(500).json({success: false, error: error.message});
+  }
+}
+
+// Order fetch query tailored for cloning into a Draft Order.
+const FETCH_ORDER_FOR_CLONE_QUERY = `
+query FetchOrderForClone($id: ID!) {
+  order(id: $id) {
+    id
+    name
+    note
+    tags
+    email
+    phone
+    taxExempt
+    customAttributes { key value }
+    customer { id }
+    shippingAddress {
+      address1 address2 city province country zip
+      phone firstName lastName company
+    }
+    billingAddress {
+      address1 address2 city province country zip
+      phone firstName lastName company
+    }
+    shippingLine { title originalPriceSet { shopMoney { amount } } }
+    lineItems(first: 250) {
+      edges { node {
+        title quantity
+        variant { id }
+        originalUnitPriceSet { shopMoney { amount } }
+        customAttributes { key value }
+      } }
+    }
+  }
+}`;
+
+function pickAddressForClone(a) {
+  if (!a) return null;
+  const fields = ['address1', 'address2', 'city', 'province', 'country', 'zip', 'phone', 'firstName', 'lastName', 'company'];
+  const hasAny = fields.some(f => a[f]);
+  if (!hasAny) return null;
+  return Object.fromEntries(fields.map(f => [f, a[f] || '']));
+}
+
+function buildDraftInputFromOrder(order) {
+  const input = {
+    lineItems: (order.lineItems?.edges || []).map(({node}) => {
+      const li = node.variant?.id
+        ? {variantId: node.variant.id, quantity: node.quantity}
+        : {
+            title: node.title || 'Custom Item',
+            originalUnitPrice: node.originalUnitPriceSet?.shopMoney?.amount || '0',
+            quantity: node.quantity
+          };
+      if (node.customAttributes?.length) {
+        li.customAttributes = node.customAttributes.map(a => ({
+          key: a.key,
+          value: String(a.value ?? '')
+        }));
+      }
+      return li;
+    })
+  };
+
+  if (order.note) input.note = order.note;
+  if (order.tags?.length) input.tags = order.tags;
+  if (order.email) input.email = order.email;
+  if (order.phone) input.phone = order.phone;
+  if (order.taxExempt) input.taxExempt = true;
+  if (order.customer?.id) input.customerId = order.customer.id;
+
+  const ship = pickAddressForClone(order.shippingAddress);
+  if (ship) input.shippingAddress = ship;
+  const bill = pickAddressForClone(order.billingAddress);
+  if (bill) input.billingAddress = bill;
+
+  if (order.shippingLine) {
+    input.shippingLine = {
+      title: order.shippingLine.title || 'Shipping',
+      price: order.shippingLine.originalPriceSet?.shopMoney?.amount || '0'
+    };
+  }
+
+  if (order.customAttributes?.length) {
+    input.customAttributes = order.customAttributes.map(a => ({
+      key: a.key,
+      value: String(a.value ?? '')
+    }));
+  }
+
+  return input;
+}
+
+/**
+ * POST /api/analytics/order-duplicate
+ * Body: { storeId, orderId }
+ * Duplicates a completed Order by creating a new Draft Order on the same store.
+ */
+export async function duplicateOrder(req, res) {
+  try {
+    const {storeId, orderId} = req.body || {};
+    if (!storeId || !orderId) {
+      return res.status(400).json({success: false, error: 'storeId and orderId are required'});
+    }
+
+    const store = await storeRepo.getById(storeId);
+    if (!store || !store.accessToken) {
+      return res.status(404).json({success: false, error: 'Store not found or no access token'});
+    }
+
+    if (req.userRole !== 'admin') {
+      const userRecord = await adminUserRepo.getById(req.userId);
+      if (!hasStoreAccess(userRecord?.assignedStores, storeId)) {
+        return res.status(403).json({success: false, error: 'Access denied to this store'});
+      }
+    }
+
+    const gid = String(orderId).startsWith('gid://') ? orderId : `gid://shopify/Order/${orderId}`;
+
+    const graphqlUrl = `https://${store.shopDomain}.myshopify.com/admin/api/${shopifyConfig.apiVersion}/graphql.json`;
+    const headers = {
+      'X-Shopify-Access-Token': store.accessToken,
+      'Content-Type': 'application/json'
+    };
+
+    const fetchRes = await fetch(graphqlUrl, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({query: FETCH_ORDER_FOR_CLONE_QUERY, variables: {id: gid}})
+    });
+    if (!fetchRes.ok) {
+      const errText = await fetchRes.text();
+      console.error(`[DuplicateOrder] Fetch error ${fetchRes.status}:`, errText);
+      return res.status(502).json({success: false, error: `Shopify API error ${fetchRes.status}`});
+    }
+    const fetchJson = await fetchRes.json();
+    if (fetchJson?.errors) {
+      return res.status(422).json({success: false, error: fetchJson.errors[0]?.message || 'GraphQL error'});
+    }
+    const order = fetchJson?.data?.order;
+    if (!order) return res.status(404).json({success: false, error: 'Order not found'});
+
+    const input = buildDraftInputFromOrder(order);
+    if (!input.lineItems.length) {
+      return res.status(422).json({success: false, error: 'Order has no line items to duplicate'});
+    }
+
+    const createRes = await fetch(graphqlUrl, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({query: DRAFT_ORDER_CREATE_MUTATION, variables: {input}})
+    });
+    if (!createRes.ok) {
+      const errText = await createRes.text();
+      console.error(`[DuplicateOrder] Create error ${createRes.status}:`, errText);
+      return res.status(502).json({success: false, error: `Shopify API error ${createRes.status}`});
+    }
+    const createJson = await createRes.json();
+    if (createJson?.errors) {
+      return res.status(422).json({success: false, error: createJson.errors[0]?.message || 'GraphQL error'});
+    }
+    const userErrors = createJson?.data?.draftOrderCreate?.userErrors || [];
+    if (userErrors.length > 0) {
+      return res.status(422).json({success: false, error: userErrors[0].message});
+    }
+
+    const draft = createJson?.data?.draftOrderCreate?.draftOrder;
+    const draftNumericId = draft?.id?.split('/').pop();
+
+    return res.json({
+      success: true,
+      data: {
+        sourceOrderName: order.name,
+        draftOrderId: draft?.id,
+        draftOrderName: draft?.name,
+        adminUrl: draftNumericId
+          ? `https://${store.shopDomain}.myshopify.com/admin/draft_orders/${draftNumericId}`
+          : null
+      }
+    });
+  } catch (error) {
+    console.error('Duplicate order error:', error);
     return res.status(500).json({success: false, error: error.message});
   }
 }

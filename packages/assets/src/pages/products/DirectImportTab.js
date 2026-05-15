@@ -11,11 +11,11 @@ import {
   Divider,
   Scrollable,
   Box,
-  Spinner,
-  Select
+  Spinner
 } from '@shopify/polaris';
 import {DeleteIcon} from '@shopify/polaris-icons';
 import {api} from '../../helpers/api';
+import StoreSelector from '../../components/store-selector';
 
 export default function DirectImportTab({stores = []}) {
   const [files, setFiles] = useState([]);
@@ -98,12 +98,14 @@ export default function DirectImportTab({stores = []}) {
             Bypasses PubSub queue. Processes CSV synchronously and returns detailed logs immediately.
           </Text>
 
-          <Select
+          <StoreSelector
             label="Store"
             options={storeOptions}
             value={selectedStoreId}
             onChange={setSelectedStoreId}
             disabled={importing}
+            pinnedValues={['']}
+            placeholder="Select a store..."
           />
 
           <DropZone

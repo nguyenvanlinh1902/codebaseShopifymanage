@@ -1,7 +1,6 @@
-import React from 'react';
+import React, {useMemo} from 'react';
 import {
   Card,
-  ChoiceList,
   Text,
   Banner,
   Button,
@@ -9,6 +8,7 @@ import {
   BlockStack,
   SkeletonBodyText
 } from '@shopify/polaris';
+import SearchableChoiceList from '../../components/searchable-choice-list';
 
 export default function StoreSelection({
   stores,
@@ -22,6 +22,14 @@ export default function StoreSelection({
   onCheck,
   onApply
 }) {
+  const choices = useMemo(
+    () =>
+      stores.map(store => ({
+        label: `${store.name || store.shopDomain} (${store.shopDomain}.myshopify.com)`,
+        value: store.id
+      })),
+    [stores]
+  );
   return (
     <Card>
       <BlockStack gap="400">
@@ -33,16 +41,14 @@ export default function StoreSelection({
         ) : stores.length === 0 ? (
           <Banner tone="warning">No stores found. Please add stores first.</Banner>
         ) : (
-          <ChoiceList
+          <SearchableChoiceList
             title="Select stores to check/setup"
-            allowMultiple
-            choices={stores.map(store => ({
-              label: `${store.name || store.shopDomain} (${store.shopDomain}.myshopify.com)`,
-              value: store.id
-            }))}
+            choices={choices}
             selected={selectedStoreIds}
             onChange={onStoreSelectionChange}
             disabled={checking || applying}
+            showSelectAll
+            searchPlaceholder="Search stores..."
           />
         )}
 

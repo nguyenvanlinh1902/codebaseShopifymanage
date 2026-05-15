@@ -1,5 +1,6 @@
-import React from 'react';
-import {Modal, BlockStack, Text, ChoiceList} from '@shopify/polaris';
+import React, {useMemo} from 'react';
+import {Modal, BlockStack, Text} from '@shopify/polaris';
+import SearchableChoiceList from '../../components/searchable-choice-list';
 
 export default function ReimportModal({
   reimportModal,
@@ -11,6 +12,14 @@ export default function ReimportModal({
   handleReimport,
   formatFileSize
 }) {
+  const choices = useMemo(
+    () =>
+      stores.map(store => ({
+        label: `${store.name || store.shopDomain} (${store.shopDomain}.myshopify.com)`,
+        value: store.id
+      })),
+    [stores]
+  );
   return (
     <Modal
       open={!!reimportModal}
@@ -43,16 +52,14 @@ export default function ReimportModal({
             File: <strong>{reimportModal?.fileName}</strong> (
             {formatFileSize(reimportModal?.fileSize)})
           </Text>
-          <ChoiceList
+          <SearchableChoiceList
             title="Select stores to import to"
-            allowMultiple
-            choices={stores.map(store => ({
-              label: `${store.name || store.shopDomain} (${store.shopDomain}.myshopify.com)`,
-              value: store.id
-            }))}
+            choices={choices}
             selected={reimportStores}
             onChange={setReimportStores}
             disabled={reimporting}
+            showSelectAll
+            searchPlaceholder="Search stores..."
           />
         </BlockStack>
       </Modal.Section>

@@ -7,6 +7,7 @@ import {
 import {api} from '../helpers/api';
 import {usePermittedStores} from '../hooks/usePermittedStores';
 import PolicySetup from './setup-store/PolicySetup';
+import SearchableChoiceList from '../components/searchable-choice-list';
 
 const SETUP_STEPS = [
   {value: 'metafields', label: 'Metafields — Create metafield definitions'},
@@ -245,13 +246,14 @@ export default function SetupStore() {
 
             {/* Step 2: Select stores */}
             {storesLoading ? <Spinner size="small" /> : (
-              <ChoiceList
+              <SearchableChoiceList
                 title="Select stores"
-                allowMultiple
                 choices={storeChoices}
                 selected={selectedStoreIds}
                 onChange={setSelectedStoreIds}
                 disabled={applying}
+                showSelectAll
+                searchPlaceholder="Search stores..."
               />
             )}
 

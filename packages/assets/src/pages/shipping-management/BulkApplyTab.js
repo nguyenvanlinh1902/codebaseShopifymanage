@@ -9,11 +9,11 @@ import {
   Select,
   Badge,
   IndexTable,
-  ChoiceList,
   ProgressBar,
   Spinner
 } from '@shopify/polaris';
 import {api} from '../../helpers/api';
+import SearchableChoiceList from '../../components/searchable-choice-list';
 
 export default function BulkApplyTab({templates, stores, groups, onError, onSuccess}) {
   const [selectedTemplate, setSelectedTemplate] = useState('');
@@ -193,12 +193,13 @@ export default function BulkApplyTab({templates, stores, groups, onError, onSucc
             </InlineStack>
 
             {filterType === 'individual' && (
-              <ChoiceList
+              <SearchableChoiceList
                 title="Select stores"
-                allowMultiple
                 choices={storeChoices}
                 selected={selectedStores}
                 onChange={setSelectedStores}
+                showSelectAll
+                searchPlaceholder="Search stores..."
               />
             )}
 

@@ -8,12 +8,12 @@ import {
   InlineStack,
   BlockStack,
   Text,
-  ChoiceList,
   Spinner,
   Badge
 } from '@shopify/polaris';
 import {api} from '../../helpers/api';
 import {useStores} from '../../context/store-context';
+import SearchableChoiceList from '../../components/searchable-choice-list';
 
 /**
  * StoreGroupManager — admin modal to create/edit/delete store groups
@@ -143,12 +143,13 @@ export default function StoreGroupManager({open, onClose}) {
                       {storesLoading ? (
                         <InlineStack gap="200"><Spinner size="small" /><Text>Loading stores...</Text></InlineStack>
                       ) : storeChoices.length > 0 ? (
-                        <ChoiceList
+                        <SearchableChoiceList
                           title="Assign Stores"
-                          allowMultiple
                           choices={storeChoices}
                           selected={editStoreIds}
                           onChange={setEditStoreIds}
+                          showSelectAll
+                          searchPlaceholder="Search stores..."
                         />
                       ) : (
                         <Text tone="subdued">No stores available</Text>

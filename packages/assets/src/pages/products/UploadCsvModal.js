@@ -8,7 +8,6 @@ import {
   Button,
   DropZone,
   Divider,
-  ChoiceList,
   Banner,
   Select,
   ProgressBar,
@@ -16,6 +15,7 @@ import {
 } from '@shopify/polaris';
 import {DeleteIcon} from '@shopify/polaris-icons';
 import {MAX_FILES} from '../../helpers/storage-upload';
+import SearchableChoiceList from '../../components/searchable-choice-list';
 
 /** Shopify daily variant limit resets at midnight UTC */
 function isThrottledToday(store) {
@@ -169,14 +169,13 @@ export default function UploadCsvModal({
                 : 'No stores in this group.'}
             </Banner>
           ) : (
-            <ChoiceList
-              title="Import products to these stores"
-              titleHidden
-              allowMultiple
+            <SearchableChoiceList
               choices={storeChoices}
               selected={selectedStores}
               onChange={onStoresChange}
               disabled={uploading}
+              showSelectAll
+              searchPlaceholder="Search stores..."
             />
           )}
 

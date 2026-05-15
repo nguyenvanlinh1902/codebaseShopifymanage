@@ -8,6 +8,7 @@ router.post('/check', setupController.checkStores);
 router.post('/apply', setupController.applySetup);
 router.post('/check-policies', setupController.checkPolicies);
 router.post('/apply-policies', setupController.applyPolicies);
+router.post('/disable-auto-policy', setupController.disableAutoPolicy);
 router.post('/check-all', setupController.checkAllSteps);
 
 export default router;

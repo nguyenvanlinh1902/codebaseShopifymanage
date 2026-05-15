@@ -20,6 +20,7 @@ router.get('/order-search', orderSearchController.searchOrders);
 router.get('/customer-search', orderSearchController.searchCustomersAcrossStores);
 router.get('/order-details', orderSearchController.getOrderDetails);
 router.put('/order-note', orderSearchController.updateOrderNote);
+router.post('/order-duplicate', orderSearchController.duplicateOrder);
 router.get('/disputes', disputeController.getDisputes);
 
 export default router;

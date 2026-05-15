@@ -3,6 +3,7 @@ import React from 'react';
 import {Card, BlockStack, Select, Text} from '@shopify/polaris';
 import ProductOrganization from './product-organization';
 import ProductPublishing from './product-publishing';
+import StoreSelector from '../../components/store-selector';
 
 const STATUS_OPTIONS = [
   {label: 'Active', value: 'ACTIVE'},
@@ -23,13 +24,22 @@ export default function ProductSidebar({
 
   return (
     <BlockStack gap="400">
-      {isNew && storeOptions.length > 1 && (
+      {isNew && (
         <Card>
           <BlockStack gap="200">
-            <Text as="h3" variant="headingSm">
-              Store
-            </Text>
-            <Select options={storeOptions} value={storeId} onChange={onStoreChange} />
+            {storeOptions.length === 0 ? (
+              <Text as="p" tone="critical">
+                No stores available. Please connect a store first.
+              </Text>
+            ) : (
+              <StoreSelector
+                label="Store"
+                options={storeOptions}
+                value={storeId}
+                onChange={onStoreChange}
+                pinnedValues={[]}
+              />
+            )}
           </BlockStack>
         </Card>
       )}

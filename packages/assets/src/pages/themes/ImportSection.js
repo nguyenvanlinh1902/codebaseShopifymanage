@@ -1,15 +1,15 @@
-import React from 'react';
+import React, {useMemo} from 'react';
 import {
   BlockStack,
   Text,
   DropZone,
   TextField,
-  ChoiceList,
   Banner,
   InlineStack,
   Box,
   Badge
 } from '@shopify/polaris';
+import SearchableChoiceList from '../../components/searchable-choice-list';
 
 /**
  * Import Theme form — used inside the Import Modal.
@@ -27,6 +27,15 @@ export default function ImportSection({
   handleDropZone,
   inModal = false
 }) {
+  const choices = useMemo(
+    () =>
+      stores.map(store => ({
+        label: store.name || store.shopDomain,
+        helpText: `${store.shopDomain}.myshopify.com`,
+        value: store.id
+      })),
+    [stores]
+  );
   return (
     <BlockStack gap="400">
       {/* File upload */}
@@ -79,17 +88,13 @@ export default function ImportSection({
               <Text tone="subdued" variant="bodySm">{selectedImportStores.length} selected</Text>
             )}
           </InlineStack>
-          <ChoiceList
-            title=""
-            allowMultiple
-            choices={stores.map(store => ({
-              label: store.name || store.shopDomain,
-              helpText: `${store.shopDomain}.myshopify.com`,
-              value: store.id
-            }))}
+          <SearchableChoiceList
+            choices={choices}
             selected={selectedImportStores}
             onChange={setSelectedImportStores}
             disabled={importing}
+            showSelectAll
+            searchPlaceholder="Search stores..."
           />
         </BlockStack>
       )}

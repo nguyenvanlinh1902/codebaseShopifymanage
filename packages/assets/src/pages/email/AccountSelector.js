@@ -1,7 +1,7 @@
 import React, {useState, useEffect, useCallback} from 'react';
 import PropTypes from 'prop-types';
-import {Select} from '@shopify/polaris';
 import {api} from '../../helpers/api';
+import StoreSelector from '../../components/store-selector';
 
 /**
  * Dropdown selector scoped to a single provider ('outlook' | 'gmail').
@@ -37,25 +37,20 @@ export default function AccountSelector({provider = 'outlook', selectedEmail, on
     fetchAccounts();
   }, [fetchAccounts]);
 
-  const options = [
-    {label: 'Select an email account...', value: ''},
-    ...accounts.map(a => {
-      const storeLabel = a.storeName ? ` — ${a.storeName}` : '';
-      return {label: `${a.email}${storeLabel}`, value: a.email};
-    })
-  ];
-
-  const handleChange = value => {
-    onSelect(value, provider);
-  };
+  const options = accounts.map(a => {
+    const storeLabel = a.storeName ? ` — ${a.storeName}` : '';
+    return {label: `${a.email}${storeLabel}`, value: a.email};
+  });
 
   return (
-    <Select
+    <StoreSelector
       label={`${provider === 'gmail' ? 'Gmail' : 'Outlook'} Account`}
+      placeholder="Select an email account..."
       options={options}
       value={selectedEmail || ''}
-      onChange={handleChange}
+      onChange={v => onSelect(v, provider)}
       disabled={loading}
+      pinnedValues={[]}
       helpText={
         accounts.length === 0 && !loading
           ? 'No accounts accessible with your current permissions.'

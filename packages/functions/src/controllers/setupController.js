@@ -161,6 +161,37 @@ export async function checkPolicies(req, res) {
 }
 
 /**
+ * POST /api/setup/disable-auto-policy
+ * Disable Shopify-managed Privacy Policy (autoManaged ON → OFF) for selected stores.
+ * Body: { storeIds: string[] }
+ */
+export async function disableAutoPolicy(req, res) {
+  try {
+    const {storeIds} = req.body;
+    if (!Array.isArray(storeIds) || storeIds.length === 0) {
+      return res.status(400).json({success: false, error: 'storeIds array is required'});
+    }
+
+    const results = await Promise.all(
+      storeIds.map(async storeId => {
+        try {
+          const {store, shopifyService} = await getStoreAndService(storeId);
+          const disabled = await shopifyService.disablePrivacyAutoManaged();
+          return {storeId, storeName: store.name || store.shopDomain, disabled};
+        } catch (err) {
+          return {storeId, error: err.message};
+        }
+      })
+    );
+
+    return res.json({success: true, data: results});
+  } catch (error) {
+    console.error('Disable auto policy error:', error);
+    return res.status(500).json({success: false, error: error.message});
+  }
+}
+
+/**
  * POST /api/setup/apply-policies
  * Apply policy templates to selected stores
  * Body: { storeIds: string[], policies: [{type, body}] }

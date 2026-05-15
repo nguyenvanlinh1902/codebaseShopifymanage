@@ -17,6 +17,7 @@ import {
 import {api} from '../../helpers/api';
 import {usePermittedStores} from '../../hooks/usePermittedStores';
 import useTrackingCheckProgress from '../../hooks/use-tracking-check-progress';
+import StoreSelector from '../../components/store-selector';
 
 const STATUS_TONE_MAP = {
   pending: 'attention',
@@ -462,12 +463,13 @@ export default function OrdersCheckPage() {
                   </div>
                   {filterType === 'store' && (
                     <div className="filter-item filter-item--lg">
-                      <Select
+                      <StoreSelector
                         label="Store"
                         options={storeOptions}
                         value={selectedStore}
                         onChange={setSelectedStore}
                         disabled={storesLoading}
+                        pinnedValues={['']}
                       />
                     </div>
                   )}

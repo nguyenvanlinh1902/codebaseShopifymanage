@@ -26,15 +26,17 @@ export async function getFullProduct(shopify, productId) {
       }
       variants(first: 250, after: $after) {
         nodes {
-          id title sku price compareAtPrice barcode
+          id title sku price compareAtPrice barcode taxable inventoryPolicy
           selectedOptions { name value }
           inventoryItem {
-            id tracked requiresShipping countryCodeOfOrigin harmonizedSystemCode
+            id tracked requiresShipping countryCodeOfOrigin harmonizedSystemCode unitCost { amount }
             measurement { weight { value unit } }
             inventoryLevels(first: 20) {
               nodes {
                 location { id name }
-                quantities(names: ["available"]) { name quantity }
+                quantities(names: ["available", "on_hand", "committed", "reserved", "damaged", "safety_stock", "quality_control"]) {
+                  name quantity
+                }
               }
             }
           }
@@ -86,7 +88,7 @@ export async function getProductPublications(shopify, productId) {
   const result = await shopify.graphql(
     `query productPublications($id: ID!) {
       product(id: $id) {
-        resourcePublicationsV2(first: 20) {
+        resourcePublicationsV2(first: 20, onlyPublished: false) {
           nodes {
             publication { id name }
             isPublished
@@ -354,8 +356,10 @@ function normalizeWeightUnit(raw) {
 /** Sync on-hand inventory quantities for variants with an `inventory` map. */
 async function syncVariantInventory(shopify, variants) {
   const desired = [];
+  console.log(`[syncVariantInventory] processing ${variants.length} variants`);
   for (const v of variants) {
     const itemId = v.inventoryItemId || v.inventoryItem?.id;
+    console.log(`[syncVariantInventory] variant ${v.id}: itemId=${itemId}, inventory=${JSON.stringify(v.inventory)}`);
     if (!itemId || !v.inventory || typeof v.inventory !== 'object') continue;
     for (const [locationId, qty] of Object.entries(v.inventory)) {
       if (!locationId) continue;
@@ -364,38 +368,71 @@ async function syncVariantInventory(shopify, variants) {
       desired.push({inventoryItemId: itemId, locationId, quantity: n});
     }
   }
+  console.log(`[syncVariantInventory] desired updates: ${desired.length}`, desired);
   if (desired.length === 0) return;
 
-  // Fetch current on_hand for each (item, location) so we can supply changeFromQuantity.
+  // UI reads `available` qty, so we must write `available` (matches UI semantic).
+  // Pre-query current `available` (null inventoryLevel = location not yet stocked).
   const aliasFields = desired
     .map((d, i) => `q${i}: inventoryItem(id: "${d.inventoryItemId}") {
       inventoryLevel(locationId: "${d.locationId}") {
-        quantities(names: ["on_hand"]) { name quantity }
+        id
+        quantities(names: ["available"]) { name quantity }
       }
     }`)
     .join('\n');
   const currentRes = await shopify.graphql(`query { ${aliasFields} }`);
+
+  // Activate inventory at any location that's not yet stocked (no inventoryLevel).
+  const toActivate = desired.filter((d, i) => !currentRes?.[`q${i}`]?.inventoryLevel);
+  for (const a of toActivate) {
+    try {
+      console.log(`[syncVariantInventory] activating ${a.inventoryItemId} at ${a.locationId}`);
+      const ar = await shopify.graphql(
+        `mutation inventoryActivate($inventoryItemId: ID!, $locationId: ID!, $available: Int) {
+          inventoryActivate(inventoryItemId: $inventoryItemId, locationId: $locationId, available: $available) {
+            inventoryLevel { id }
+            userErrors { field message }
+          }
+        }`,
+        {inventoryItemId: a.inventoryItemId, locationId: a.locationId, available: a.quantity}
+      );
+      const aerrs = ar?.inventoryActivate?.userErrors || [];
+      if (aerrs.length > 0) console.warn('[syncVariantInventory] activate userErrors:', aerrs);
+    } catch (err) {
+      console.warn(`[syncVariantInventory] activate failed for ${a.locationId}:`, err.message);
+    }
+  }
+  const activatedSet = new Set(toActivate.map(a => `${a.inventoryItemId}|${a.locationId}`));
+
   const quantities = desired.map((d, i) => {
+    // Skip the explicit set for locations we just activated — inventoryActivate already set the value.
+    if (activatedSet.has(`${d.inventoryItemId}|${d.locationId}`)) return null;
     const level = currentRes?.[`q${i}`]?.inventoryLevel;
-    const current = level?.quantities?.find(q => q.name === 'on_hand')?.quantity ?? 0;
+    const current = level?.quantities?.find(q => q.name === 'available')?.quantity ?? 0;
     return {
       inventoryItemId: d.inventoryItemId,
       locationId: d.locationId,
       quantity: d.quantity,
-      compareQuantity: current
+      changeFromQuantity: null,
+      _current: current
     };
-  }).filter(q => q.quantity !== q.compareQuantity);
+  }).filter(q => q && q.quantity !== q._current).map(({_current, ...q}) => q);
 
+  console.log(`[syncVariantInventory] writing ${quantities.length} qty changes:`, quantities);
   if (quantities.length === 0) return;
 
+  const idempotencyKey = `inv-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
   const r = await shopify.graphql(
-    `mutation inventorySetQuantities($input: InventorySetQuantitiesInput!) {
-      inventorySetQuantities(input: $input) {
+    `mutation inventorySetQuantities($input: InventorySetQuantitiesInput!, $idempotencyKey: String!) {
+      inventorySetQuantities(input: $input) @idempotent(key: $idempotencyKey) {
+        inventoryAdjustmentGroup { changes { name delta quantityAfterChange } }
         userErrors { field message }
       }
     }`,
-    {input: {name: 'on_hand', reason: 'correction', quantities}}
+    {input: {name: 'available', reason: 'correction', quantities}, idempotencyKey}
   );
+  console.log('[syncVariantInventory] mutation response:', JSON.stringify(r?.inventorySetQuantities));
   const errs = r?.inventorySetQuantities?.userErrors || [];
   if (errs.length > 0) throw new Error(errs.map(e => e.message).join('; '));
 }

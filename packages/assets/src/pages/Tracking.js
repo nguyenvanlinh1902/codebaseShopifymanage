@@ -4,7 +4,6 @@ import {
   Layout,
   Card,
   Banner,
-  Select,
   BlockStack,
   Text,
   Button,
@@ -24,6 +23,7 @@ import useRecheckProgress from '../hooks/use-recheck-progress';
 import ExcelUploadTab from './tracking/ExcelUploadTab';
 import ImportHistoryTable from './tracking/ImportHistoryTable';
 import ImportDetailsModal from './tracking/ImportDetailsModal';
+import StoreSelector from '../components/store-selector';
 import StatusListTab from './tracking-status/StatusListTab';
 
 // ============ Dashboard Stats Section ============
@@ -598,12 +598,13 @@ export default function Tracking() {
               </Banner>
             )}
             <div style={{maxWidth: 400, width: '100%'}}>
-              <Select
+              <StoreSelector
                 label="Target Store"
                 options={importStoreOptions}
                 value={importStore}
                 onChange={setImportStore}
                 disabled={loading}
+                pinnedValues={['']}
               />
             </div>
             <ChoiceList

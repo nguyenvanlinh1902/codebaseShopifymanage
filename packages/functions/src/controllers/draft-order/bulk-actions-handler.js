@@ -49,12 +49,15 @@ async function runSequential(ids, op) {
 
 /**
  * POST /api/draft-orders/bulk-duplicate
- * Body: { storeId, sourceIds: string[] }
- * Each source is fetched, then re-created as a new draft (1:1 clone, OPEN status).
+ * Body: { storeId, sourceIds: string[], sourceStoreId? }
+ * - storeId      = target store (where new drafts are created).
+ * - sourceStoreId = optional. If provided & differs from storeId, fetches sources
+ *                   from that store and creates clones on target store with
+ *                   variantId/customerId stripped (cross-store).
  */
 export async function bulkDuplicate(req, res) {
   try {
-    const {storeId, sourceIds} = req.body || {};
+    const {storeId, sourceIds, sourceStoreId} = req.body || {};
     const ids = normalizeIds(sourceIds);
     if (!storeId) return res.status(400).json({success: false, error: 'storeId is required'});
     if (ids.length === 0) return res.status(400).json({success: false, error: 'sourceIds is required'});
@@ -62,15 +65,26 @@ export async function bulkDuplicate(req, res) {
       return res.status(400).json({success: false, error: `Max ${MAX_OPS} sources per request`});
     }
 
-    const access = await validateStoreAccess(req, storeId);
-    if (access.error) return res.status(access.status).json({success: false, error: access.error});
+    const targetAccess = await validateStoreAccess(req, storeId);
+    if (targetAccess.error) {
+      return res.status(targetAccess.status).json({success: false, error: targetAccess.error});
+    }
+
+    const crossStore = sourceStoreId && sourceStoreId !== storeId;
+    let sourceAccess = targetAccess;
+    if (crossStore) {
+      sourceAccess = await validateStoreAccess(req, sourceStoreId);
+      if (sourceAccess.error) {
+        return res.status(sourceAccess.status).json({success: false, error: sourceAccess.error});
+      }
+    }
 
     const {results, errors} = await runSequential(ids, async sourceId => {
-      const fetchData = await shopifyGraphQL(access.store, FETCH_DRAFT_FOR_CLONE_QUERY, {id: sourceId});
+      const fetchData = await shopifyGraphQL(sourceAccess.store, FETCH_DRAFT_FOR_CLONE_QUERY, {id: sourceId});
       if (!fetchData.draftOrder) throw new Error('Source draft not found');
-      const input = buildDraftCloneInput(fetchData.draftOrder);
+      const input = buildDraftCloneInput(fetchData.draftOrder, {crossStore});
 
-      const createData = await shopifyGraphQL(access.store, DRAFT_ORDER_CREATE_MUTATION, {input});
+      const createData = await shopifyGraphQL(targetAccess.store, DRAFT_ORDER_CREATE_MUTATION, {input});
       const userErrors = createData.draftOrderCreate?.userErrors || [];
       if (userErrors.length > 0) throw new Error(userErrors[0].message);
 

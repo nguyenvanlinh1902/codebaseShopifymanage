@@ -1,5 +1,6 @@
-import React from 'react';
-import {Modal, BlockStack, Text, ChoiceList, Banner} from '@shopify/polaris';
+import React, {useMemo} from 'react';
+import {Modal, BlockStack, Text, Banner} from '@shopify/polaris';
+import SearchableChoiceList from '../../components/searchable-choice-list';
 
 /**
  * ReimportModal Component
@@ -15,6 +16,14 @@ export default function ReimportModal({
   onReimportStoresChange,
   onReimport
 }) {
+  const choices = useMemo(
+    () =>
+      stores.map(store => ({
+        label: `${store.name} (${store.shopDomain})`,
+        value: store.id
+      })),
+    [stores]
+  );
   return (
     <Modal
       open={open}
@@ -42,15 +51,13 @@ export default function ReimportModal({
             {selectedProductsCount !== 1 ? 's' : ''}. Choose which stores to import them to:
           </Text>
 
-          <ChoiceList
+          <SearchableChoiceList
             title="Select target stores"
-            allowMultiple
-            choices={stores.map(store => ({
-              label: `${store.name} (${store.shopDomain})`,
-              value: store.id
-            }))}
+            choices={choices}
             selected={reimportStores}
             onChange={onReimportStoresChange}
+            showSelectAll
+            searchPlaceholder="Search stores..."
           />
 
           <Banner tone="warning">

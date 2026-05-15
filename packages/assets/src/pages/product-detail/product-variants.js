@@ -52,6 +52,8 @@ export default function ProductVariants({formData, onChange, storeId, productId}
   const variants = formData.variants || [];
   const [modalOpen, setModalOpen] = useState(false);
 
+  const hasRealOptions = options.some(o => o.name && o.values?.length > 0);
+
   const totalCombos = options
     .filter(o => o.values?.length > 0)
     .reduce((acc, o) => acc * o.values.length, 1);
@@ -59,6 +61,10 @@ export default function ProductVariants({formData, onChange, storeId, productId}
   const handleOptionsChange = newOptions => {
     onChange('options', newOptions);
     onChange('variants', regenerateVariants(newOptions, variants));
+  };
+
+  const handleAddFirstOption = () => {
+    onChange('options', [{name: '', values: []}]);
   };
 
   const handleVariantChange = (index, field, value) => {
@@ -74,6 +80,19 @@ export default function ProductVariants({formData, onChange, storeId, productId}
     }
     onChange('variants', updated);
   };
+
+  if (!hasRealOptions && options.length === 0) {
+    return (
+      <Card>
+        <BlockStack gap="200">
+          <Text as="h2" variant="headingMd">Variants</Text>
+          <Button icon={PlusIcon} variant="plain" textAlign="left" onClick={handleAddFirstOption}>
+            Add options like size or color
+          </Button>
+        </BlockStack>
+      </Card>
+    );
+  }
 
   return (
     <Card>
@@ -100,7 +119,7 @@ export default function ProductVariants({formData, onChange, storeId, productId}
           storeId={storeId}
           onSaved={() => setModalOpen(false)}
         />
-        {options.length > 0 && variants.length > 0 && (
+        {hasRealOptions && variants.length > 0 && (
           <ProductVariantTable
             variants={variants}
             options={options}

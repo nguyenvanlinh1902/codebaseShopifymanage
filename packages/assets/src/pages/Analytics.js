@@ -5,6 +5,7 @@ import {resolvePeriodDates} from '../helpers/timezone-date';
 import {usePermittedStores} from '../hooks/usePermittedStores';
 import AnalyticsOrderStats from './analytics/analytics-order-stats';
 import AnalyticsOrderChart from './analytics/analytics-order-chart';
+import StoreSelector from '../components/store-selector';
 
 const TIME_OPTIONS = [
   {label: 'Today', value: '-1d'},
@@ -116,11 +117,12 @@ export default function Analytics() {
               </div>
             )}
             <div className="filter-item filter-item--lg">
-              <Select
+              <StoreSelector
                 label="Store"
                 options={storeOptions}
                 value={selectedStoreId}
                 onChange={setSelectedStoreId}
+                pinnedValues={[ALL_STORES_VALUE]}
               />
             </div>
             <div className="filter-item filter-item--sm">

@@ -268,7 +268,7 @@ export function mapToShopifyProduct(csvProduct) {
       'body'
     ),
     vendor: getField(csvProduct, 'Vendor', 'vendor'),
-    productCategory: getField(csvProduct, 'Product category', 'product_category'),
+    productCategory: getField(csvProduct, 'Product Category', 'Product category', 'product_category'),
     productType: getField(csvProduct, 'Type', 'product_type', 'productType'),
     tags: getField(csvProduct, 'Tags', 'tags'),
     status,
@@ -552,9 +552,10 @@ export function groupCsvRowsByHandle(flatProducts) {
 
     // Only create a variant for rows that have variant data
     if (!isImageOnlyRow) {
-      // Shopify CSV: each variant row's Image Src is that variant's image.
-      // "Variant Image" column overrides this. If neither exists, variant has no image.
-      const effectiveVariantImage = row.variantImage || row.imageUrl || '';
+      // Shopify CSV spec: "Image Src" is a product-level image (with Image Position/Alt),
+      // "Variant Image" is the only column that binds an image to a specific variant.
+      // Do NOT fall back to Image Src — that would mis-assign product images to variants.
+      const effectiveVariantImage = row.variantImage || '';
 
       const variant = {
         option1Value: row.option1Value,

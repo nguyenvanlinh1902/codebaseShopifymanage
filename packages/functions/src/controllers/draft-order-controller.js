@@ -237,8 +237,9 @@ export async function listDraftOrders(req, res) {
     const access = await validateStoreAccess(req, storeId);
     if (access.error) return res.status(access.status).json({success: false, error: access.error});
 
+    const first = Math.min(Math.max(parseInt(req.query.first, 10) || 10, 1), 250);
     const data = await shopifyGraphQL(access.store, LIST_DRAFT_ORDERS_QUERY, {
-      first: 10,
+      first,
       after: cursor || null,
       query: query || null
     });

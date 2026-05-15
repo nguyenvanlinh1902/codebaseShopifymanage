@@ -18,6 +18,7 @@ import {api} from '../helpers/api';
 import {usePermittedStores} from '../hooks/usePermittedStores';
 import {formatDate, formatDateTime} from '../helpers/format-date';
 import PaginationControls from '../components/pagination-controls';
+import StoreSelector from '../components/store-selector';
 
 const STATUS_TONES = {
   needs_response: 'critical',
@@ -138,6 +139,9 @@ export default function Disputes() {
           : '—'}
       </IndexTable.Cell>
       <IndexTable.Cell>
+        {d.phone || (d.orderDeleted ? '' : '—')}
+      </IndexTable.Cell>
+      <IndexTable.Cell>
         <Badge tone={STATUS_TONES[d.status] || 'new'}>{statusLabel(d.status)}</Badge>
       </IndexTable.Cell>
       <IndexTable.Cell>{d.reason}</IndexTable.Cell>
@@ -160,11 +164,12 @@ export default function Disputes() {
           <Card>
             <InlineStack align="start" gap="400" wrap>
               <div className="filter-item filter-item--lg">
-                <Select
+                <StoreSelector
                   label="Store"
                   options={storeOptions}
                   value={selectedStoreId}
                   onChange={setSelectedStoreId}
+                  pinnedValues={[ALL_STORES_VALUE]}
                 />
               </div>
               <div className="filter-item filter-item--sm">
@@ -226,6 +231,7 @@ export default function Disputes() {
                   {title: 'Store'},
                   {title: 'Order'},
                   {title: 'Email'},
+                  {title: 'Phone'},
                   {title: 'Status'},
                   {title: 'Reason'},
                   {title: 'Amount'},

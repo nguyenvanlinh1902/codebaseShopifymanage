@@ -8,7 +8,8 @@ import {
   Button,
   Spinner,
   Modal,
-  Checkbox
+  Checkbox,
+  Banner
 } from '@shopify/polaris';
 import {api} from '../../helpers/api';
 
@@ -19,6 +20,7 @@ export default function ProductPublishing({formData, onChange, storeId, productI
   const [manageOpen, setManageOpen] = useState(false);
   const [pendingIds, setPendingIds] = useState(new Set());
   const [savingPublish, setSavingPublish] = useState(false);
+  const [publishError, setPublishError] = useState(null);
 
   useEffect(() => {
     if (!storeId) return;
@@ -41,9 +43,10 @@ export default function ProductPublishing({formData, onChange, storeId, productI
   }, [storeId, isNew]);
 
   useEffect(() => {
-    // Sync from formData.publications for edit mode
+    // Sync from formData.publications — include ALL associated channels (draft products
+    // may have isPublished=false on Online Store but still belong to that channel).
     if (!productId || !formData.publications) return;
-    const ids = (formData.publications || []).map(p => p.id || p.channelId || p);
+    const ids = (formData.publications || []).map(p => p.id || p.channelId || p).filter(Boolean);
     setPublishedIds(new Set(ids));
   }, [productId, formData.publications]);
 
@@ -67,18 +70,25 @@ export default function ProductPublishing({formData, onChange, storeId, productI
     }
     try {
       setSavingPublish(true);
-      await api(`/api/shopify-products/${productId}/publish`, {
-        method: 'PUT',
+      setPublishError(null);
+      const res = await api(`/api/shopify-products/${productId}/publish`, {
+        method: 'POST',
         body: JSON.stringify({
           storeId,
           publishIds: toPublish.length > 0 ? toPublish : undefined,
           unpublishIds: toUnpublish.length > 0 ? toUnpublish : undefined
         })
       });
+      const result = await res.json().catch(() => ({success: false, error: `HTTP ${res.status}`}));
+      if (!result.success) {
+        setPublishError(result.error || 'Failed to update sales channels');
+        return;
+      }
       setPublishedIds(new Set(pendingIds));
+      onChange('_publishIds', [...pendingIds]);
       setManageOpen(false);
-    } catch {
-      // silently fail
+    } catch (err) {
+      setPublishError(err?.message || 'Network error while updating sales channels');
     } finally {
       setSavingPublish(false);
     }
@@ -162,7 +172,12 @@ export default function ProductPublishing({formData, onChange, storeId, productI
         secondaryActions={[{content: 'Cancel', onAction: () => setManageOpen(false)}]}
       >
         <Modal.Section>
-          <BlockStack gap="200">
+          <BlockStack gap="300">
+            {publishError && (
+              <Banner tone="critical" onDismiss={() => setPublishError(null)}>
+                {publishError}
+              </Banner>
+            )}
             {allChannels.map(ch => (
               <Checkbox
                 key={ch.id}

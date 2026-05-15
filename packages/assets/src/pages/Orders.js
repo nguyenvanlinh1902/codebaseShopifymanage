@@ -19,6 +19,7 @@ import {
 import {api} from '../helpers/api';
 import {usePermittedStores} from '../hooks/usePermittedStores';
 import PaginationControls from '../components/pagination-controls';
+import StoreSelector from '../components/store-selector';
 
 /**
  * Orders Sync Page - Setup which Google Sheet to sync orders to.
@@ -529,9 +530,8 @@ export default function Orders() {
                     />
                   </div>
                   <div style={{minWidth: '250px'}}>
-                    <Select
-                      label="Filter by store"
-                      labelHidden
+                    <StoreSelector
+                      label="All Stores"
                       options={filterStoreOptions}
                       value={filterStore}
                       onChange={setFilterStore}

@@ -4,7 +4,6 @@ import {
   Card,
   IndexTable,
   TextField,
-  Select,
   InlineStack,
   Text,
   Button,
@@ -18,6 +17,7 @@ import {
 import {useNavigate, useSearchParams} from 'react-router-dom';
 import {api} from '../helpers/api';
 import {usePermittedStores} from '../hooks/usePermittedStores';
+import StoreSelector from '../components/store-selector';
 
 export default function Collections() {
   const navigate = useNavigate();
@@ -151,12 +151,14 @@ export default function Collections() {
         <Card>
           <InlineStack align="space-between" blockAlign="center" gap="400" wrap>
             <div className="filter-item filter-item--lg">
-              <Select
+              <StoreSelector
                 label="Store"
                 labelHidden
                 options={storeOptions}
                 value={selectedStore}
                 onChange={handleStoreChange}
+                pinnedValues={['']}
+                placeholder="Select a store..."
               />
             </div>
             <div className="filter-item filter-item--lg">

@@ -10,6 +10,7 @@ import {extractStoreIds} from '../utils/store-access.js';
 import {listShopifyProducts} from '../services/shopify-product-list-service.js';
 import {executeBulkAction} from '../services/shopify-product-bulk-service.js';
 import {createProduct as createProductInShopify} from '../services/shopify-product-write-service.js';
+import {publishProduct} from '../services/shopify-product-channel-service.js';
 import {
   getFullProduct, getProductCollections, getProductPublications,
   updateProduct as updateProductInShopify, deleteProduct as deleteProductInShopify
@@ -132,10 +133,18 @@ export async function getProduct(req, res) {
 /** POST /api/shopify-products/ */
 export async function createProduct(req, res) {
   try {
-    const {storeId, ...productData} = req.body;
+    const {storeId, _publishIds, ...productData} = req.body;
     await validateStoreAccess(req, storeId);
     const shopify = await getShopify(storeId);
     const data = await createProductInShopify(shopify, productData);
+    // Publish to selected sales channels after create (UI sends _publishIds).
+    if (Array.isArray(_publishIds) && _publishIds.length > 0 && data?.id) {
+      try {
+        await publishProduct(shopify, data.id, _publishIds, []);
+      } catch (err) {
+        console.error('createProduct: publish step failed', err.message);
+      }
+    }
     res.status(201).json({success: true, data});
   } catch (error) {
     handleError(res, 'createProduct', error);
@@ -145,11 +154,29 @@ export async function createProduct(req, res) {
 /** PUT /api/shopify-products/:id */
 export async function updateProduct(req, res) {
   try {
-    const {storeId, ...formData} = req.body;
+    const {storeId, _publishIds, publications, ...formData} = req.body;
     const {id} = req.params;
     await validateStoreAccess(req, storeId);
     const shopify = await getShopify(storeId);
     const data = await updateProductInShopify(shopify, id, formData);
+    // Sync publishing if UI sent desired channel IDs.
+    // _publishIds = full desired set; `publications` = current state from server (used as baseline for diff).
+    if (Array.isArray(_publishIds)) {
+      try {
+        const currentIds = Array.isArray(publications)
+          ? publications.filter(p => p.isPublished !== false).map(p => p.id || p.channelId || p)
+          : [];
+        const desired = new Set(_publishIds);
+        const current = new Set(currentIds);
+        const toPublish = [..._publishIds].filter(p => !current.has(p));
+        const toUnpublish = [...currentIds].filter(p => !desired.has(p));
+        if (toPublish.length > 0 || toUnpublish.length > 0) {
+          await publishProduct(shopify, id, toPublish, toUnpublish);
+        }
+      } catch (err) {
+        console.error('updateProduct: publish sync failed', err.message);
+      }
+    }
     res.json({success: true, data});
   } catch (error) {
     handleError(res, 'updateProduct', error);

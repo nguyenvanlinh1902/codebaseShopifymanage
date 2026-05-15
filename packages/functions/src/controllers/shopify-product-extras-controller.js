@@ -86,26 +86,28 @@ export async function addVariant(req, res) {
       ? variant.inventoryQuantities.filter(q => q.locationId && q.availableQuantity != null)
       : [];
     if (created?.inventoryItem?.id && qtys.length > 0) {
-      // New variants start at on_hand = 0, so compareQuantity is 0.
+      // UI is source of truth — skip CAS check via ignoreCompareQuantity.
+      const idempotencyKey = `inv-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
       await shopify.graphql(
-        `mutation inventorySetQuantities($input: InventorySetQuantitiesInput!) {
-          inventorySetQuantities(input: $input) {
+        `mutation inventorySetQuantities($input: InventorySetQuantitiesInput!, $idempotencyKey: String!) {
+          inventorySetQuantities(input: $input) @idempotent(key: $idempotencyKey) {
             userErrors { field message }
           }
         }`,
         {
           input: {
-            name: 'on_hand',
+            name: 'available',
             reason: 'correction',
             quantities: qtys
               .map(q => ({
                 inventoryItemId: created.inventoryItem.id,
                 locationId: q.locationId,
                 quantity: parseInt(q.availableQuantity, 10) || 0,
-                compareQuantity: 0
+                changeFromQuantity: null
               }))
               .filter(q => q.quantity !== 0)
-          }
+          },
+          idempotencyKey
         }
       );
     }

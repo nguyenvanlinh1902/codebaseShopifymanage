@@ -27,6 +27,7 @@ router.post('/upload-image', extras.uploadImage);
 router.post('/:id/duplicate', extras.duplicateProduct);
 router.post('/:id/inventory', extras.setInventory);
 router.post('/:id/publish', extras.publishProductChannels);
+router.put('/:id/publish', extras.publishProductChannels);
 router.post('/:id/variants', extras.addVariant);
 router.get('/:id', controller.getProduct);
 router.put('/:id', controller.updateProduct);

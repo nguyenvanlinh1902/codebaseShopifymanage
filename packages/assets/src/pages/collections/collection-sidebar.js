@@ -6,6 +6,7 @@ import {
 } from '@shopify/polaris';
 import {DeleteIcon} from '@shopify/polaris-icons';
 import {api} from '../../helpers/api';
+import StoreSelector from '../../components/store-selector';
 
 const TEMPLATE_OPTIONS = [
   {label: 'Default collection', value: ''},
@@ -141,7 +142,15 @@ export default function CollectionSidebar({
         <Card>
           <BlockStack gap="300">
             <Text as="h2" variant="headingSm">Store</Text>
-            <Select label="Store" labelHidden options={storeOptions} value={storeId} onChange={onStoreChange} />
+            <StoreSelector
+              label="Store"
+              labelHidden
+              options={storeOptions}
+              value={storeId}
+              onChange={onStoreChange}
+              pinnedValues={['']}
+              placeholder="Select store..."
+            />
           </BlockStack>
         </Card>
       )}

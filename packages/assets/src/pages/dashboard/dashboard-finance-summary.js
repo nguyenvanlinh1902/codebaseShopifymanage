@@ -23,6 +23,7 @@ import {api} from '../../helpers/api';
 import {getTodayStr, toDateStr, daysAgo} from '../../helpers/timezone-date';
 import {usePermittedStores} from '../../hooks/usePermittedStores';
 import AnalyticsStatCard from '../analytics/analytics-stat-card';
+import StoreSelector from '../../components/store-selector';
 
 const PERIOD_OPTIONS = [
   {label: 'Today', value: 'today'},
@@ -106,34 +107,6 @@ function sumDays(days, from, to, field = 'value') {
 function pctChange(cur, prev) {
   if (!prev) return null;
   return Math.round(((cur - prev) / prev) * 100);
-}
-
-// Reusable Popover filter button
-function PopoverFilter({label, options, value, onChange, icon}) {
-  const [open, setOpen] = useState(false);
-  const selected = options.find(o => o.value === value);
-  return (
-    <Popover
-      active={open}
-      onClose={() => setOpen(false)}
-      activator={
-        <Button onClick={() => setOpen(v => !v)} disclosure icon={icon} size="slim">
-          {selected?.label || label}
-        </Button>
-      }
-    >
-      <ActionList
-        items={options.map(o => ({
-          content: o.label,
-          active: o.value === value,
-          onAction: () => {
-            onChange(o.value);
-            setOpen(false);
-          }
-        }))}
-      />
-    </Popover>
-  );
 }
 
 // Period filter with custom date range inside the Popover
@@ -320,23 +293,31 @@ export default function DashboardFinanceSummary() {
         <Text variant="headingMd">Finance Overview</Text>
         <InlineStack gap="200" blockAlign="center" wrap>
           {isAdmin && groups.length > 0 && (
-            <PopoverFilter
-              label="Group"
-              options={groupOptions}
-              value={groupFilter}
-              onChange={v => {
-                setGroupFilter(v);
-                setStoreFilter('all');
-              }}
-            />
+            <div style={{minWidth: 200}}>
+              <StoreSelector
+                label="Group"
+                labelHidden
+                options={groupOptions}
+                value={groupFilter}
+                onChange={v => {
+                  setGroupFilter(v);
+                  setStoreFilter('all');
+                }}
+                placeholder="Group"
+              />
+            </div>
           )}
           {storeOptions.length > 2 && (
-            <PopoverFilter
-              label="Store"
-              options={storeOptions}
-              value={storeFilter}
-              onChange={setStoreFilter}
-            />
+            <div style={{minWidth: 240}}>
+              <StoreSelector
+                label="Store"
+                labelHidden
+                options={storeOptions}
+                value={storeFilter}
+                onChange={setStoreFilter}
+                placeholder="Store"
+              />
+            </div>
           )}
           <PeriodPopoverFilter
             period={period}

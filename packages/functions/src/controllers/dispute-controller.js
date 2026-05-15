@@ -81,7 +81,7 @@ export async function getDisputes(req, res) {
     const {page, perPage, search} = parsePaginationParams(req.query);
     const result = paginateArray(disputes, {
       page, perPage, search,
-      searchKeys: ['orderName', 'email', 'reason', 'store']
+      searchKeys: ['orderName', 'email', 'phone', 'reason', 'store']
     });
     return res.json({success: true, ...result});
   } catch (error) {
@@ -143,15 +143,22 @@ async function mapDisputes(disputes, store) {
   await Promise.all(
     orderIds.map(async orderId => {
       try {
-        const res = await fetch(`${baseUrl}/orders/${orderId}.json?fields=id,name,email`, {
+        const res = await fetch(`${baseUrl}/orders/${orderId}.json?fields=id,name,email,phone,billing_address,shipping_address,customer`, {
           method: 'GET',
           headers
         });
         if (res.ok) {
           const json = await res.json();
-          orderMap[orderId] = {name: json.order?.name, email: json.order?.email};
+          const o = json.order || {};
+          const phone = o.phone
+            || o.shipping_address?.phone
+            || o.billing_address?.phone
+            || o.customer?.phone
+            || o.customer?.default_address?.phone
+            || '';
+          orderMap[orderId] = {name: o.name, email: o.email, phone};
         } else if (res.status === 404) {
-          orderMap[orderId] = {name: null, email: '', deleted: true};
+          orderMap[orderId] = {name: null, email: '', phone: '', deleted: true};
         } else {
           console.error(`[Disputes][${store.shopDomain}] Order ${orderId} fetch failed: HTTP ${res.status}`);
         }
@@ -172,6 +179,7 @@ async function mapDisputes(disputes, store) {
       orderId: d.order_id,
       orderName: order.name || (d.order_id ? `#${d.order_id}` : 'N/A'),
       email: order.email || '',
+      phone: order.phone || '',
       orderDeleted,
       initiatedAt: d.initiated_at,
       evidenceDueBy: d.evidence_due_by,

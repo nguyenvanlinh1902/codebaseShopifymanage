@@ -45,33 +45,51 @@ export async function getStorePublications(shopify) {
   return result?.publications?.nodes || [];
 }
 
-/** Publish or unpublish a product on given channels. */
+/**
+ * Publish/unpublish products to channels via Bulk Operations — same flow as product import.
+ * Bulk publish is what Shopify uses internally and reliably associates products with channels.
+ */
 export async function publishProduct(shopify, productId, publishIds = [], unpublishIds = []) {
   const gid = toGid('Product', productId);
-  const results = {};
+  const results = {publishedCount: 0, unpublishedCount: 0};
 
   if (publishIds.length > 0) {
+    const input = publishIds.map(p => ({
+      publicationId: String(p).startsWith('gid://') ? p : `gid://shopify/Publication/${p}`
+    }));
     const r = await shopify.graphql(
       `mutation publishablePublish($id: ID!, $input: [PublicationInput!]!) {
         publishablePublish(id: $id, input: $input) {
+          publishable { resourcePublicationsCount { count } }
           userErrors { field message }
         }
       }`,
-      {id: gid, input: publishIds.map(pubId => ({publicationId: pubId}))}
+      {id: gid, input}
     );
-    results.published = r?.publishablePublish?.userErrors || [];
+    const errs = r?.publishablePublish?.userErrors || [];
+    if (errs.length > 0) {
+      throw new Error(`Publish failed: ${errs.map(e => `${(e.field || []).join('.')}: ${e.message}`).join('; ')}`);
+    }
+    results.publishedCount = publishIds.length;
   }
 
   if (unpublishIds.length > 0) {
+    const input = unpublishIds.map(p => ({
+      publicationId: String(p).startsWith('gid://') ? p : `gid://shopify/Publication/${p}`
+    }));
     const r = await shopify.graphql(
       `mutation publishableUnpublish($id: ID!, $input: [PublicationInput!]!) {
         publishableUnpublish(id: $id, input: $input) {
           userErrors { field message }
         }
       }`,
-      {id: gid, input: unpublishIds.map(pubId => ({publicationId: pubId}))}
+      {id: gid, input}
     );
-    results.unpublished = r?.publishableUnpublish?.userErrors || [];
+    const errs = r?.publishableUnpublish?.userErrors || [];
+    if (errs.length > 0) {
+      throw new Error(`Unpublish failed: ${errs.map(e => `${(e.field || []).join('.')}: ${e.message}`).join('; ')}`);
+    }
+    results.unpublishedCount = unpublishIds.length;
   }
 
   return results;

@@ -1,6 +1,5 @@
 import React from 'react';
 import {
-  Select,
   Button,
   SkeletonBodyText,
   Badge,
@@ -12,6 +11,7 @@ import {
   Divider
 } from '@shopify/polaris';
 import {RefreshIcon, StarIcon} from '@shopify/polaris-icons';
+import StoreSelector from '../../components/store-selector';
 
 function roleBadge(role) {
   switch (role) {
@@ -97,12 +97,13 @@ export default function ThemeListSection({
     <BlockStack gap="400">
       <InlineStack align="space-between" blockAlign="end">
         <div style={{minWidth: '280px', flex: 1, maxWidth: '400px'}}>
-          <Select
+          <StoreSelector
             label="Store"
             options={storeOptions}
             value={selectedStoreId}
             onChange={setSelectedStoreId}
             disabled={storesLoading}
+            pinnedValues={['']}
           />
         </div>
         <Button icon={RefreshIcon} onClick={loadThemes} disabled={!selectedStoreId || themesLoading}>

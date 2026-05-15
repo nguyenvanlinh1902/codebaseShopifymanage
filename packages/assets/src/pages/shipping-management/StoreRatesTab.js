@@ -4,6 +4,7 @@ import {
   Select, IndexTable, TextField, Badge, SkeletonBodyText
 } from '@shopify/polaris';
 import {api} from '../../helpers/api';
+import StoreSelector from '../../components/store-selector';
 
 /** Flatten nested profiles into flat rows for table display */
 function flattenProfiles(profiles) {
@@ -206,11 +207,12 @@ export default function StoreRatesTab({stores, groups, onError, onSuccess}) {
             </div>
             {filterType === 'store' && (
               <div className="filter-item filter-item--lg">
-                <Select
+                <StoreSelector
                   label="Store"
                   options={[{label: '-- Select Store --', value: ''}, ...storeOptions]}
                   value={selectedStore}
                   onChange={handleStoreSelect}
+                  pinnedValues={['']}
                 />
               </div>
             )}

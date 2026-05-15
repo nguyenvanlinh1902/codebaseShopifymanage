@@ -3,7 +3,6 @@ import {
   Page,
   BlockStack,
   Card,
-  Select,
   IndexFilters,
   useSetIndexFiltersMode,
   Banner,
@@ -21,6 +20,7 @@ import {useAuth} from '../context/AuthContext';
 import {usePermittedStores} from '../hooks/usePermittedStores';
 import useImportProgressAllStores from '../hooks/useImportProgressAllStores';
 import ProductsTableSection from './products/ProductsTableSection';
+import StoreSelector from '../components/store-selector';
 import UploadCsvModal from './products/UploadCsvModal';
 import ImportDetailModal from './embed-products/ImportDetailModal';
 import BulkTagModal from './products/BulkTagModal';
@@ -471,6 +471,8 @@ export default function Products() {
     ...stores.map(s => ({label: `${s.name} (${s.shopDomain})`, value: s.id}))
   ];
 
+  const selectedStoreDomain = stores.find(s => s.id === selectedStore)?.shopDomain || '';
+
   return (
     <Page
       title="Products"
@@ -498,12 +500,14 @@ export default function Products() {
         )}
 
         <div style={{maxWidth: 300, width: '100%'}}>
-          <Select
+          <StoreSelector
             label="Store"
             labelHidden
             options={storeOptions}
             value={selectedStore}
             onChange={handleStoreChange}
+            pinnedValues={['']}
+            placeholder="Select a store"
           />
         </div>
 
@@ -540,6 +544,7 @@ export default function Products() {
             onNextPage={handleNextPage}
             onPrevPage={handlePrevPage}
             onBulkAction={handleBulkAction}
+            shopDomain={selectedStoreDomain}
             onRowClick={p => {
               const numericId = String(p.id).split('/').pop();
               navigate(`/products/${numericId}?store=${selectedStore}`);

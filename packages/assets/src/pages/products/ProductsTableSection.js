@@ -10,9 +10,11 @@ import {
   Pagination,
   Box,
   InlineStack,
+  Button,
+  Tooltip,
   useIndexResourceState
 } from '@shopify/polaris';
-import {ImageIcon} from '@shopify/polaris-icons';
+import {ImageIcon, ViewIcon} from '@shopify/polaris-icons';
 import {useBreakpoints} from '@shopify/polaris';
 
 const STATUS_TONE = {ACTIVE: 'success', DRAFT: 'info', ARCHIVED: 'subdued'};
@@ -26,7 +28,7 @@ function formatInventory(product) {
 
 export default function ProductsTableSection({
   products, loading, pageInfo, onNextPage, onPrevPage, hasPrev,
-  onBulkAction, onRowClick
+  onBulkAction, onRowClick, shopDomain
 }) {
   const {smDown} = useBreakpoints();
   const {
@@ -115,6 +117,23 @@ export default function ProductsTableSection({
             );
           })()}
         </IndexTable.Cell>
+        <IndexTable.Cell>
+          {shopDomain && product.handle && status === 'ACTIVE' ? (
+            <div onClick={e => e.stopPropagation()}>
+              <Tooltip content="View on storefront">
+                <Button
+                  size="slim"
+                  icon={ViewIcon}
+                  url={`https://${shopDomain}.myshopify.com/products/${product.handle}`}
+                  external
+                  accessibilityLabel="View on storefront"
+                />
+              </Tooltip>
+            </div>
+          ) : (
+            <Text tone="subdued">—</Text>
+          )}
+        </IndexTable.Cell>
       </IndexTable.Row>
     );
   });
@@ -136,7 +155,8 @@ export default function ProductsTableSection({
           {title: 'Inventory'},
           {title: 'Category'},
           {title: 'Vendor'},
-          {title: 'Sales channels'}
+          {title: 'Sales channels'},
+          {title: 'View'}
         ]}
       >
         {rowMarkup}

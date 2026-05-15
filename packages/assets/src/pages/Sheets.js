@@ -8,8 +8,7 @@ import {
   useSetIndexFiltersMode,
   Banner,
   SkeletonBodyText,
-  Modal,
-  Select
+  Modal
 } from '@shopify/polaris';
 import {useGoogleAuth} from '../hooks/useGoogleAuth';
 import {useGooglePicker} from '../hooks/useGooglePicker';
@@ -17,6 +16,7 @@ import {api} from '../helpers/api';
 import {usePermittedStores} from '../hooks/usePermittedStores';
 import AccountsContent from './sheets/AccountsContent';
 import SheetsContent from './sheets/SheetsContent';
+import StoreSelector from '../components/store-selector';
 import DeleteConfirmationModal from './sheets/DeleteConfirmationModal';
 import DisconnectConfirmationModal from './sheets/DisconnectConfirmationModal';
 import {PAGE_LIMIT, TAB_KEYS} from './sheets/constants';
@@ -597,11 +597,13 @@ export default function Sheets() {
         secondaryActions={[{content: 'Cancel', onAction: handleStorePickerClose}]}
       >
         <Modal.Section>
-          <Select
+          <StoreSelector
             label="Store"
             options={stores.map(s => ({label: s.name || s.shopDomain, value: s.id}))}
             value={storePickerStoreId}
             onChange={setStorePickerStoreId}
+            pinnedValues={[]}
+            placeholder="Select a store..."
           />
         </Modal.Section>
       </Modal>

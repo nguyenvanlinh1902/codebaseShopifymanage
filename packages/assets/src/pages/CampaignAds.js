@@ -4,6 +4,7 @@ import {usePermittedStores} from '../hooks/usePermittedStores';
 import {TIME_OPTIONS} from './analytics/campaign-ads-time-options';
 import CampaignAdsPanel from './analytics/campaign-ads-panel';
 import CampaignAllStoresPanel from './analytics/campaign-all-stores-panel';
+import StoreSelector from '../components/store-selector';
 
 const ALL_STORES_VALUE = '__all__';
 
@@ -60,11 +61,12 @@ export default function CampaignAds() {
             )}
             {storeOptions.length > 0 && (
               <div className="filter-item filter-item--lg">
-                <Select
+                <StoreSelector
                   label="Store"
                   options={storeOptions}
                   value={selectedStoreId}
                   onChange={setSelectedStoreId}
+                  pinnedValues={[ALL_STORES_VALUE]}
                 />
               </div>
             )}

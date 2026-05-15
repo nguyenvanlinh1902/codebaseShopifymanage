@@ -1,4 +1,4 @@
-import React, {useState, useEffect, useRef} from 'react';
+import React, {useState, useEffect} from 'react';
 import {useNavigate} from 'react-router-dom';
 import {
   Page,
@@ -11,11 +11,15 @@ import {
   Button,
   Text,
   SkeletonBodyText,
-  EmptyState
+  EmptyState,
+  InlineStack,
+  Toast,
+  Frame
 } from '@shopify/polaris';
 import {SearchIcon} from '@shopify/polaris-icons';
 import {api} from '../helpers/api';
 import {usePermittedStores} from '../hooks/usePermittedStores';
+import StoreSelector from '../components/store-selector';
 
 import {FULFILLMENT_TONE, FINANCIAL_TONE} from '../helpers/order-status-tones';
 
@@ -27,29 +31,70 @@ export default function OrderSearch() {
   const {stores} = usePermittedStores();
   const [selectedStoreId, setSelectedStoreId] = useState('');
   const [query, setQuery] = useState('');
+  const [submittedQuery, setSubmittedQuery] = useState('');
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [pageInfo, setPageInfo] = useState({hasNextPage: false, endCursor: null});
   const [loadingMore, setLoadingMore] = useState(false);
-  const debounceRef = useRef(null);
+  const [duplicatingId, setDuplicatingId] = useState(null);
+  const [toast, setToast] = useState(null);
 
   useEffect(() => {
     if (stores.length > 0 && !selectedStoreId) setSelectedStoreId(stores[0].id);
   }, [stores]);
 
-  // Debounced search
+  // Default: when a store is selected and no search has been submitted, load the 10 most recent orders.
   useEffect(() => {
-    if (!selectedStoreId || !query.trim()) {
+    if (selectedStoreId && !submittedQuery) {
+      searchOrders(selectedStoreId, '');
+    }
+  }, [selectedStoreId]);
+
+  const handleSearch = () => {
+    const q = query.trim();
+    setSubmittedQuery(q);
+    if (!selectedStoreId) {
       setResults([]);
       setPageInfo({hasNextPage: false, endCursor: null});
       return;
     }
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => searchOrders(selectedStoreId, query.trim()), 300);
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
-  }, [query, selectedStoreId]);
+    searchOrders(selectedStoreId, q);
+  };
+
+  const handleClear = () => {
+    setQuery('');
+    setSubmittedQuery('');
+    if (selectedStoreId) {
+      searchOrders(selectedStoreId, '');
+    } else {
+      setResults([]);
+      setPageInfo({hasNextPage: false, endCursor: null});
+    }
+  };
+
+  const handleDuplicate = async (orderGid) => {
+    const numericId = numericOrderId(orderGid);
+    if (!selectedStoreId || !numericId) return;
+    setDuplicatingId(orderGid);
+    try {
+      const res = await api('/api/analytics/order-duplicate', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({storeId: selectedStoreId, orderId: numericId})
+      });
+      const result = await res.json();
+      if (result.success) {
+        const {draftOrderName, adminUrl} = result.data || {};
+        setToast({content: `Duplicated as ${draftOrderName || 'new draft'}`, url: adminUrl});
+      } else {
+        setToast({content: result.error || 'Failed to duplicate order', error: true});
+      }
+    } catch (e) {
+      setToast({content: e.message || 'Failed to duplicate order', error: true});
+    } finally {
+      setDuplicatingId(null);
+    }
+  };
 
   const searchOrders = async (storeId, q, cursor = null) => {
     cursor ? setLoadingMore(true) : setLoading(true);
@@ -95,9 +140,17 @@ export default function OrderSearch() {
     <Badge key={`p-${o.id}`} tone={FINANCIAL_TONE[o.financialStatus] || 'new'}>
       {o.financialStatus}
     </Badge>,
-    <Button key={`v-${o.id}`} size="slim" onClick={() => goDetails(o.id)}>
-      View
-    </Button>
+    <InlineStack key={`a-${o.id}`} gap="200">
+      <Button size="slim" onClick={() => goDetails(o.id)}>View</Button>
+      <Button
+        size="slim"
+        loading={duplicatingId === o.id}
+        disabled={!!duplicatingId && duplicatingId !== o.id}
+        onClick={() => handleDuplicate(o.id)}
+      >
+        Duplicate
+      </Button>
+    </InlineStack>
   ]);
 
   return (
@@ -105,30 +158,45 @@ export default function OrderSearch() {
       <Layout>
         <Layout.Section>
           <div style={{maxWidth: 300, width: '100%'}}>
-            <Select
+            <StoreSelector
               label="Store"
               options={storeOptions}
               value={selectedStoreId}
               onChange={setSelectedStoreId}
+              pinnedValues={['']}
             />
           </div>
         </Layout.Section>
         <Layout.Section>
-          <TextField
-            label="Search"
-            labelHidden
-            placeholder="Search by order number, customer name, or email..."
-            value={query}
-            onChange={setQuery}
-            prefix={
-              <span style={{display: 'flex'}}>
-                <SearchIcon />
-              </span>
-            }
-            clearButton
-            onClearButtonClick={() => setQuery('')}
-            autoComplete="off"
-          />
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleSearch();
+            }}
+          >
+            <InlineStack gap="200" blockAlign="end" wrap={false}>
+              <div style={{flex: 1}}>
+                <TextField
+                  label="Search"
+                  labelHidden
+                  placeholder="Search by order number, customer name, or email... (press Enter to search)"
+                  value={query}
+                  onChange={setQuery}
+                  prefix={
+                    <span style={{display: 'flex'}}>
+                      <SearchIcon />
+                    </span>
+                  }
+                  clearButton
+                  onClearButtonClick={handleClear}
+                  autoComplete="off"
+                />
+              </div>
+              <Button variant="primary" submit loading={loading}>
+                Search
+              </Button>
+            </InlineStack>
+          </form>
         </Layout.Section>
         <Layout.Section>
           <Card>
@@ -146,7 +214,7 @@ export default function OrderSearch() {
                     <Button
                       loading={loadingMore}
                       onClick={() =>
-                        searchOrders(selectedStoreId, query.trim(), pageInfo.endCursor)
+                        searchOrders(selectedStoreId, submittedQuery, pageInfo.endCursor)
                       }
                     >
                       Load more
@@ -154,18 +222,29 @@ export default function OrderSearch() {
                   </div>
                 )}
               </>
-            ) : query.trim() ? (
+            ) : submittedQuery ? (
               <div style={{padding: 32, textAlign: 'center'}}>
-                <Text tone="subdued">No orders found for "{query}"</Text>
+                <Text tone="subdued">No orders found for "{submittedQuery}"</Text>
               </div>
             ) : (
-              <EmptyState heading="Search for orders" image="">
-                <p>Enter an order number, customer name, or email to search.</p>
+              <EmptyState heading="No recent orders" image="">
+                <p>This store has no orders yet, or none could be loaded.</p>
               </EmptyState>
             )}
           </Card>
         </Layout.Section>
       </Layout>
+      {toast && (
+        <Frame>
+          <Toast
+            content={toast.content}
+            error={toast.error}
+            action={toast.url ? {content: 'Open draft', onAction: () => window.open(toast.url, '_blank')} : undefined}
+            onDismiss={() => setToast(null)}
+            duration={5000}
+          />
+        </Frame>
+      )}
     </Page>
   );
 }

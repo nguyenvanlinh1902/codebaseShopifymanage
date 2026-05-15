@@ -4,6 +4,7 @@ import {
   IndexTable, Badge, Modal, TextField, Select, SkeletonBodyText
 } from '@shopify/polaris';
 import {api} from '../../helpers/api';
+import StoreSelector from '../../components/store-selector';
 
 function formatDate(dateStr) {
   if (!dateStr) return '—';
@@ -106,11 +107,12 @@ export default function TemplatesTab({templates, loading, stores, onCreate, onDe
             <BlockStack gap="300">
               <TextField label="Template Name" value={form.name} onChange={v => setForm({...form, name: v})} autoComplete="off" />
               <TextField label="Description (optional)" value={form.description} onChange={v => setForm({...form, description: v})} autoComplete="off" />
-              <Select
+              <StoreSelector
                 label="Source Store (capture rates from)"
                 options={[{label: '-- Select Store --', value: ''}, ...storeOptions]}
                 value={form.sourceStore}
                 onChange={v => setForm({...form, sourceStore: v})}
+                pinnedValues={['']}
               />
             </BlockStack>
           </Modal.Section>

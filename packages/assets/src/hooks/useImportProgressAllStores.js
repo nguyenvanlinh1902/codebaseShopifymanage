@@ -15,7 +15,7 @@ export default function useImportProgressAllStores({userId, storeId}) {
   const [importHistory, setImportHistory] = useState([]);
 
   useEffect(() => {
-    if (!userId) return;
+    if (!userId || !db) return;
 
     const q = storeId
       ? query(

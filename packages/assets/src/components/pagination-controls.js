@@ -1,5 +1,6 @@
-import React from 'react';
+import React, {useState, useEffect} from 'react';
 import {InlineStack, BlockStack, Text, Select, Button, Box, TextField} from '@shopify/polaris';
+import {SearchIcon} from '@shopify/polaris-icons';
 
 const DEFAULT_PER_PAGE_OPTIONS = [
   {label: '10', value: '10'},
@@ -27,19 +28,52 @@ export default function PaginationControls({
   const from = totalItems === 0 ? 0 : (page - 1) * perPage + 1;
   const to = Math.min(page * perPage, totalItems);
 
+  // Local input state — only commits to parent on Enter / Search button / clear
+  const [inputValue, setInputValue] = useState(search || '');
+  useEffect(() => {
+    setInputValue(search || '');
+  }, [search]);
+
+  const submitSearch = () => {
+    if ((inputValue || '') !== (search || '')) onSearchChange(inputValue);
+  };
+  const clearSearch = () => {
+    setInputValue('');
+    if (search) onSearchChange('');
+  };
+
   return (
     <Box padding="300">
       <BlockStack gap="300">
         {showSearch && (
-          <TextField
-            value={search}
-            onChange={onSearchChange}
-            placeholder={searchPlaceholder}
-            clearButton
-            onClearButtonClick={() => onSearchChange('')}
-            autoComplete="off"
-            size="slim"
-          />
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              submitSearch();
+            }}
+          >
+            <InlineStack gap="200" blockAlign="center" wrap={false}>
+              <div style={{flex: 1}}>
+                <TextField
+                  value={inputValue}
+                  onChange={setInputValue}
+                  placeholder={searchPlaceholder}
+                  clearButton
+                  onClearButtonClick={clearSearch}
+                  autoComplete="off"
+                  size="slim"
+                  prefix={
+                    <span style={{display: 'flex'}}>
+                      <SearchIcon />
+                    </span>
+                  }
+                />
+              </div>
+              <Button size="slim" submit>
+                Search
+              </Button>
+            </InlineStack>
+          </form>
         )}
         <InlineStack align="space-between" blockAlign="center" wrap={false}>
           <Text variant="bodySm" tone="subdued">

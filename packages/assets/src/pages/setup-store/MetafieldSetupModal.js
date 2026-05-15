@@ -1,9 +1,10 @@
 import React, {useState} from 'react';
 import {
   Modal, BlockStack, Text, IndexTable, Badge, Banner,
-  Spinner, ChoiceList
+  Spinner
 } from '@shopify/polaris';
 import {api} from '../../helpers/api';
+import SearchableChoiceList from '../../components/searchable-choice-list';
 
 export default function MetafieldSetupModal({
   open, onClose, stores, definitions, onSuccess
@@ -78,13 +79,14 @@ export default function MetafieldSetupModal({
       <Modal.Section>
         <BlockStack gap="400">
           {/* Store selection */}
-          <ChoiceList
+          <SearchableChoiceList
             title="Select stores"
-            allowMultiple
             choices={storeChoices}
             selected={selectedStoreIds}
             onChange={setSelectedStoreIds}
             disabled={checking || applying}
+            showSelectAll
+            searchPlaceholder="Search stores..."
           />
 
           {/* Definitions list */}

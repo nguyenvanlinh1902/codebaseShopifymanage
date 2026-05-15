@@ -9,6 +9,7 @@ import {
   ShareIcon, ClipboardIcon, DiscountIcon, DeliveryIcon, TaxIcon
 } from '@shopify/polaris-icons';
 import {api} from '../../helpers/api';
+import StoreSelector from '../../components/store-selector';
 
 const fmtMoney = v => `$${parseFloat(v || 0).toFixed(2)}`;
 
@@ -24,6 +25,8 @@ export default function DraftOrderForm({storeId, storeOptions, onStoreChange, on
   const [toastMsg, setToastMsg] = useState('');
   const [orderName, setOrderName] = useState('');
   const [adminUrl, setAdminUrl] = useState('');
+  const [status, setStatus] = useState('');
+  const [actionLoading, setActionLoading] = useState(false);
   const isEdit = !!editOrderId;
   const [editingNotes, setEditingNotes] = useState(false);
 
@@ -95,6 +98,7 @@ export default function DraftOrderForm({storeId, storeOptions, onStoreChange, on
         if (result.success) {
           const d = result.data;
           setOrderName(d.name);
+          setStatus(d.status || '');
           setNote(d.note || '');
           setTags(
             Array.isArray(d.tags)
@@ -345,6 +349,51 @@ export default function DraftOrderForm({storeId, storeOptions, onStoreChange, on
     }
   };
 
+  // ── Duplicate / Mark as paid ──
+  const runBulkAction = async (path, label) => {
+    setActionLoading(true);
+    setErrorMsg('');
+    try {
+      const sourceId = `gid://shopify/DraftOrder/${editOrderId}`;
+      const res = await api(path, {
+        method: 'POST',
+        body: JSON.stringify({storeId, sourceIds: [sourceId]})
+      });
+      const result = await res.json();
+      if (!result.success) {
+        setErrorMsg(result.error || `${label} failed`);
+        return null;
+      }
+      const {failed, errors, results} = result.data;
+      if (failed > 0) {
+        setErrorMsg(errors?.[0]?.message || `${label} failed`);
+        return null;
+      }
+      return results?.[0] || null;
+    } catch (err) {
+      setErrorMsg(err.message || `${label} failed`);
+      return null;
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleDuplicate = async () => {
+    const result = await runBulkAction('/api/draft-orders/bulk-duplicate', 'Duplicate');
+    if (result?.newDraftId && onOrderCreated) {
+      setToastMsg(`Duplicated as ${result.name || ''}`.trim());
+      onOrderCreated(result.newDraftId, storeId);
+    }
+  };
+
+  const handleMarkAsPaid = async () => {
+    const result = await runBulkAction('/api/draft-orders/bulk-complete', 'Mark as paid');
+    if (result) {
+      setToastMsg(`Marked as paid${result.orderName ? ` — ${result.orderName}` : ''}`);
+      setStatus('COMPLETED');
+    }
+  };
+
   const resetNewCustomerForm = () => {
     setShowNewCustomer(false);
     setNewCustomerEmail('');
@@ -385,7 +434,9 @@ export default function DraftOrderForm({storeId, storeOptions, onStoreChange, on
       }}
       secondaryActions={[
         ...(isEdit && shareUrl ? [{content: 'Share', icon: ShareIcon, onAction: () => setShareModalOpen(true)}] : []),
-        ...(adminUrl ? [{content: 'View in Shopify', icon: ExternalIcon, url: adminUrl, external: true}] : [])
+        ...(adminUrl ? [{content: 'View in Shopify', icon: ExternalIcon, url: adminUrl, external: true}] : []),
+        ...(isEdit ? [{content: 'Duplicate', onAction: handleDuplicate, loading: actionLoading, disabled: actionLoading || saving}] : []),
+        ...(isEdit && status === 'OPEN' ? [{content: 'Mark as paid', onAction: handleMarkAsPaid, loading: actionLoading, disabled: actionLoading || saving}] : [])
       ]}
     >
       {toastMsg && <Toast content={toastMsg} onDismiss={() => setToastMsg('')} />}
@@ -399,7 +450,7 @@ export default function DraftOrderForm({storeId, storeOptions, onStoreChange, on
         {/* ─── LEFT COLUMN ─── */}
         <Layout.Section>
           <Card>
-            <Select label="Store" options={storeOptions} value={storeId} onChange={onStoreChange} />
+            <StoreSelector label="Store" options={storeOptions} value={storeId} onChange={onStoreChange} pinnedValues={[]} />
           </Card>
 
           {/* Products */}

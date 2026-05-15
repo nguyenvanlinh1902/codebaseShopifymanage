@@ -31,7 +31,7 @@ const DEFAULT_FORM = {
   templateSuffix: '',
   seo: {title: '', description: ''},
   options: [],
-  variants: [{optionValues: {}, price: '0.00', sku: '', compareAtPrice: '', barcode: ''}],
+  variants: [{optionValues: {}, price: '0.00', sku: '', compareAtPrice: '', barcode: '', requiresShipping: true, taxable: true}],
   media: [],
   metafields: [],
   collections: [],
@@ -82,7 +82,9 @@ export default function ProductDetail() {
           handle: p.handle || '',
           templateSuffix: p.templateSuffix || '',
           seo: {title: p.seo?.title || '', description: p.seo?.description || ''},
-          options: p.options || [],
+          options: (p.options || []).filter(
+            o => !(o.name === 'Title' && (o.values || []).length === 1 && o.values[0] === 'Default Title')
+          ),
           variants: p.variants?.length
             ? p.variants.map(v => {
                 const optionValues = v.optionValues || {};
@@ -91,18 +93,38 @@ export default function ProductDetail() {
                     if (o?.name) optionValues[o.name] = o.value;
                   });
                 }
+                // inventory[locId] = number (simple available qty, kept for legacy save logic).
+                // inventoryDetails[locId] = {available, on_hand, committed, unavailable} (display only).
                 const inventory = v.inventory || {};
+                const inventoryDetails = {};
+                const UNAVAILABLE_NAMES = ['reserved', 'damaged', 'safety_stock', 'quality_control'];
                 if (Array.isArray(v.inventoryItem?.inventoryLevels?.nodes)) {
                   v.inventoryItem.inventoryLevels.nodes.forEach(n => {
-                    const qty = n.quantities?.find(q => q.name === 'available')?.quantity;
-                    if (n.location?.id != null) inventory[n.location.id] = qty ?? 0;
+                    const locId = n.location?.id;
+                    if (locId == null) return;
+                    const qmap = {};
+                    (n.quantities || []).forEach(q => {
+                      qmap[q.name] = q.quantity ?? 0;
+                    });
+                    const unavailable = UNAVAILABLE_NAMES.reduce((s, name) => s + (qmap[name] || 0), 0);
+                    inventory[locId] = qmap.available ?? 0;
+                    inventoryDetails[locId] = {
+                      available: qmap.available ?? 0,
+                      on_hand: qmap.on_hand ?? 0,
+                      committed: qmap.committed ?? 0,
+                      unavailable
+                    };
                   });
                 }
                 return {
                   ...v,
                   optionValues,
                   inventory,
-                  inventoryItemId: v.inventoryItemId || v.inventoryItem?.id || null
+                  inventoryDetails,
+                  inventoryItemId: v.inventoryItemId || v.inventoryItem?.id || null,
+                  requiresShipping: v.inventoryItem?.requiresShipping !== false,
+                  taxable: v.taxable !== false,
+                  cost: v.cost ?? v.inventoryItem?.unitCost?.amount ?? ''
                 };
               })
             : DEFAULT_FORM.variants,

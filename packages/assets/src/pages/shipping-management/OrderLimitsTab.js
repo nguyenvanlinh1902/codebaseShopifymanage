@@ -7,7 +7,6 @@ import {
   Button,
   TextField,
   Select,
-  ChoiceList,
   Badge,
   IndexTable,
   Box,
@@ -15,6 +14,7 @@ import {
   Spinner
 } from '@shopify/polaris';
 import {api} from '../../helpers/api';
+import SearchableChoiceList from '../../components/searchable-choice-list';
 
 const TIMEZONE_OPTIONS = [
   {label: 'US Eastern (New York)', value: 'America/New_York'},
@@ -225,13 +225,15 @@ export default function OrderLimitsTab({templates, stores, onError, onSuccess}) 
         >
           <Modal.Section>
             <BlockStack gap="300">
-              <ChoiceList
+              <SearchableChoiceList
                 title="Stores"
                 choices={storeChoices}
                 selected={formData.shopDomains}
                 onChange={v => setFormData(p => ({...p, shopDomains: v}))}
                 allowMultiple={!editingId}
-                disabled={editingId ? true : false}
+                disabled={!!editingId}
+                showSelectAll={!editingId}
+                searchPlaceholder="Search stores..."
               />
               <TextField label="Daily Limit" type="number" value={formData.dailyLimit}
                 onChange={v => setFormData(p => ({...p, dailyLimit: v}))} autoComplete="off" />

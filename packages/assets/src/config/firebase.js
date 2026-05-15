@@ -15,8 +15,20 @@ export const firebaseConfig = {
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app);
-export const auth = getAuth(app);
-export const storage = getStorage(app);
+const hasValidConfig = firebaseConfig.apiKey && firebaseConfig.projectId;
+
+let app, db, auth, storage;
+
+if (hasValidConfig) {
+  app = initializeApp(firebaseConfig);
+  db = getFirestore(app);
+  auth = getAuth(app);
+  storage = getStorage(app);
+} else {
+  console.warn('[Firebase] Missing config — Firebase features disabled. Set VITE_FIREBASE_* in packages/assets/.env');
+  db = null;
+  auth = null;
+  storage = null;
+}
+
+export {db, auth, storage};

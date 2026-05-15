@@ -11,6 +11,36 @@ export const GQL_BATCH = 250;
  */
 export async function createProduct(shopify, productData) {
   try {
+    // Normalize form-shape (UI Create Product page) → CSV-shape used below.
+    // Form: options:[{name,values:[str]}], variants[].optionValues:{Name:val}, descriptionHtml, media:[{url,alt}], seo:{title,description}
+    const formOptions = Array.isArray(productData.options)
+      ? productData.options.filter(o => o?.name && Array.isArray(o.values) && o.values.length > 0)
+      : [];
+    if (formOptions.length > 0 && !productData.option1Name) {
+      formOptions.slice(0, 3).forEach((opt, i) => {
+        productData[`option${i + 1}Name`] = opt.name;
+      });
+    }
+    if (Array.isArray(productData.variants) && productData.variants.length > 0 && productData.variants[0]?.optionValues && !productData.variants[0]?.option1Value) {
+      const names = formOptions.slice(0, 3).map(o => o.name);
+      productData.variants = productData.variants.map(v => ({
+        ...v,
+        option1Value: names[0] ? v.optionValues?.[names[0]] : undefined,
+        option2Value: names[1] ? v.optionValues?.[names[1]] : undefined,
+        option3Value: names[2] ? v.optionValues?.[names[2]] : undefined
+      }));
+    }
+    if (!productData.description && productData.descriptionHtml) {
+      productData.description = productData.descriptionHtml;
+    }
+    if ((!productData.images || productData.images.length === 0) && Array.isArray(productData.media)) {
+      productData.images = productData.media
+        .filter(m => m?.url)
+        .map(m => ({src: m.url, alt: m.alt || ''}));
+    }
+    if (!productData.seoTitle && productData.seo?.title) productData.seoTitle = productData.seo.title;
+    if (!productData.seoDescription && productData.seo?.description) productData.seoDescription = productData.seo.description;
+
     let csvVariants = productData.variants?.length > 0 ? productData.variants : [productData];
     const optionNames = [productData.option1Name, productData.option2Name, productData.option3Name].filter(Boolean);
 
@@ -29,7 +59,9 @@ export async function createProduct(shopify, productData) {
     input.status = (productData.status || 'draft').toUpperCase();
 
     if (productData.tags) {
-      input.tags = productData.tags.split(',').map(t => t.trim()).filter(Boolean);
+      input.tags = Array.isArray(productData.tags)
+        ? productData.tags.map(t => String(t).trim()).filter(Boolean)
+        : String(productData.tags).split(',').map(t => t.trim()).filter(Boolean);
     }
     if (productData.seoTitle || productData.seoDescription) {
       input.seo = {};
@@ -51,6 +83,9 @@ export async function createProduct(shopify, productData) {
         name,
         values: [...valueSets[i]].map(v => ({name: v}))
       }));
+    } else {
+      // No custom options → must declare default Title option to match variant.optionValues below.
+      input.productOptions = [{name: 'Title', values: [{name: 'Default Title'}]}];
     }
 
     const allImageUrls = new Set();
@@ -92,13 +127,18 @@ export async function createProduct(shopify, productData) {
         price: v.price || '0.00',
         sku: v.sku || '',
         inventoryPolicy: (v.inventoryPolicy || 'deny').toUpperCase() === 'CONTINUE' ? 'CONTINUE' : 'DENY',
-        inventoryItem: {sku: v.sku || '', tracked: (v.inventoryTracker || 'shopify') === 'shopify'},
+        inventoryItem: {
+          sku: v.sku || '',
+          tracked: (v.inventoryTracker || 'shopify') === 'shopify',
+          requiresShipping: v.requiresShipping !== false
+        },
         taxable: v.taxable !== undefined ? v.taxable : true
       };
       if (v.compareAtPrice) variant.compareAtPrice = v.compareAtPrice;
       if (v.barcode) variant.barcode = v.barcode;
       if (v.taxCode) variant.taxCode = v.taxCode;
-      if (v.cost) variant.inventoryItem.cost = v.cost;
+      const costVal = v.cost ?? v.inventoryItem?.cost;
+      if (costVal) variant.inventoryItem.cost = costVal;
       if (v.variantImage) variant.file = {originalSource: v.variantImage};
       return variant;
     });

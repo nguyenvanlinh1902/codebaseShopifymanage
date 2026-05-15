@@ -74,11 +74,16 @@ function pickDiscount(d) {
  * Build DraftOrderInput from a fetched draft order (for re-creation as duplicate).
  * Preserves: line items (variant or custom), customer, addresses, discount,
  * shipping line, tags, note, email, phone, taxExempt, customAttributes.
+ *
+ * When opts.crossStore is true (duplicating to a different shop), variantId and
+ * customerId are stripped because those gids only exist on the source shop —
+ * line items become custom (title + originalUnitPrice), customer is dropped.
  */
-export function buildDraftCloneInput(source) {
+export function buildDraftCloneInput(source, opts = {}) {
+  const crossStore = !!opts.crossStore;
   const input = {
     lineItems: (source.lineItems?.edges || []).map(({node}) => {
-      const li = node.variant?.id
+      const li = !crossStore && node.variant?.id
         ? {variantId: node.variant.id, quantity: node.quantity}
         : {
             title: node.title || 'Custom Item',
@@ -102,7 +107,7 @@ export function buildDraftCloneInput(source) {
   if (source.email) input.email = source.email;
   if (source.phone) input.phone = source.phone;
   if (source.taxExempt) input.taxExempt = true;
-  if (source.customer?.id) input.customerId = source.customer.id;
+  if (!crossStore && source.customer?.id) input.customerId = source.customer.id;
 
   const ship = pickAddress(source.shippingAddress);
   if (ship) input.shippingAddress = ship;

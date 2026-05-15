@@ -1,9 +1,10 @@
 import React, {useState} from 'react';
 import {
   Modal, BlockStack, Text, Select, Badge, InlineStack,
-  Spinner, Banner, IndexTable, ChoiceList
+  Spinner, Banner, IndexTable
 } from '@shopify/polaris';
 import {api} from '../../helpers/api';
+import SearchableChoiceList from '../../components/searchable-choice-list';
 
 export default function ThemeSetupModal({
   open, onClose, stores, savedThemes, savedThemesLoading, onSuccess
@@ -79,13 +80,14 @@ export default function ThemeSetupModal({
       <Modal.Section>
         <BlockStack gap="400">
           {/* Store selection */}
-          <ChoiceList
+          <SearchableChoiceList
             title="Select stores"
-            allowMultiple
             choices={storeChoices}
             selected={selectedStoreIds}
             onChange={setSelectedStoreIds}
             disabled={applying}
+            showSelectAll
+            searchPlaceholder="Search stores..."
           />
 
           {/* Theme selection */}

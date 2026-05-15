@@ -3,6 +3,7 @@ import {Page, Layout, Select, InlineStack} from '@shopify/polaris';
 import {api} from '../helpers/api';
 import {usePermittedStores} from '../hooks/usePermittedStores';
 import AnalyticsBalancePanel from './analytics/analytics-balance-panel';
+import StoreSelector from '../components/store-selector';
 
 export default function Balance() {
   const {stores, groups, isAdmin} = usePermittedStores();
@@ -70,11 +71,12 @@ export default function Balance() {
               </div>
             )}
             <div className="filter-item filter-item--lg">
-              <Select
+              <StoreSelector
                 label="Store"
                 options={storeOptions}
                 value={selectedStoreId}
                 onChange={setSelectedStoreId}
+                pinnedValues={[]}
               />
             </div>
           </InlineStack>

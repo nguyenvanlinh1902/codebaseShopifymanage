@@ -1,5 +1,6 @@
-import React from 'react';
-import {Card, BlockStack, Text, Banner, ChoiceList, InlineStack, Button} from '@shopify/polaris';
+import React, {useMemo} from 'react';
+import {Card, BlockStack, Text, Banner, InlineStack, Button} from '@shopify/polaris';
+import SearchableChoiceList from '../../components/searchable-choice-list';
 
 /** Shopify daily variant limit resets at midnight UTC */
 function isThrottledToday(store) {
@@ -21,6 +22,21 @@ export default function StoreSelectionSection({
   onUpload
 }) {
   const throttledStores = stores.filter(isThrottledToday);
+
+  const choices = useMemo(
+    () =>
+      stores.map(store => {
+        const throttled = isThrottledToday(store);
+        return {
+          label: throttled
+            ? `${store.name} (${store.shopDomain}) — Daily variant limit reached, retry tomorrow`
+            : `${store.name} (${store.shopDomain})`,
+          value: store.id,
+          disabled: throttled
+        };
+      }),
+    [stores]
+  );
 
   return (
     <Card>
@@ -53,22 +69,14 @@ export default function StoreSelectionSection({
           </Banner>
         )}
 
-        <ChoiceList
+        <SearchableChoiceList
           title="Import products to these stores (multiple selection allowed)"
-          allowMultiple
-          choices={stores.map(store => {
-            const throttled = isThrottledToday(store);
-            return {
-              label: throttled
-                ? `${store.name} (${store.shopDomain}) — Daily variant limit reached, retry tomorrow`
-                : `${store.name} (${store.shopDomain})`,
-              value: store.id,
-              disabled: throttled
-            };
-          })}
+          choices={choices}
           selected={selectedStores}
           onChange={onStoresChange}
           disabled={uploading || files.length === 0}
+          showSelectAll
+          searchPlaceholder="Search stores..."
         />
 
         {selectedStores.length > 0 && files.length > 0 && (

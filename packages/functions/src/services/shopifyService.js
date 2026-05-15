@@ -75,4 +75,5 @@ export class ShopifyService {
   getShopPolicies() { return shopSvc.getShopPolicies(this.shopify); }
   updateShopPolicy(type, body) { return shopSvc.updateShopPolicy(this.shopify, type, body); }
   getPrivacySettings() { return shopSvc.getPrivacySettings(this.shopify); }
+  disablePrivacyAutoManaged() { return shopSvc.disablePrivacyAutoManaged(this.shopify); }
 }

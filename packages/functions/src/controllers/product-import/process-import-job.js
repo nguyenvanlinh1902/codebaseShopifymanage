@@ -84,7 +84,63 @@ export async function processProductImport(messageData) {
   }
 }
 
-/** Import products to a single store via Bulk Operations (up to 5 concurrent). */
+/**
+ * Normalize a taxonomy path for comparison: trim each segment, join with " > ".
+ * Handles inconsistent whitespace around ">" in CSV vs Shopify fullName.
+ */
+function normalizeCategoryPath(path) {
+  return path.split('>').map(s => s.trim()).join(' > ');
+}
+
+/**
+ * Resolve human-readable category paths (e.g. "Arts & Entertainment > ... > Jerseys")
+ * to Shopify taxonomy GIDs by querying the taxonomy search API.
+ * Mutates each product's productCategory in-place.
+ */
+async function resolveProductCategories(shopify, products) {
+  const pathsToResolve = new Set();
+  for (const p of products) {
+    const cat = p.productCategory;
+    // Only paths with spaces or ">" need lookup; handles and GIDs are already usable
+    if (cat && !cat.startsWith('gid://') && /[\s>]/.test(cat)) {
+      pathsToResolve.add(cat);
+    }
+  }
+  if (pathsToResolve.size === 0) return;
+
+  console.log(`[import] Resolving ${pathsToResolve.size} taxonomy category path(s)...`);
+
+  const resolved = new Map();
+  for (const path of pathsToResolve) {
+    const lastSegment = path.split('>').pop().trim();
+    try {
+      const result = await shopify.graphql(
+        `query TaxSearch($q: String!) {
+          taxonomy { categories(search: $q, first: 20) { nodes { id fullName } } }
+        }`,
+        {q: lastSegment}
+      );
+      const nodes = result?.taxonomy?.categories?.nodes || [];
+      const normalizedPath = normalizeCategoryPath(path);
+      const match = nodes.find(n => normalizeCategoryPath(n.fullName) === normalizedPath);
+      if (match) {
+        resolved.set(path, match.id);
+        console.log(`[import] Category resolved: "${path}" → ${match.id}`);
+      } else {
+        console.warn(`[import] Category not found in taxonomy: "${path}"`);
+      }
+    } catch (err) {
+      console.warn(`[import] Category lookup failed for "${path}": ${err.message}`);
+    }
+  }
+
+  for (const p of products) {
+    if (p.productCategory && resolved.has(p.productCategory)) {
+      p.productCategory = resolved.get(p.productCategory);
+    }
+  }
+}
+
 /**
  * Publish products to all sales channels via bulk mutation.
  * Uses product IDs from bulk import results (no extra query needed).
@@ -185,6 +241,9 @@ async function processStoreImport(job, products) {
   });
 
   try {
+    // Resolve human-readable category paths to taxonomy GIDs before building JSONL
+    await resolveProductCategories(shopifyService.shopify, products);
+
     // Track per-chunk objectCount so we can aggregate across parallel chunks
     const chunkCounts = new Map();
     const chunkStatuses = new Map();

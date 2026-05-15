@@ -26,6 +26,17 @@ function buildProductSetInput(productData) {
   if (productData.tags) {
     input.tags = productData.tags.split(',').map(t => t.trim()).filter(Boolean);
   }
+  if (productData.productCategory) {
+    const cat = productData.productCategory;
+    // Only use as GID when value is a taxonomy handle (e.g. "ae-2-2-10-1-8"), not a
+    // human-readable path (e.g. "Arts & Entertainment > ...") which is an invalid GID.
+    if (cat.startsWith('gid://')) {
+      input.category = cat;
+    } else if (/^[a-z0-9][a-z0-9-]*$/i.test(cat)) {
+      input.category = `gid://shopify/TaxonomyCategory/${cat}`;
+    }
+    // else: full path text — skip silently, can't map without a taxonomy lookup
+  }
   if (productData.seoTitle || productData.seoDescription) {
     input.seo = {};
     if (productData.seoTitle) input.seo.title = productData.seoTitle;

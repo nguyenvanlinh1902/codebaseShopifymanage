@@ -16,6 +16,7 @@ const MAX_FILES = 100;
  * @returns {{ batchId: string, fileNames: string[] }}
  */
 export async function uploadCsvFiles(files, {onProgress} = {}) {
+  if (!storage) throw new Error('Firebase Storage is not configured. Please set VITE_FIREBASE_* environment variables.');
   if (files.length === 0) throw new Error('No files to upload');
   if (files.length > MAX_FILES) throw new Error(`Maximum ${MAX_FILES} files allowed per batch`);
 

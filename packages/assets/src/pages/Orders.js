@@ -230,10 +230,12 @@ export default function Orders() {
   };
 
   const syncPollRef = useRef(null);
+  const currentJobIdRef = useRef(null);
   const [syncProgress, setSyncProgress] = useState(null);
 
   const startPolling = (jobId, isDryRun) => {
     if (syncPollRef.current) clearInterval(syncPollRef.current);
+    currentJobIdRef.current = jobId;
     setSyncing(true);
     setSyncStep(isDryRun ? 'checking' : 'syncing');
     syncPollRef.current = setInterval(async () => {
@@ -247,11 +249,20 @@ export default function Orders() {
           totalStores: job.totalStores || 0,
           results: job.results || []
         });
-        if (job.status === 'completed' || job.status === 'failed') {
+        if (job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled') {
           clearInterval(syncPollRef.current);
           syncPollRef.current = null;
+          currentJobIdRef.current = null;
           setSyncing(false);
-          if (job.status === 'failed') { setError(job.error || 'Sync job failed'); setSyncProgress(null); return; }
+          setSyncProgress(null);
+          if (job.status === 'failed') {
+            setError(job.error || 'Sync job failed');
+            return;
+          }
+          if (job.status === 'cancelled') {
+            setSyncStep('select');
+            return;
+          }
           if (job.dryRun) {
             setCheckResults(job.results || []);
             setSyncStep('check');
@@ -260,10 +271,25 @@ export default function Orders() {
             setSyncStep('done');
             fetchAllSyncConfigs();
           }
-          setSyncProgress(null);
         }
       } catch { /* ignore */ }
     }, 3000);
+  };
+
+  const handleStopSync = async () => {
+    const jobId = currentJobIdRef.current;
+    if (!jobId) return;
+    try {
+      await api(`/api/orders/sync-missing/${jobId}/cancel`, {method: 'POST'});
+      clearInterval(syncPollRef.current);
+      syncPollRef.current = null;
+      currentJobIdRef.current = null;
+      setSyncing(false);
+      setSyncProgress(null);
+      setSyncStep('select');
+    } catch (err) {
+      setError('Failed to stop: ' + err.message);
+    }
   };
 
   // Resume polling if there's an active job (page load / tab switch)
@@ -285,8 +311,8 @@ export default function Orders() {
     })();
   }, []);
 
-  const callSyncMissing = async (dryRun) => {
-    const ids = Object.keys(selectedStoreIds).filter(id => selectedStoreIds[id]);
+  const callSyncMissing = async (dryRun, overrideIds = null) => {
+    const ids = overrideIds || Object.keys(selectedStoreIds).filter(id => selectedStoreIds[id]);
     if (ids.length === 0) return;
     setSyncProgress({processedStores: 0, totalStores: ids.length, results: []});
     setShowSyncMissingModal(false);
@@ -332,6 +358,7 @@ export default function Orders() {
 
   const configRows = syncConfigs.map(config => [
     config.storeName || 'N/A',
+    config.shopDomain || 'N/A',
     config.spreadsheetId ? (
       <a
         key={`sheet-${config.id}`}
@@ -364,10 +391,11 @@ export default function Orders() {
         disabled: loading
       }}
       secondaryActions={[{
-        content: 'Sync Missing Orders',
-        onAction: openSyncMissingModal,
-        disabled: loading
-      }]}
+          content: 'Sync Missing Orders',
+          onAction: openSyncMissingModal,
+          disabled: loading
+        }
+      ]}
     >
       <Layout>
         {error && (
@@ -395,18 +423,41 @@ export default function Orders() {
                   <Text variant="headingMd" as="h2">
                     {syncStep === 'checking' ? 'Checking Missing Orders...' : 'Syncing Missing Orders...'}
                   </Text>
-                  <Badge tone="attention">
-                    {syncProgress.processedStores}/{syncProgress.totalStores} stores
-                  </Badge>
+                  <InlineStack gap="200" blockAlign="center">
+                    <Badge tone="attention">
+                      {syncProgress.processedStores}/{syncProgress.totalStores} stores
+                    </Badge>
+                    <button
+                      onClick={handleStopSync}
+                      style={{
+                        background: '#e4e5e7',
+                        color: '#303030',
+                        border: 'none',
+                        borderRadius: '6px',
+                        padding: '4px 12px',
+                        cursor: 'pointer',
+                        fontSize: '13px'
+                      }}
+                    >
+                      Stop
+                    </button>
+                  </InlineStack>
                 </InlineStack>
                 <div style={{width: '100%', height: '8px', backgroundColor: '#e4e5e7', borderRadius: '4px', overflow: 'hidden'}}>
                   <div style={{
-                    width: `${syncProgress.totalStores > 0 ? Math.round((syncProgress.processedStores / syncProgress.totalStores) * 100) : 0}%`,
-                    height: '100%',
-                    backgroundColor: '#008060',
-                    borderRadius: '4px',
-                    transition: 'width 0.3s ease'
-                  }} />
+                      width: `${
+                        syncProgress.totalStores > 0
+                          ? Math.round(
+                              (syncProgress.processedStores / syncProgress.totalStores) * 100
+                            )
+                          : 0
+                      }%`,
+                      height: '100%',
+                      backgroundColor: '#008060',
+                      borderRadius: '4px',
+                      transition: 'width 0.3s ease'
+                    }}
+                  />
                 </div>
                 <InlineStack gap="400">
                   <Text variant="bodySm" tone="subdued">
@@ -414,9 +465,11 @@ export default function Orders() {
                   </Text>
                   {syncProgress.results.length > 0 && (
                     <>
-                      <Text variant="bodySm" tone="success">
-                        {syncProgress.results.reduce((s, r) => s + (r.synced || 0), 0)} synced
-                      </Text>
+                      {syncStep === 'syncing' && (
+                        <Text variant="bodySm" tone="success">
+                          {syncProgress.results.reduce((s, r) => s + (r.synced || 0), 0)} synced
+                        </Text>
+                      )}
                       <Text variant="bodySm" tone="subdued">
                         {syncProgress.results.reduce((s, r) => s + (r.missing || 0), 0)} missing found
                       </Text>
@@ -441,7 +494,7 @@ export default function Orders() {
                     </Badge>
                     {totalMissing > 0 && (
                       <button
-                        onClick={() => callSyncMissing(false)}
+                        onClick={() => callSyncMissing(false, checkResults.filter(r => r.missing > 0 && !r.error).map(r => r.storeId).filter(Boolean))}
                         style={{
                           background: '#d82c0d', color: '#fff', border: 'none', borderRadius: '6px',
                           padding: '6px 16px', cursor: 'pointer', fontWeight: 600, fontSize: '13px'
@@ -564,9 +617,10 @@ export default function Orders() {
                     searchPlaceholder="Search by store, sheet, or tab..."
                   />
                   <DataTable
-                    columnContentTypes={['text', 'text', 'text', 'text', 'numeric', 'text']}
+                    columnContentTypes={['text', 'text', 'text', 'text', 'text', 'numeric', 'text']}
                     headings={[
                       'Store',
+                      'Domain',
                       'Google Sheet',
                       'Tab',
                       'Status',

@@ -628,7 +628,7 @@ export async function getSyncConfigs(req, res) {
     const {page, perPage, search} = parsePaginationParams(req.query);
     const result = paginateArray(configs, {
       page, perPage, search,
-      searchKeys: ['storeName', 'sheetName', 'targetSheet']
+      searchKeys: ['storeName', 'shopDomain', 'sheetName', 'targetSheet']
     });
     return res.json({success: true, ...result});
   } catch (error) {
@@ -885,7 +885,7 @@ export async function syncMissing(req, res) {
       }
     }
 
-    // Always background — create job and process async
+    // Create job record, then await processing (keeps Firebase function alive)
     const job = await orderSyncJobRepo.create({
       type: 'sync_missing',
       storeIds,
@@ -897,16 +897,21 @@ export async function syncMissing(req, res) {
       results: []
     });
 
-    const processor = dryRun
-      ? processCheckMissingJob(job.id, storeIds, createdAtMin, createdAtMax)
-      : processSyncMissingJob(job.id, storeIds, createdAtMin, createdAtMax);
+    // Respond immediately with jobId so frontend can start polling
+    res.json({success: true, data: {jobId: job.id}});
 
-    processor.catch(err => {
-      console.error(`[SyncMissing] Background job ${job.id} failed:`, err);
-      orderSyncJobRepo.update(job.id, {status: 'failed', error: err.message}).catch(() => {});
-    });
-
-    return res.json({success: true, data: {jobId: job.id}});
+    // Run processing after response — awaiting keeps the function instance alive
+    try {
+      if (dryRun) {
+        await processCheckMissingJob(job.id, storeIds, createdAtMin, createdAtMax);
+      } else {
+        await processSyncMissingJob(job.id, storeIds, createdAtMin, createdAtMax);
+      }
+    } catch (err) {
+      console.error(`[SyncMissing] Job ${job.id} failed:`, err);
+      await orderSyncJobRepo.update(job.id, {status: 'failed', error: err.message}).catch(() => {});
+    }
+    return;
   } catch (error) {
     console.error('[SyncMissing] Fatal error:', error);
     return res.status(500).json({success: false, error: error.message});
@@ -941,96 +946,170 @@ export async function getActiveSyncMissingJob(req, res) {
 }
 
 /**
+ * POST /api/orders/sync-missing/:jobId/cancel
+ * Cancel a running sync-missing job.
+ */
+export async function cancelSyncMissingJob(req, res) {
+  try {
+    const job = await orderSyncJobRepo.getById(req.params.jobId);
+    if (!job) return res.status(404).json({success: false, error: 'Job not found'});
+    if (job.status !== 'processing') {
+      return res.json({success: true, message: 'Job already finished'});
+    }
+    await orderSyncJobRepo.update(req.params.jobId, {status: 'cancelled', cancelledAt: new Date().toISOString()});
+    return res.json({success: true, message: 'Job cancelled'});
+  } catch (error) {
+    return res.status(500).json({success: false, error: error.message});
+  }
+}
+
+const SYNC_BATCH_SIZE = 8;
+
+/**
  * Background processor for check-only (dry run) job.
+ * Processes stores in parallel batches to avoid Firebase function timeout.
  */
 async function processCheckMissingJob(jobId, storeIds, createdAtMin, createdAtMax) {
   const results = [];
-  for (let i = 0; i < storeIds.length; i++) {
-    const storeId = storeIds[i];
-    const r = {storeId, storeName: '', totalFetched: 0, alreadyInSheet: 0, missing: 0, synced: 0, error: null};
-    try {
-      const {store, syncConfig, sheetsService, shopifyService} = await initStoreServices(storeId);
-      if (!store) { r.error = 'Store not found'; results.push(r); await updateSyncMissingProgress(jobId, i + 1, results); continue; }
-      r.storeName = store.name;
-      if (!syncConfig) { r.error = 'No active sync config'; results.push(r); await updateSyncMissingProgress(jobId, i + 1, results); continue; }
-      if (!sheetsService) { r.error = 'Sheet not found'; results.push(r); await updateSyncMissingProgress(jobId, i + 1, results); continue; }
 
-      const existingOrderNumbers = await readSheetOrderNumbers(sheetsService, syncConfig);
-      const allOrders = await fetchAllOrders(shopifyService, createdAtMin, createdAtMax);
-      r.totalFetched = allOrders.length;
-
-      const missingOrders = allOrders.filter(o => !existingOrderNumbers.has(o.name));
-      r.alreadyInSheet = allOrders.length - missingOrders.length;
-      r.missing = missingOrders.length;
-    } catch (err) {
-      r.error = err.message;
+  for (let i = 0; i < storeIds.length; i += SYNC_BATCH_SIZE) {
+    const job = await orderSyncJobRepo.getById(jobId);
+    if (job?.status === 'cancelled') {
+      console.log(`[CheckMissing] Job ${jobId} cancelled at batch ${i}`);
+      return;
     }
-    results.push(r);
-    await updateSyncMissingProgress(jobId, i + 1, results);
+
+    const batch = storeIds.slice(i, i + SYNC_BATCH_SIZE);
+    const batchResults = await Promise.allSettled(
+      batch.map(storeId => checkOneStore(storeId, createdAtMin, createdAtMax))
+    );
+
+    for (const outcome of batchResults) {
+      if (outcome.status === 'fulfilled' && outcome.value !== null) {
+        results.push(outcome.value);
+      }
+    }
+    await updateSyncMissingProgress(jobId, Math.min(i + SYNC_BATCH_SIZE, storeIds.length), results);
   }
+
   await orderSyncJobRepo.update(jobId, {status: 'completed', completedAt: new Date().toISOString()});
+}
+
+/** Check one store for missing orders. Returns null if store should be skipped. */
+async function checkOneStore(storeId, createdAtMin, createdAtMax) {
+  const r = {storeId, storeName: '', totalFetched: 0, alreadyInSheet: 0, missing: 0, synced: 0, error: null};
+  try {
+    const {store, syncConfig, sheetsService, shopifyService} = await initStoreServices(storeId);
+    if (!store) { r.error = 'Store not found'; return r; }
+    r.storeName = store.name;
+    if (!syncConfig) { r.error = 'No active sync config'; return r; }
+    if (!sheetsService) { r.error = 'Sheet not found'; return r; }
+
+    const [existingOrderNumbers, allOrders] = await Promise.all([
+      readSheetOrderNumbers(sheetsService, syncConfig),
+      fetchAllOrders(shopifyService, createdAtMin, createdAtMax)
+    ]);
+    r.totalFetched = allOrders.length;
+
+    const missingOrders = allOrders.filter(o => !existingOrderNumbers.has(o.name));
+    r.alreadyInSheet = allOrders.length - missingOrders.length;
+    r.missing = missingOrders.length;
+  } catch (err) {
+    if (isUnauthorizedError(err)) {
+      console.log(`[CheckMissing] Skipping store ${storeId}: ${err.message}`);
+      return null;
+    }
+    r.error = err.message;
+  }
+  return r;
 }
 
 /**
  * Background processor for sync-missing job.
+ * Processes stores in parallel batches to avoid Firebase function timeout.
  */
 async function processSyncMissingJob(jobId, storeIds, createdAtMin, createdAtMax) {
   const results = [];
-  for (let i = 0; i < storeIds.length; i++) {
-    const storeId = storeIds[i];
-    const r = {storeId, storeName: '', totalFetched: 0, alreadyInSheet: 0, missing: 0, synced: 0, error: null};
-    try {
-      const {store, syncConfig, sheetsService, shopifyService} = await initStoreServices(storeId);
-      if (!store) { r.error = 'Store not found'; results.push(r); await updateSyncMissingProgress(jobId, i + 1, results); continue; }
-      r.storeName = store.name;
-      if (!syncConfig) { r.error = 'No active sync config'; results.push(r); await updateSyncMissingProgress(jobId, i + 1, results); continue; }
-      if (!sheetsService) { r.error = 'Sheet not found'; results.push(r); await updateSyncMissingProgress(jobId, i + 1, results); continue; }
 
-      const existingOrderNumbers = await readSheetOrderNumbers(sheetsService, syncConfig);
-      const allOrders = await fetchAllOrders(shopifyService, createdAtMin, createdAtMax);
-      r.totalFetched = allOrders.length;
-
-      const missingOrders = allOrders.filter(o => !existingOrderNumbers.has(o.name));
-      r.alreadyInSheet = allOrders.length - missingOrders.length;
-      r.missing = missingOrders.length;
-
-      if (missingOrders.length > 0) {
-        // Fetch product info
-        let productInfoMap;
-        try {
-          const variantIds = missingOrders
-            .flatMap(o => (o.line_items || []).map(li => li.variant_id?.toString()))
-            .filter(Boolean);
-          if (variantIds.length > 0) {
-            productInfoMap = await shopifyService.getLineItemsProductInfo(variantIds, store.shopDomain);
-          }
-        } catch (err) {
-          console.error(`[SyncMissing] Product info failed for ${store.name}:`, err.message);
-        }
-
-        const formattedOrders = missingOrders.map(o => formatOrderRowsForSheet(o, productInfoMap));
-        await sheetsService.appendOrders(syncConfig.spreadsheetId, syncConfig.targetSheet, formattedOrders);
-
-        for (const order of formattedOrders) {
-          try { await orderSyncRepo.claimOrderSync(storeId, order.orderId, order.orderNumber); } catch { /* dup */ }
-        }
-
-        r.synced = missingOrders.length;
-        await orderSyncRepo.updateSyncJob(syncConfig.id, {
-          totalOrdersSynced: (syncConfig.totalOrdersSynced || 0) + missingOrders.length,
-          lastSyncAt: new Date().toISOString()
-        });
-      }
-    } catch (err) {
-      console.error(`[SyncMissing] Error for store ${storeId}:`, err.message);
-      r.error = err.message;
+  for (let i = 0; i < storeIds.length; i += SYNC_BATCH_SIZE) {
+    const job = await orderSyncJobRepo.getById(jobId);
+    if (job?.status === 'cancelled') {
+      console.log(`[SyncMissing] Job ${jobId} cancelled at batch ${i}`);
+      return;
     }
-    results.push(r);
-    await updateSyncMissingProgress(jobId, i + 1, results);
+
+    const batch = storeIds.slice(i, i + SYNC_BATCH_SIZE);
+    const batchResults = await Promise.allSettled(
+      batch.map(storeId => syncOneStore(storeId, createdAtMin, createdAtMax))
+    );
+
+    for (const outcome of batchResults) {
+      if (outcome.status === 'fulfilled' && outcome.value !== null) {
+        results.push(outcome.value);
+      }
+    }
+    await updateSyncMissingProgress(jobId, Math.min(i + SYNC_BATCH_SIZE, storeIds.length), results);
   }
 
   await orderSyncJobRepo.update(jobId, {status: 'completed', completedAt: new Date().toISOString()});
   console.log(`[SyncMissing] Job ${jobId} completed: ${results.length} stores processed`);
+}
+
+/** Sync missing orders for one store. Returns null if store should be skipped. */
+async function syncOneStore(storeId, createdAtMin, createdAtMax) {
+  const r = {storeId, storeName: '', totalFetched: 0, alreadyInSheet: 0, missing: 0, synced: 0, error: null};
+  try {
+    const {store, syncConfig, sheetsService, shopifyService} = await initStoreServices(storeId);
+    if (!store) { r.error = 'Store not found'; return r; }
+    r.storeName = store.name;
+    if (!syncConfig) { r.error = 'No active sync config'; return r; }
+    if (!sheetsService) { r.error = 'Sheet not found'; return r; }
+
+    const [existingOrderNumbers, allOrders] = await Promise.all([
+      readSheetOrderNumbers(sheetsService, syncConfig),
+      fetchAllOrders(shopifyService, createdAtMin, createdAtMax)
+    ]);
+    r.totalFetched = allOrders.length;
+
+    const missingOrders = allOrders.filter(o => !existingOrderNumbers.has(o.name));
+    r.alreadyInSheet = allOrders.length - missingOrders.length;
+    r.missing = missingOrders.length;
+
+    if (missingOrders.length > 0) {
+      let productInfoMap;
+      try {
+        const variantIds = missingOrders
+          .flatMap(o => (o.line_items || []).map(li => li.variant_id?.toString()))
+          .filter(Boolean);
+        if (variantIds.length > 0) {
+          productInfoMap = await shopifyService.getLineItemsProductInfo(variantIds, store.shopDomain);
+        }
+      } catch (err) {
+        console.error(`[SyncMissing] Product info failed for ${store.name}:`, err.message);
+      }
+
+      const formattedOrders = missingOrders.map(o => formatOrderRowsForSheet(o, productInfoMap));
+      await sheetsService.appendOrders(syncConfig.spreadsheetId, syncConfig.targetSheet, formattedOrders);
+
+      for (const order of formattedOrders) {
+        try { await orderSyncRepo.claimOrderSync(storeId, order.orderId, order.orderNumber); } catch { /* dup */ }
+      }
+
+      r.synced = missingOrders.length;
+      await orderSyncRepo.updateSyncJob(syncConfig.id, {
+        totalOrdersSynced: (syncConfig.totalOrdersSynced || 0) + missingOrders.length,
+        lastSyncAt: new Date().toISOString()
+      });
+    }
+  } catch (err) {
+    if (isUnauthorizedError(err)) {
+      console.log(`[SyncMissing] Skipping store ${storeId}: ${err.message}`);
+      return null;
+    }
+    console.error(`[SyncMissing] Error for store ${storeId}:`, err.message);
+    r.error = err.message;
+  }
+  return r;
 }
 
 /** Init Shopify + Sheets services for a store. */
@@ -1060,6 +1139,12 @@ async function readSheetOrderNumbers(sheetsService, syncConfig) {
   return new Set(
     (sheetData || []).slice(1).map(row => (row[0] || '').toString().trim()).filter(Boolean)
   );
+}
+
+/** Detect 403/Forbidden errors — store likely uninstalled the app. */
+function isUnauthorizedError(err) {
+  const msg = err?.message || '';
+  return msg.includes('403') || msg.toLowerCase().includes('forbidden') || msg.toLowerCase().includes('unauthorized');
 }
 
 /** Fetch all orders from Shopify with date filter (paginated). */

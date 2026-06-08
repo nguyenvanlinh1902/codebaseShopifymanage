@@ -3,28 +3,33 @@
  */
 import {shopifyGraphQL, validateStoreAccess} from '../helpers/shopify-admin-graphql.js';
 
+const VARIANT_FIELDS = `
+  id title sku price inventoryQuantity
+  image { url }
+`;
+
 const SEARCH_PRODUCTS_QUERY = `
 query SearchProducts($query: String!, $first: Int!) {
   products(query: $query, first: $first) {
     edges {
       node {
-        id
-        title
-        status
+        id title status
         featuredImage { url }
-        variants(first: 20) {
-          edges {
-            node {
-              id
-              title
-              sku
-              price
-              inventoryQuantity
-              image { url }
-            }
-          }
+        variants(first: 250) {
+          pageInfo { hasNextPage endCursor }
+          edges { node { ${VARIANT_FIELDS} } }
         }
       }
+    }
+  }
+}`;
+
+const PRODUCT_VARIANTS_QUERY = `
+query ProductVariants($id: ID!, $first: Int!, $after: String) {
+  product(id: $id) {
+    variants(first: $first, after: $after) {
+      pageInfo { hasNextPage endCursor }
+      edges { node { ${VARIANT_FIELDS} } }
     }
   }
 }`;
@@ -57,19 +62,61 @@ export async function searchProducts(req, res) {
       title: node.title,
       status: node.status,
       image: node.featuredImage?.url || null,
-      variants: (node.variants?.edges || []).map(({node: v}) => ({
-        id: v.id,
-        title: v.title,
-        sku: v.sku || '',
-        price: v.price,
-        inventoryQuantity: v.inventoryQuantity,
-        image: v.image?.url || null
-      }))
+      hasMoreVariants: node.variants?.pageInfo?.hasNextPage || false,
+      variantsCursor: node.variants?.pageInfo?.endCursor || null,
+      variants: (node.variants?.edges || []).map(({node: v}) => mapVariant(v))
     }));
 
     return res.json({success: true, data: {products}});
   } catch (error) {
     console.error('Search products error:', error);
+    return res.status(500).json({success: false, error: error.message});
+  }
+}
+
+function mapVariant(v) {
+  return {
+    id: v.id,
+    title: v.title,
+    sku: v.sku || '',
+    price: v.price,
+    inventoryQuantity: v.inventoryQuantity,
+    image: v.image?.url || null
+  };
+}
+
+/**
+ * GET /api/draft-orders/products/:productId/variants?storeId=xxx&cursor=xxx
+ * Load next page of variants for a product (250 per page).
+ */
+export async function loadMoreVariants(req, res) {
+  try {
+    const {storeId, cursor} = req.query;
+    const {productId} = req.params;
+    if (!storeId || !productId) {
+      return res.status(400).json({success: false, error: 'storeId and productId are required'});
+    }
+
+    const access = await validateStoreAccess(req, storeId);
+    if (access.error) return res.status(access.status).json({success: false, error: access.error});
+
+    const data = await shopifyGraphQL(access.store, PRODUCT_VARIANTS_QUERY, {
+      id: productId,
+      first: 250,
+      after: cursor || null
+    });
+
+    const variantsConn = data.product?.variants;
+    return res.json({
+      success: true,
+      data: {
+        variants: (variantsConn?.edges || []).map(({node: v}) => mapVariant(v)),
+        hasMoreVariants: variantsConn?.pageInfo?.hasNextPage || false,
+        variantsCursor: variantsConn?.pageInfo?.endCursor || null
+      }
+    });
+  } catch (error) {
+    console.error('Load more variants error:', error);
     return res.status(500).json({success: false, error: error.message});
   }
 }

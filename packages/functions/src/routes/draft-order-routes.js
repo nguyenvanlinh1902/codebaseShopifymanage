@@ -7,6 +7,7 @@ const router = new Router();
 router.get('/', draftOrderController.listDraftOrders);
 router.post('/', draftOrderController.createDraftOrder);
 router.get('/products', draftOrderController.searchProducts);
+router.get('/products/:productId/variants', draftOrderController.loadMoreVariants);
 router.get('/customers', draftOrderController.searchCustomers);
 
 // Bulk actions — MUST be registered before /:id to avoid route collision

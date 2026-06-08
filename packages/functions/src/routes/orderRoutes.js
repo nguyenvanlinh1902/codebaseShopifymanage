@@ -16,6 +16,7 @@ router.get('/sync-stats', orderSyncController.getSyncStats);
 router.post('/resync-failed', orderSyncController.resyncFailedOrders);
 router.post('/sync-missing', orderSyncController.syncMissing);
 router.get('/sync-missing/active', orderSyncController.getActiveSyncMissingJob);
+router.post('/sync-missing/:jobId/cancel', orderSyncController.cancelSyncMissingJob);
 router.get('/sync-missing/:jobId', orderSyncController.getSyncMissingJob);
 router.get('/queue-stats', orderSyncController.getOrderSyncQueueStats);
 

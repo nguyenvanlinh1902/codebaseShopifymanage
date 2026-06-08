@@ -78,7 +78,31 @@ export default function DraftOrderForm({storeId, storeOptions, onStoreChange, on
   const [productResults, setProductResults] = useState([]);
   const [searchingProducts, setSearchingProducts] = useState(false);
   const [selectedVariants, setSelectedVariants] = useState({});
+  const [loadingMoreVariants, setLoadingMoreVariants] = useState({});
   const productDebounce = useRef(null);
+
+  const handleLoadMoreVariants = async (product) => {
+    if (!product.hasMoreVariants || !product.variantsCursor) return;
+    setLoadingMoreVariants(prev => ({...prev, [product.id]: true}));
+    try {
+      const params = new URLSearchParams({storeId, cursor: product.variantsCursor});
+      const res = await api(`/api/draft-orders/products/${encodeURIComponent(product.id)}/variants?${params}`);
+      const result = await res.json();
+      if (result.success) {
+        setProductResults(prev => prev.map(p =>
+          p.id === product.id
+            ? {...p, variants: [...p.variants, ...result.data.variants],
+                hasMoreVariants: result.data.hasMoreVariants,
+                variantsCursor: result.data.variantsCursor}
+            : p
+        ));
+      }
+    } catch (err) {
+      console.warn('Load more variants failed:', err);
+    } finally {
+      setLoadingMoreVariants(prev => ({...prev, [product.id]: false}));
+    }
+  };
 
   // Customer modal
   const [customerModalOpen, setCustomerModalOpen] = useState(false);
@@ -878,6 +902,17 @@ export default function DraftOrderForm({storeId, storeOptions, onStoreChange, on
                       </div>
                     </div>
                   ))}
+                  {product.hasMoreVariants && (
+                    <div style={{padding: '8px 16px 8px 52px', borderBottom: '1px solid var(--p-color-border-secondary)'}}>
+                      <Button
+                        variant="plain"
+                        loading={loadingMoreVariants[product.id]}
+                        onClick={() => handleLoadMoreVariants(product)}
+                      >
+                        Load more variants ({product.variants.length} shown)
+                      </Button>
+                    </div>
+                  )}
                 </div>
               );
             })}

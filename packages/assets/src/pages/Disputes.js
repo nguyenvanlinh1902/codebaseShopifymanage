@@ -10,8 +10,7 @@ import {
   BlockStack,
   Icon,
   Select,
-  InlineStack,
-  TextField
+  InlineStack
 } from '@shopify/polaris';
 import {AlertDiamondIcon, DeleteIcon} from '@shopify/polaris-icons';
 import {api} from '../helpers/api';
@@ -19,6 +18,7 @@ import {usePermittedStores} from '../hooks/usePermittedStores';
 import {formatDate, formatDateTime} from '../helpers/format-date';
 import PaginationControls from '../components/pagination-controls';
 import StoreSelector from '../components/store-selector';
+import DateRangePopover from '../components/date-range-popover';
 
 const STATUS_TONES = {
   needs_response: 'critical',
@@ -54,6 +54,8 @@ export default function Disputes() {
   const [statusFilter, setStatusFilter] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [evidenceDueFrom, setEvidenceDueFrom] = useState('');
+  const [evidenceDueTo, setEvidenceDueTo] = useState('');
   const [pagination, setPagination] = useState({page: 1, perPage: 10, total: 0, totalPages: 1});
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(10);
@@ -82,10 +84,13 @@ export default function Disputes() {
     setLoading(true);
     try {
       const query = new URLSearchParams({page, perPage, search});
-      if (selectedStoreId && selectedStoreId !== ALL_STORES_VALUE) query.set('storeId', selectedStoreId);
+      if (selectedStoreId && selectedStoreId !== ALL_STORES_VALUE)
+        query.set('storeId', selectedStoreId);
       if (statusFilter) query.set('status', statusFilter);
       if (dateFrom) query.set('dateFrom', dateFrom);
       if (dateTo) query.set('dateTo', dateTo);
+      if (evidenceDueFrom) query.set('evidenceDueFrom', evidenceDueFrom);
+      if (evidenceDueTo) query.set('evidenceDueTo', evidenceDueTo);
       const res = await api(`/api/analytics/disputes?${query}`);
       const result = await res.json();
       if (result.success) {
@@ -101,7 +106,14 @@ export default function Disputes() {
 
   // Single effect: fetch + auto-reset page when filters change
   const filtersRef = useRef({
-    selectedStoreId, statusFilter, dateFrom, dateTo, perPage, search
+    selectedStoreId,
+    statusFilter,
+    dateFrom,
+    dateTo,
+    evidenceDueFrom,
+    evidenceDueTo,
+    perPage,
+    search
   });
   useEffect(() => {
     const prev = filtersRef.current;
@@ -110,16 +122,38 @@ export default function Disputes() {
       prev.statusFilter !== statusFilter ||
       prev.dateFrom !== dateFrom ||
       prev.dateTo !== dateTo ||
+      prev.evidenceDueFrom !== evidenceDueFrom ||
+      prev.evidenceDueTo !== evidenceDueTo ||
       prev.perPage !== perPage ||
       prev.search !== search;
-    filtersRef.current = {selectedStoreId, statusFilter, dateFrom, dateTo, perPage, search};
+    filtersRef.current = {
+      selectedStoreId,
+      statusFilter,
+      dateFrom,
+      dateTo,
+      evidenceDueFrom,
+      evidenceDueTo,
+      perPage,
+      search
+    };
 
     if (filtersChanged && page !== 1) {
       setPage(1);
       return;
     }
     fetchDisputes();
-  }, [page, perPage, search, selectedStoreId, statusFilter, dateFrom, dateTo, stores.length]);
+  }, [
+    page,
+    perPage,
+    search,
+    selectedStoreId,
+    statusFilter,
+    dateFrom,
+    dateTo,
+    evidenceDueFrom,
+    evidenceDueTo,
+    stores.length
+  ]);
 
   const resourceName = {singular: 'dispute', plural: 'disputes'};
 
@@ -132,15 +166,18 @@ export default function Disputes() {
       </IndexTable.Cell>
       <IndexTable.Cell>{d.orderName}</IndexTable.Cell>
       <IndexTable.Cell>
-        {d.email
-          ? d.email
-          : d.orderDeleted
-          ? <InlineStack gap="100" blockAlign="center"><Icon source={DeleteIcon} tone="subdued" /><Text tone="subdued">Order deleted</Text></InlineStack>
-          : '—'}
+        {d.email ? (
+          d.email
+        ) : d.orderDeleted ? (
+          <InlineStack gap="100" blockAlign="center">
+            <Icon source={DeleteIcon} tone="subdued" />
+            <Text tone="subdued">Order deleted</Text>
+          </InlineStack>
+        ) : (
+          '—'
+        )}
       </IndexTable.Cell>
-      <IndexTable.Cell>
-        {d.phone || (d.orderDeleted ? '' : '—')}
-      </IndexTable.Cell>
+      <IndexTable.Cell>{d.phone || (d.orderDeleted ? '' : '—')}</IndexTable.Cell>
       <IndexTable.Cell>
         <Badge tone={STATUS_TONES[d.status] || 'new'}>{statusLabel(d.status)}</Badge>
       </IndexTable.Cell>
@@ -162,7 +199,7 @@ export default function Disputes() {
       <Layout>
         <Layout.Section>
           <Card>
-            <InlineStack align="start" gap="400" wrap>
+            <InlineStack align="start" blockAlign="end" gap="400" wrap>
               <div className="filter-item filter-item--lg">
                 <StoreSelector
                   label="Store"
@@ -180,24 +217,20 @@ export default function Disputes() {
                   onChange={setStatusFilter}
                 />
               </div>
-              <div className="filter-item filter-item--xs">
-                <TextField
-                  label="From"
-                  type="date"
-                  value={dateFrom}
-                  onChange={setDateFrom}
-                  autoComplete="off"
-                />
-              </div>
-              <div className="filter-item filter-item--xs">
-                <TextField
-                  label="To"
-                  type="date"
-                  value={dateTo}
-                  onChange={setDateTo}
-                  autoComplete="off"
-                />
-              </div>
+              <DateRangePopover
+                label="Initiated date"
+                from={dateFrom}
+                to={dateTo}
+                onFromChange={setDateFrom}
+                onToChange={setDateTo}
+              />
+              <DateRangePopover
+                label="Evidence due"
+                from={evidenceDueFrom}
+                to={evidenceDueTo}
+                onFromChange={setEvidenceDueFrom}
+                onToChange={setEvidenceDueTo}
+              />
             </InlineStack>
           </Card>
         </Layout.Section>

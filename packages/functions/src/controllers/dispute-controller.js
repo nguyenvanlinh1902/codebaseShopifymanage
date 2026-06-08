@@ -62,12 +62,10 @@ export async function getDisputes(req, res) {
       })
     );
 
-    let disputes = results.flat().sort((a, b) =>
-      new Date(b.initiatedAt || 0) - new Date(a.initiatedAt || 0)
-    );
+    let disputes = results.flat();
 
-    // Date range filter (server-side)
-    const {dateFrom, dateTo} = req.query;
+    // Initiated date range filter (server-side)
+    const {dateFrom, dateTo, evidenceDueFrom, evidenceDueTo} = req.query;
     if (dateFrom) {
       const from = new Date(dateFrom);
       disputes = disputes.filter(d => d.initiatedAt && new Date(d.initiatedAt) >= from);
@@ -77,6 +75,26 @@ export async function getDisputes(req, res) {
       to.setHours(23, 59, 59, 999);
       disputes = disputes.filter(d => d.initiatedAt && new Date(d.initiatedAt) <= to);
     }
+
+    // Evidence due date range filter (server-side)
+    if (evidenceDueFrom) {
+      const from = new Date(evidenceDueFrom);
+      disputes = disputes.filter(d => d.evidenceDueBy && new Date(d.evidenceDueBy) >= from);
+    }
+    if (evidenceDueTo) {
+      const to = new Date(evidenceDueTo);
+      to.setHours(23, 59, 59, 999);
+      disputes = disputes.filter(d => d.evidenceDueBy && new Date(d.evidenceDueBy) <= to);
+    }
+
+    // Sort by evidence due date ascending (soonest first), disputes without a due date last
+    disputes.sort((a, b) => {
+      const da = a.evidenceDueBy ? new Date(a.evidenceDueBy).getTime() : Infinity;
+      const db = b.evidenceDueBy ? new Date(b.evidenceDueBy).getTime() : Infinity;
+      if (da !== db) return da - db;
+      // Tie-breaker: most recently initiated first
+      return new Date(b.initiatedAt || 0) - new Date(a.initiatedAt || 0);
+    });
 
     const {page, perPage, search} = parsePaginationParams(req.query);
     const result = paginateArray(disputes, {
